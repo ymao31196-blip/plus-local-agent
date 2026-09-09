@@ -21,11 +21,14 @@ from internal_tool_executor import (
 from local_tools import (
     ALLOWED_PROGRAMS,
     WORKSPACE,
+    apply_patch as internal_apply_patch,
     list_directory as internal_list_directory,
     read_text as internal_read_text,
     replace_text as internal_replace_text,
     run_process as internal_run_process,
+    run_powershell as internal_run_powershell,
     safe_path,
+    search_text as internal_search_text,
     write_text as internal_write_text,
 )
 from mcp_sampling_backend import (
@@ -35,9 +38,10 @@ from mcp_sampling_backend import (
     SamplingUnsupported,
 )
 from task_store import TASK_STORE
+from changeset_manager import ChangeRequest, apply_changeset as internal_apply_changeset
 
 
-mcp = FastMCP("Local Agent Tools", version="0.7")
+mcp = FastMCP("Local Agent Tools", version="0.8")
 
 
 @mcp.tool
@@ -53,15 +57,35 @@ def read_text(path: str, start_line: int = 1, end_line: int = 400) -> dict:
 
 
 @mcp.tool
-def write_text(path: str, content: str) -> dict:
+def write_text(
+    path: str, content: str, expected_sha256: str | None = None,
+) -> dict:
     """创建或覆盖 workspace 中的文本文件。"""
-    return internal_write_text(path, content)
+    return internal_write_text(path, content, expected_sha256)
 
 
 @mcp.tool
-def replace_text(path: str, old: str, new: str, count: int = 1) -> dict:
+def replace_text(
+    path: str,
+    old: str,
+    new: str,
+    count: int = 1,
+    expected_sha256: str | None = None,
+) -> dict:
     """在已有文本文件中精确替换内容。"""
-    return internal_replace_text(path, old, new, count)
+    return internal_replace_text(path, old, new, count, expected_sha256)
+
+
+@mcp.tool
+def search_text(
+    query: str,
+    path: str = ".",
+    glob: str | None = None,
+    case_sensitive: bool = False,
+    max_results: int = 100,
+) -> dict:
+    """在 workspace 内搜索有限数量的文本匹配。"""
+    return internal_search_text(query, path, glob, case_sensitive, max_results)
 
 
 @mcp.tool
@@ -70,9 +94,43 @@ def run_process(
     args: list[str] | None = None,
     cwd: str = ".",
     timeout: int = 120,
+    workdir: str | None = None,
+    env: dict[str, str] | None = None,
+    stdin: str | None = None,
 ) -> dict:
     """在 workspace 内运行受允许的程序。"""
-    return internal_run_process(program, args, cwd, timeout)
+    return internal_run_process(program, args, cwd, timeout, workdir, env, stdin)
+
+
+@mcp.tool
+def run_powershell(
+    command: str,
+    parameters: dict | None = None,
+    workdir: str = ".",
+    timeout: int = 30,
+) -> dict:
+    """运行单个 allow-listed PowerShell cmdlet；不接受脚本文本。"""
+    return internal_run_powershell(command, parameters, workdir, timeout)
+
+
+@mcp.tool
+def apply_patch(
+    path: str, patch: str, expected_sha256: str | None = None,
+) -> dict:
+    """在 workspace 内原子应用单文件 unified text diff。"""
+    return internal_apply_patch(path, patch, expected_sha256)
+
+
+@mcp.tool
+def apply_changeset(changes: list[ChangeRequest]) -> dict:
+    """Apply existing UTF-8 files with required hashes and rollback on failure."""
+    return internal_apply_changeset(changes)
+
+
+@mcp.tool
+def cancel_task(task_id: str) -> dict:
+    """Request cancellation of this runtime's task; no PID input is accepted."""
+    return TASK_STORE.cancel(task_id)
 
 
 @mcp.tool
@@ -90,7 +148,7 @@ def submit_task(
     arguments: dict | None = None,
     stop_on_error: bool = True,
 ) -> dict:
-    """提交结构化本地执行任务到进程内后台 worker。"""
+    """提交结构化任务到持久化 Task Store，由本地后台 worker 执行。"""
     has_actions = actions is not None
     has_tool = tool is not None
     if has_actions == has_tool:
@@ -122,9 +180,9 @@ def submit_task(
 
 
 @mcp.tool
-def task_result(task_id: str) -> dict:
+def task_result(task_id: str, cursor: int | None = None) -> dict:
     """读取后台结构化执行任务的当前状态和结果。"""
-    return TASK_STORE.get(task_id)
+    return TASK_STORE.get(task_id, cursor)
 
 
 def _load_state(raw_state: str | None) -> AgentState:
@@ -268,6 +326,9 @@ def main() -> None:
     parser.add_argument("--path", default="/mcp")
     args = parser.parse_args()
     WORKSPACE.mkdir(parents=True, exist_ok=True)
+    # Storage failure remains available as structured task-tool errors; other
+    # local capabilities can still start. Recovery never replays old requests.
+    TASK_STORE.initialize()
     if args.http:
         mcp.run(transport="http", host=args.host, port=args.port, path=args.path)
     else:

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ SERVER_PARAMS = StdioServerParameters(
 
 
 async def run_with_backend(backend, *, max_steps=10):
+    SERVER_PARAMS.env = {"AGENT_TASK_DB": os.environ["AGENT_TASK_DB"]}
     async with stdio_client(SERVER_PARAMS) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()

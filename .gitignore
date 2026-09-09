@@ -58,3 +58,6 @@ workspace/*
 !workspace/agent_test/**
 workspace/agent_test/**/__pycache__/
 workspace/agent_test/**/.pytest_cache/
+
+# Durable runtime records (not user workspace data)
+state/

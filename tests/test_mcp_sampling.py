@@ -1,10 +1,12 @@
 import asyncio
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import mcp_types
 import pytest
 from fastmcp import Client
+from fastmcp.client.transports import PythonStdioTransport
 
 from mcp_sampling_backend import MCPSamplingBackend, SamplingRequired
 from server import mcp
@@ -30,6 +32,8 @@ class FakeSamplingHandler:
 
 
 async def call_agent(handler=None, *, task="Test task", max_steps=10, transport=mcp):
+    if isinstance(transport, Path):
+        transport = PythonStdioTransport(transport, env={"AGENT_TASK_DB": os.environ["AGENT_TASK_DB"]})
     client = Client(
         transport,
         sampling_handler=handler,
