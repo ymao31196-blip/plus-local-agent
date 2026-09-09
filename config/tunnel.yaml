@@ -1,0 +1,18 @@
+config_version: 1
+control_plane:
+  base_url: "https://api.openai.com"
+  # Dedicated OpenAI-hosted tunnel named plus-local-agent.
+  tunnel_id: "tunnel_6aa14bfc30c88191badba31f28e164b6"
+  # Reuse the verified tunnel-client runtime credential store; never put a secret here.
+  api_key: "file:D:/AI_Tools/tunnel-client/secrets/control-plane-api-key.txt"
+health:
+  listen_addr: "127.0.0.1:18081"
+admin_ui:
+  open_browser: false
+log:
+  level: info
+  format: json
+mcp:
+  server_urls:
+    - channel: main
+      url: "http://127.0.0.1:8766/mcp"

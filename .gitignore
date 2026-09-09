@@ -1,0 +1,60 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local secrets and credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.secret
+*credential*
+*credentials*
+*tunnel-token*
+*tunnel-secret*
+
+# IDE and editor state
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+cache/
+caches/
+tmp/
+temp/
+
+# Build and packaging output
+dist/
+build/
+*.egg-info/
+
+# Runtime workspace output; preserve the verified ChatGPT E2E fixture.
+workspace/*
+!workspace/agent_test/
+!workspace/agent_test/**
+workspace/agent_test/**/__pycache__/
+workspace/agent_test/**/.pytest_cache/
