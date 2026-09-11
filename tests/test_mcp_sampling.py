@@ -121,6 +121,11 @@ def test_diagnose_client_reports_capability_without_assuming_mrtr_ready():
         "run_agent_task_available": True,
         "run_agent_task_experimental": True,
         "mainline": "chatgpt_native_agent_loop",
+        "available_roots": {
+            "workspace": {"read": True, "write": True, "execute": True},
+            "pla": {"read": True, "write": True, "execute": True},
+            "rerun_thesis": {"read": True, "write": True, "execute": True},
+        },
     }
 
 

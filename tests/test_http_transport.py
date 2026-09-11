@@ -57,7 +57,7 @@ def test_streamable_http_endpoint_serves_tool_catalog():
 
     assert {
         "diagnose_client", "probe_sampling", "run_agent_task",
-        "list_directory", "read_text", "write_text", "replace_text",
+        "list_directory", "read_text", "extract_document_text", "write_text", "replace_text",
         "search_text", "run_process", "run_powershell", "apply_patch",
         "execute_actions", "submit_task", "task_result",
     } <= set(names)

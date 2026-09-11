@@ -1,0 +1,2 @@
+docx-mcp-server==0.7.4
+mcp==1.30.0

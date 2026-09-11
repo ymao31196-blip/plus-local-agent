@@ -52,10 +52,17 @@ def test_search_text_truncates_at_global_limit(workspace):
     assert result["truncated"] is True
 
 
-def test_search_text_reports_missing_rg(workspace, monkeypatch):
+def test_search_text_falls_back_when_rg_missing(workspace, monkeypatch):
     monkeypatch.setattr(local_tools.shutil, "which", lambda _name: None)
-    with pytest.raises(local_tools.SearchToolUnavailable, match="ripgrep"):
-        local_tools.search_text("x")
+    (workspace / "one.txt").write_text("Alpha\nneedle here\n", encoding="utf-8")
+
+    result = local_tools.search_text("NEEDLE")
+
+    assert result["matches"] == [
+        {"path": "one.txt", "line": 2, "text": "needle here"}
+    ]
+    assert result["match_count"] == 1
+    assert result["truncated"] is False
 
 
 def test_execute_actions_can_search_text(workspace):
@@ -65,6 +72,247 @@ def test_execute_actions_can_search_text(workspace):
     ])
     assert result["status"] == "completed"
     assert result["results"][0]["result"]["match_count"] == 1
+
+
+def _init_git_repo(path: Path) -> str:
+    git = local_tools.shutil.which("git")
+    if git is None:
+        pytest.skip("git executable is unavailable")
+    subprocess.run([git, "init", "-q"], cwd=path, check=True)
+    (path / "tracked.txt").write_text("one\n", encoding="utf-8")
+    subprocess.run([git, "add", "tracked.txt"], cwd=path, check=True)
+    subprocess.run(
+        [
+            git,
+            "-c", "user.name=PLA Test",
+            "-c", "user.email=pla@example.invalid",
+            "commit", "-qm", "initial",
+        ],
+        cwd=path,
+        check=True,
+    )
+    subprocess.run([git, "config", "user.name", "PLA Test"], cwd=path, check=True)
+    subprocess.run(
+        [git, "config", "user.email", "pla@example.invalid"], cwd=path, check=True,
+    )
+    return git
+
+
+def test_structured_git_status_and_diff(workspace):
+    git = _init_git_repo(workspace)
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    (workspace / "new.txt").write_text("new\n", encoding="utf-8")
+
+    status = local_tools.git_status()
+    files = {item["path"]: item for item in status["files"]}
+
+    assert status["status"] == "completed"
+    assert status["repo_root"] == "."
+    assert status["head"]
+    assert status["clean"] is False
+    assert files["tracked.txt"]["worktree_status"] == "M"
+    assert files["new.txt"]["code"] == "??"
+
+    diff = local_tools.git_diff(path="tracked.txt")
+    assert diff["staged"] is False
+    assert "-one" in diff["diff"] and "+two" in diff["diff"]
+    assert diff["truncated"] is False
+
+    subprocess.run([git, "add", "tracked.txt"], cwd=workspace, check=True)
+    staged = local_tools.git_diff(staged=True, path="tracked.txt")
+    assert staged["staged"] is True
+    assert "+two" in staged["diff"]
+
+
+
+def test_structured_git_log_and_show(workspace):
+    git = _init_git_repo(workspace)
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    subprocess.run([git, "add", "tracked.txt"], cwd=workspace, check=True)
+    subprocess.run(
+        [git, "-c", "user.name=PLA Test", "-c", "user.email=pla@example.invalid",
+         "commit", "-qm", "second"],
+        cwd=workspace, check=True,
+    )
+
+    history = local_tools.git_log(limit=1)
+    assert history["entry_count"] == 1
+    assert history["entries"][0]["subject"] == "second"
+    assert history["truncated"] is True
+
+    shown = local_tools.git_show(path="tracked.txt")
+    assert shown["revision"] == "HEAD"
+    assert shown["subject"] == "second"
+    assert shown["commit"] == history["entries"][0]["commit"]
+    assert "-one" in shown["patch"] and "+two" in shown["patch"]
+    assert shown["truncated"] is False
+
+
+def test_git_show_rejects_option_like_revision(workspace):
+    _init_git_repo(workspace)
+    with pytest.raises(ValueError, match="revision is not allowed"):
+        local_tools.git_show("--help")
+
+def test_structured_git_stage_then_commit(workspace):
+    _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    sha = local_tools.read_text("tracked.txt")["sha256"]
+
+    staged = local_tools.git_stage(
+        [{"path": "tracked.txt", "expected_sha256": sha}], before
+    )
+
+    assert staged["status"] == "completed"
+    assert staged["head"] == before
+    assert staged["paths"] == ["tracked.txt"]
+    assert staged["preflight"]["mode"] == "raw_bytes_tracked_only"
+    status = local_tools.git_status()
+    tracked = {item["path"]: item for item in status["files"]}["tracked.txt"]
+    assert tracked["index_status"] == "M"
+    assert tracked["worktree_status"] == " "
+
+    committed = local_tools.git_commit("stage then commit", ["tracked.txt"], before)
+    assert committed["previous_head"] == before
+    assert local_tools.git_status()["head"] == committed["commit"]
+
+
+def test_structured_git_stage_rejects_wrong_hash_without_index_change(workspace):
+    _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+
+    with pytest.raises(local_tools.FileChangedSinceRead):
+        local_tools.git_stage(
+            [{"path": "tracked.txt", "expected_sha256": "0" * 64}], before
+        )
+    assert local_tools.git_diff(staged=True)["diff"] == ""
+
+
+def test_structured_git_stage_rejects_existing_staged_changes(workspace):
+    git = _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    subprocess.run([git, "add", "tracked.txt"], cwd=workspace, check=True)
+    sha = local_tools.read_text("tracked.txt")["sha256"]
+
+    with pytest.raises(ValueError, match="already contains staged changes"):
+        local_tools.git_stage(
+            [{"path": "tracked.txt", "expected_sha256": sha}], before
+        )
+
+
+def test_structured_git_stage_rejects_untracked_file(workspace):
+    _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "new.txt").write_text("new\n", encoding="utf-8")
+    sha = local_tools.read_text("new.txt")["sha256"]
+
+    with pytest.raises(ValueError, match="already tracked"):
+        local_tools.git_stage(
+            [{"path": "new.txt", "expected_sha256": sha}], before
+        )
+    assert local_tools.git_diff(staged=True)["diff"] == ""
+
+
+def test_structured_git_commit_exact_staged_tracked_file(workspace):
+    git = _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    subprocess.run([git, "add", "tracked.txt"], cwd=workspace, check=True)
+
+    result = local_tools.git_commit("structured commit", ["tracked.txt"], before)
+
+    assert result["status"] == "completed"
+    assert result["previous_head"] == before
+    assert result["commit"] == local_tools.git_status()["head"]
+    assert result["paths"] == ["tracked.txt"]
+    assert result["preflight"]["mode"] == "staged_tracked_only"
+    shown = local_tools.git_show(result["commit"], path="tracked.txt")
+    assert shown["subject"] == "structured commit"
+    assert shown["parents"] == [before]
+    assert "+two" in shown["patch"]
+    assert local_tools.git_diff(staged=True)["diff"] == ""
+
+
+def test_structured_git_commit_rejects_unexpected_staged_paths(workspace):
+    git = _init_git_repo(workspace)
+    (workspace / "other.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run([git, "add", "other.txt"], cwd=workspace, check=True)
+    subprocess.run([git, "commit", "-qm", "add other"], cwd=workspace, check=True)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    (workspace / "other.txt").write_text("changed\n", encoding="utf-8")
+    subprocess.run([git, "add", "tracked.txt", "other.txt"], cwd=workspace, check=True)
+
+    with pytest.raises(ValueError, match="Staged paths must exactly match"):
+        local_tools.git_commit("only one", ["tracked.txt"], before)
+    assert local_tools.git_status()["head"] == before
+
+
+def test_structured_git_commit_rejects_stale_head_and_unstaged_selected_content(workspace):
+    git = _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").write_text("two\n", encoding="utf-8")
+    subprocess.run([git, "add", "tracked.txt"], cwd=workspace, check=True)
+
+    with pytest.raises(ValueError, match="HEAD changed since inspection"):
+        local_tools.git_commit("stale", ["tracked.txt"], "0" * len(before))
+    assert local_tools.git_status()["head"] == before
+
+    (workspace / "tracked.txt").write_text("three\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="still have unstaged changes"):
+        local_tools.git_commit("stale content", ["tracked.txt"], before)
+    assert local_tools.git_status()["head"] == before
+
+
+def test_structured_git_commit_rejects_newly_added_file(workspace):
+    git = _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "new.txt").write_text("new\n", encoding="utf-8")
+    subprocess.run([git, "add", "new.txt"], cwd=workspace, check=True)
+
+    with pytest.raises(ValueError, match="supports only modifications or deletions"):
+        local_tools.git_commit("new file", ["new.txt"], before)
+    assert local_tools.git_status()["head"] == before
+
+
+def test_structured_git_tools_are_batchable_read_only(workspace):
+    _init_git_repo(workspace)
+    (workspace / "tracked.txt").write_text("changed\n", encoding="utf-8")
+    result = execute_actions_request([
+        {"tool": "git_status", "arguments": {}},
+        {"tool": "git_diff", "arguments": {"path": "tracked.txt"}},
+        {"tool": "git_log", "arguments": {"limit": 1}},
+        {"tool": "git_show", "arguments": {}},
+    ])
+    assert result["status"] == "completed"
+    assert result["results"][0]["result"]["clean"] is False
+    assert "+changed" in result["results"][1]["result"]["diff"]
+    assert result["results"][2]["result"]["entry_count"] == 1
+    assert result["results"][3]["result"]["subject"] == "initial"
+
+
+def test_git_status_rejects_repository_root_outside_selected_root(tmp_path, monkeypatch):
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    _init_git_repo(outer)
+    child = outer / "child"
+    child.mkdir()
+    monkeypatch.setattr(local_tools, "WORKSPACE", child.resolve())
+
+    with pytest.raises(ValueError, match="repository root is outside"):
+        local_tools.git_status()
+
+
+def test_git_diff_rejects_path_outside_selected_repository(workspace):
+    repo = workspace / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    (workspace / "outside.txt").write_text("outside\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside the selected Git repository"):
+        local_tools.git_diff(cwd="repo", path="outside.txt")
 
 
 def test_run_process_default_workdir(workspace):
@@ -149,6 +397,78 @@ def test_read_text_returns_file_metadata(workspace):
     assert result["sha256"] == hashlib.sha256(raw).hexdigest()
     assert result["size"] == len(raw)
     assert result["mtime"].endswith("+00:00")
+
+
+def test_extract_document_text_reads_text_ranges_and_metadata(workspace):
+    raw = "alpha\nbeta\ngamma\n".encode()
+    (workspace / "notes.md").write_bytes(raw)
+
+    result = local_tools.extract_document_text(
+        "notes.md", start=2, end=3, max_chars=100,
+    )
+
+    assert result["format"] == "text"
+    assert result["unit"] == "line"
+    assert result["unit_count"] == 3
+    assert result["selected_start"] == 2
+    assert result["selected_end"] == 3
+    assert result["content"] == "beta\ngamma"
+    assert result["truncated"] is False
+    assert result["sha256"] == hashlib.sha256(raw).hexdigest()
+
+
+def test_extract_document_text_reads_docx_without_external_word_dependency(workspace):
+    import zipfile
+
+    target = workspace / "sample.docx"
+    document_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Alpha paragraph</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Beta paragraph</w:t></w:r></w:p>
+  </w:body>
+</w:document>"""
+    with zipfile.ZipFile(target, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
+
+    result = local_tools.extract_document_text("sample.docx", start=2, end=2)
+
+    assert result["format"] == "docx"
+    assert result["unit"] == "paragraph"
+    assert result["unit_count"] == 2
+    assert result["content"] == "Beta paragraph"
+
+
+def test_extract_document_text_reads_pdf_pages(workspace):
+    from pypdf import PdfWriter
+
+    target = workspace / "sample.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.add_blank_page(width=72, height=72)
+    with target.open("wb") as handle:
+        writer.write(handle)
+
+    result = local_tools.extract_document_text("sample.pdf", start=2, end=2)
+
+    assert result["format"] == "pdf"
+    assert result["unit"] == "page"
+    assert result["unit_count"] == 2
+    assert result["selected_start"] == 2
+    assert result["selected_end"] == 2
+    assert result["content"].startswith("[Page 2]")
+
+
+def test_extract_document_text_bounds_output_and_rejects_unknown_types(workspace):
+    (workspace / "notes.txt").write_text("abcdefghij", encoding="utf-8")
+    bounded = local_tools.extract_document_text("notes.txt", max_chars=4)
+    assert bounded["content"] == "abcd"
+    assert bounded["truncated"] is True
+    assert bounded["original_length"] == 10
+
+    (workspace / "binary.bin").write_bytes(b"abc")
+    with pytest.raises(ValueError, match="Unsupported document type"):
+        local_tools.extract_document_text("binary.bin")
 
 
 @pytest.mark.parametrize("tool", ["write_text", "replace_text"])

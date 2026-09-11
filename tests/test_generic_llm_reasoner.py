@@ -87,3 +87,5 @@ def test_fake_model_records_complete_prompt():
     assert "input_schema" in prompt
     assert '"required"' in prompt
     assert "Do not use a Markdown code block" in prompt
+    assert "Editing transaction policy" in prompt
+    assert "2 or more existing files" in prompt

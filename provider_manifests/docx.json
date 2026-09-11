@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "docx",
+  "autostart": true,
+  "mode": "legacy",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/docx/Scripts/python.exe",
+    "args": [
+      "-c",
+      "from docx_mcp.cli import main; main()"
+    ],
+    "cwd": "."
+  },
+  "tool_allowlist": [
+    "create_from_markdown"
+  ],
+  "tool_overrides": {
+    "create_from_markdown": {
+      "title": "Create DOCX from Markdown Artifact",
+      "description": "Create a DOCX artifact from one PLA Markdown artifact. PLA owns the output path and imports the generated file back into the Artifact Store.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "md_path": {
+            "type": "string",
+            "description": "PLA artifact reference containing Markdown."
+          }
+        },
+        "required": [
+          "md_path"
+        ],
+        "additionalProperties": false
+      },
+      "artifact_contract": {
+        "transport": "local_path",
+        "inputs": [
+          "md_path"
+        ],
+        "outputs": [],
+        "output_paths": {
+          "output_path": {
+            "filename": "document.docx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          }
+        },
+        "policy": {
+          "max_input_bytes": 8388608,
+          "max_output_bytes": 33554432,
+          "max_total_output_bytes": 33554432,
+          "max_output_artifacts": 1,
+          "output_ttl_seconds": 600,
+          "allowed_input_mime_types": [
+            "text/markdown",
+            "text/plain"
+          ],
+          "allowed_output_mime_types": [
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          ]
+        }
+      },
+      "risk_level": "write_local",
+      "requires_confirmation": true,
+      "tags": [
+        "document",
+        "word",
+        "docx",
+        "markdown"
+      ]
+    }
+  }
+}

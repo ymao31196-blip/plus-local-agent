@@ -24,6 +24,7 @@ class ChangeRequest(TypedDict):
 
 @dataclass
 class Candidate:
+    root: str
     path: str
     target: Path
     original: bytes
@@ -54,12 +55,14 @@ def _stage(target: Path, raw: bytes) -> Path:
 
 
 def _check(candidate: Candidate, expected: str) -> None:
-    if local.safe_path(candidate.path) != candidate.target:
+    if local.safe_path(candidate.path, candidate.root, "write") != candidate.target:
         raise local.FileChangedSinceRead(f"Resolved path changed: {candidate.path}")
-    local._validate_expected_sha256(candidate.target, expected)
+    local._validate_expected_sha256(candidate.target, expected, candidate.root)
 
 
-def apply_changeset(changes: list[ChangeRequest]) -> dict:
+def apply_changeset(
+    changes: list[ChangeRequest], root: str = "workspace",
+) -> dict:
     candidates: list[Candidate] = []
     applied: list[Candidate] = []
     restored: list[str] = []
@@ -85,7 +88,7 @@ def apply_changeset(changes: list[ChangeRequest]) -> dict:
                 if not isinstance(change, dict) or set(change) != {"path", "patch", "expected_sha256"}:
                     raise ValueError("Each change requires exactly path, patch, expected_sha256")
                 path = change["path"]
-                target = local.safe_path(path)
+                target = local.safe_path(path, root, "write")
                 if target in seen:
                     raise ValueError(f"Duplicate target path: {path}")
                 seen.add(target)
@@ -116,8 +119,13 @@ def apply_changeset(changes: list[ChangeRequest]) -> dict:
                 before = _sha(original)
                 if before != expected.lower():
                     raise local.FileChangedSinceRead(f"File hash precondition failed for {path}")
-                updated = local._apply_unified_hunks(original.decode("utf-8"), patch, local._relative_path(target)).encode("utf-8")
-                candidates.append(Candidate(path, target, original, updated, before, _sha(updated)))
+                updated = local._apply_unified_hunks(
+                    original.decode("utf-8"), patch,
+                    local._relative_path(target, root),
+                ).encode("utf-8")
+                candidates.append(Candidate(
+                    root, path, target, original, updated, before, _sha(updated)
+                ))
             phase = "stage"
             observe("changeset_stage", files=len(candidates))
             for candidate in candidates:
@@ -165,11 +173,11 @@ def apply_changeset(changes: list[ChangeRequest]) -> dict:
                 for temporary in (candidate.stage, candidate.backup):
                     if temporary is not None:
                         if (temporary == candidate.backup and candidate.path in result["unrestored_paths"]):
-                            result["recovery_files"].append({"path": candidate.path, "backup_path": local._relative_path(temporary), "before_sha256": candidate.before})
+                            result["recovery_files"].append({"path": candidate.path, "backup_path": local._relative_path(temporary, root), "before_sha256": candidate.before})
                             continue
                         try:
                             # Cleanup only exact temporary files created by this call.
-                            local.safe_path(str(temporary))
+                            local.safe_path(str(temporary), root, "write")
                             temporary.unlink(missing_ok=True)
                         except Exception as cleanup_exc:
                             cleanup_errors.append({"path": str(temporary), "message": str(cleanup_exc)[:20_000]})

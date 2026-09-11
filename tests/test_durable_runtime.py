@@ -12,7 +12,7 @@ import pytest
 import local_tools
 import task_store
 from task_store import TaskStore
-from internal_tool_executor import LocalToolResult, execute_actions_request, EXECUTABLE_LOCAL_TOOLS
+from internal_tool_executor import ACTION_LOCAL_TOOLS, INTERNAL_TOOL_SCHEMAS, LocalToolResult, execute_actions_request, EXECUTABLE_LOCAL_TOOLS
 from server import mcp
 
 
@@ -209,11 +209,76 @@ def test_invalid_cursor(store, cursor):
     assert store.get("x", cursor)["error"]["type"] == "ValidationError"
 
 
-@pytest.mark.parametrize("tool", ["cancel_task", "apply_changeset"])
+@pytest.mark.parametrize("wait_seconds", [-1, True, 61, "1"])
+def test_invalid_wait_seconds(store, wait_seconds):
+    assert store.get("x", wait_seconds=wait_seconds)["error"]["type"] == "ValidationError"
+
+
+def test_wait_for_terminal_avoids_external_polling(store):
+    task_id = store.submit({"tool": "run_process", "arguments": {
+        "program": sys.executable, "args": ["-c", "import time; time.sleep(.15)"]}})["task_id"]
+    started = time.monotonic()
+    record = store.get(task_id, wait_seconds=2)
+    elapsed = time.monotonic() - started
+    assert record["status"] == "completed"
+    assert record["wait_timed_out"] is False
+    assert elapsed >= .05
+
+
+def test_wait_timeout_returns_current_state(store):
+    task_id = store.submit({"tool": "run_process", "arguments": {
+        "program": sys.executable, "args": ["-c", "import time; time.sleep(5)"]}})["task_id"]
+    deadline = time.monotonic() + 2
+    while store.get(task_id)["status"] == "queued" and time.monotonic() < deadline:
+        time.sleep(.01)
+    started = time.monotonic()
+    record = store.get(task_id, wait_seconds=.05)
+    elapsed = time.monotonic() - started
+    assert record["status"] == "running"
+    assert record["wait_timed_out"] is True
+    assert elapsed >= .04
+    store.cancel(task_id)
+    finish(store, task_id)
+
+
+@pytest.mark.parametrize("tool", ["cancel_task", "apply_changeset", "git_stage", "git_commit", "project_state_init", "project_state_update", "project_checkpoint", "project_decision_record", "project_evidence_record"])
 def test_control_and_transaction_excluded_from_batches(tool):
     result = execute_actions_request([{"tool": tool, "arguments": {}}])
     assert result["results"][0]["error"]["type"] == "ToolNotAllowedInActions"
     assert "cancel_task" not in EXECUTABLE_LOCAL_TOOLS
+    assert "apply_changeset" in EXECUTABLE_LOCAL_TOOLS
+    assert "apply_changeset" not in ACTION_LOCAL_TOOLS
+    assert "apply_changeset" in {tool["name"] for tool in INTERNAL_TOOL_SCHEMAS}
+    assert "git_stage" in EXECUTABLE_LOCAL_TOOLS
+    assert "git_stage" not in ACTION_LOCAL_TOOLS
+    assert "git_stage" in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
+    assert "git_commit" in EXECUTABLE_LOCAL_TOOLS
+    assert "git_commit" not in ACTION_LOCAL_TOOLS
+    assert "git_commit" in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
+    for name in ("project_state_init", "project_state_update", "project_checkpoint"):
+        assert name in EXECUTABLE_LOCAL_TOOLS
+        assert name not in ACTION_LOCAL_TOOLS
+        assert name in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
+    assert "project_state_get" in EXECUTABLE_LOCAL_TOOLS
+    assert "project_state_get" in ACTION_LOCAL_TOOLS
+    for name in ("project_decision_record", "project_evidence_record"):
+        assert name in EXECUTABLE_LOCAL_TOOLS
+        assert name not in ACTION_LOCAL_TOOLS
+    for name in ("project_decisions_get", "project_evidence_get"):
+        assert name in EXECUTABLE_LOCAL_TOOLS
+        assert name in ACTION_LOCAL_TOOLS
+    for name in ("project_acceptance_set", "project_acceptance_evaluate"):
+        assert name in EXECUTABLE_LOCAL_TOOLS
+        assert name not in ACTION_LOCAL_TOOLS
+        assert name in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
+    for name in ("project_acceptance_get", "project_acceptance_evaluations_get"):
+        assert name in EXECUTABLE_LOCAL_TOOLS
+        assert name in ACTION_LOCAL_TOOLS
+    assert "project_verify_acceptance" in EXECUTABLE_LOCAL_TOOLS
+    assert "project_verify_acceptance" not in ACTION_LOCAL_TOOLS
+    assert "project_verify_acceptance" in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
+    assert "project_verifications_get" in EXECUTABLE_LOCAL_TOOLS
+    assert "project_verifications_get" in ACTION_LOCAL_TOOLS
 
 
 def test_mcp_schemas_and_cancel_does_not_accept_pid():
@@ -222,7 +287,9 @@ def test_mcp_schemas_and_cancel_does_not_accept_pid():
             tools = {tool.name: tool for tool in await client.list_tools()}
             schema = tools["cancel_task"].input_schema
             assert set(schema["properties"]) == {"task_id"}
-            assert "cursor" in tools["task_result"].input_schema["properties"]
+            task_result_properties = tools["task_result"].input_schema["properties"]
+            assert "cursor" in task_result_properties
+            assert "wait_seconds" in task_result_properties
             changes = tools["apply_changeset"].input_schema["properties"]["changes"]["items"]
             assert set(changes["required"]) == {"path", "patch", "expected_sha256"}
             record = (await client.call_tool_mcp("cancel_task", {"task_id": "missing"})).structured_content

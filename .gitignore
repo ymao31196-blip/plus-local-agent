@@ -18,6 +18,7 @@ htmlcov/
 venv/
 env/
 ENV/
+.provider_envs/
 
 # Local secrets and credentials
 .env
@@ -52,12 +53,12 @@ dist/
 build/
 *.egg-info/
 
-# Runtime workspace output; preserve the verified ChatGPT E2E fixture.
+# Runtime workspace output; preserve only the reproducible ChatGPT E2E fixture.
 workspace/*
 !workspace/agent_test/
-!workspace/agent_test/**
-workspace/agent_test/**/__pycache__/
-workspace/agent_test/**/.pytest_cache/
+workspace/agent_test/*
+!workspace/agent_test/calculator.py
+!workspace/agent_test/test_calculator.py
 
 # Durable runtime records (not user workspace data)
 state/

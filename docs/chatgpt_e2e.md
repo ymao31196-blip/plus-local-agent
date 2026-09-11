@@ -1,6 +1,7 @@
 # ChatGPT-native Agent Loop E2E
 
-These are the v0.8 human acceptance tests (including the v0.7 scenario). ChatGPT is the Reasoner; the local MCP
+These manual Agent-loop scenarios remain part of the v1.0 acceptance boundary.
+They originated in v0.8 (including the v0.7 scenario). ChatGPT is the Reasoner; the local MCP
 server is only the controlled executor.
 
 ## Setup
@@ -126,3 +127,30 @@ new broken manual fixtures are excluded. Automated verification copies this
 new fixture to a temporary workspace, observes both failures, applies a single
 changeset, and verifies both tests pass. Live ChatGPT acceptance remains a human
 step; automated MCP/pytest coverage is not evidence of a real ChatGPT run.
+
+## PLA Self-Maintenance E2E
+
+Example acceptance prompt:
+
+> 检查 PLA 项目中的某个测试 fixture 为什么失败，修改 PLA 源码并运行对应测试直到通过。
+
+Use `root="pla"` for source discovery, reads, mutations, patches/changesets, and
+the test process workdir. The exact tool order is intentionally not prescribed.
+Retain hashes returned by `read_text` when changing existing files, and use a
+temporary/dedicated fixture rather than intentionally damaging a passing source
+file merely to demonstrate the workflow.
+
+Success conditions:
+
+- ChatGPT reads and understands the relevant PLA source through the PLA root.
+- ChatGPT changes the intended PLA source through the same root and observes a
+  successful mutation result.
+- An allowed process runs the relevant tests with a legal PLA-root workdir and
+  reports PASS.
+- `.git`, runtime databases/state, credential/secret-like files, caches, and
+  `config/tunnel.yaml` are not modified through PLA filesystem tools.
+- The current PLA Server does not hot-reload or restart itself; changed code is
+  loaded only after a later operator/external safe restart.
+
+The diagnostic tool may report root names and read/write/execute capability
+booleans. It intentionally does not expose their physical paths.

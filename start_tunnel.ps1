@@ -3,10 +3,18 @@ param()
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$toolsRoot = Split-Path -Parent $projectRoot
 $config = Join-Path $projectRoot "config\tunnel.yaml"
-$tunnelClient = "D:\AI_Tools\tunnel-client\tunnel-client.exe"
-$credentialFile = "D:\AI_Tools\tunnel-client\secrets\control-plane-api-key.txt"
-$credentialRef = "file:D:/AI_Tools/tunnel-client/secrets/control-plane-api-key.txt"
+$tunnelClient = if ([string]::IsNullOrWhiteSpace($env:PLA_TUNNEL_CLIENT)) {
+    Join-Path $toolsRoot "tunnel-client\tunnel-client.exe"
+} else {
+    $env:PLA_TUNNEL_CLIENT
+}
+$credentialFile = if ([string]::IsNullOrWhiteSpace($env:PLA_TUNNEL_CREDENTIAL)) {
+    Join-Path $toolsRoot "tunnel-client\secrets\control-plane-api-key.txt"
+} else {
+    $env:PLA_TUNNEL_CREDENTIAL
+}
 $configText = Get-Content -LiteralPath $config -Raw
 
 if ($configText.Contains("REPLACE_WITH_PLUS_LOCAL_AGENT_TUNNEL_ID")) {
@@ -19,6 +27,8 @@ if (-not (Test-Path -LiteralPath $credentialFile -PathType Leaf) -or
     (Get-Item -LiteralPath $credentialFile).Length -eq 0) {
     throw "Tunnel runtime credential file is missing or empty: $credentialFile"
 }
+$credentialPath = (Resolve-Path -LiteralPath $credentialFile).Path -replace '\\', '/'
+$credentialRef = "file:$credentialPath"
 
 & $tunnelClient doctor --config $config --control-plane.api-key $credentialRef --explain
 if ($LASTEXITCODE -ne 0) {

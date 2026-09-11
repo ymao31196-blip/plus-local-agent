@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "id": "pdf",
+  "autostart": true,
+  "mode": "auto",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/pdf/Scripts/python.exe",
+    "args": [
+      "-c",
+      "import sys; _out=sys.stdout; sys.stdout=sys.stderr; from pdf_mcp.server import main; sys.stdout=_out; main()"
+    ],
+    "cwd": "."
+  },
+  "tool_allowlist": [
+    "add_text_watermark_direct"
+  ],
+  "tool_overrides": {
+    "add_text_watermark_direct": {
+      "title": "Add Text Watermark to PDF Artifact",
+      "description": "Create a new watermarked PDF artifact from one PLA PDF artifact. PLA owns the output path and imports the generated PDF back into the Artifact Store.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "input_path": {
+            "type": "string",
+            "description": "PLA artifact reference containing a PDF."
+          },
+          "watermark_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "opacity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.1
+          },
+          "font_size": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 144,
+            "default": 24
+          },
+          "position": {
+            "type": "string",
+            "enum": [
+              "center",
+              "top-left",
+              "top-right",
+              "bottom-left",
+              "bottom-right"
+            ],
+            "default": "center"
+          },
+          "color_r": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5
+          },
+          "color_g": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5
+          },
+          "color_b": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "single",
+              "corners",
+              "tile"
+            ],
+            "default": "single"
+          }
+        },
+        "required": [
+          "input_path",
+          "watermark_text"
+        ],
+        "additionalProperties": false
+      },
+      "artifact_contract": {
+        "transport": "local_path",
+        "inputs": [
+          "input_path"
+        ],
+        "outputs": [],
+        "output_paths": {
+          "output_path": {
+            "filename": "watermarked.pdf",
+            "mime_type": "application/pdf"
+          }
+        },
+        "policy": {
+          "max_input_bytes": 67108864,
+          "max_output_bytes": 67108864,
+          "max_total_output_bytes": 67108864,
+          "max_output_artifacts": 1,
+          "output_ttl_seconds": 600,
+          "allowed_input_mime_types": [
+            "application/pdf"
+          ],
+          "allowed_output_mime_types": [
+            "application/pdf"
+          ]
+        }
+      },
+      "risk_level": "write_local",
+      "requires_confirmation": true,
+      "tags": [
+        "pdf",
+        "document",
+        "watermark"
+      ]
+    }
+  }
+}

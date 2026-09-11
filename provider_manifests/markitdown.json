@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "markitdown",
+  "autostart": true,
+  "mode": "legacy",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/markitdown/Scripts/python.exe",
+    "args": [
+      "-m",
+      "markitdown_mcp"
+    ],
+    "cwd": "."
+  },
+  "tool_allowlist": [
+    "convert_to_markdown"
+  ],
+  "tool_overrides": {
+    "convert_to_markdown": {
+      "title": "Convert Artifact to Markdown",
+      "description": "Convert one PLA artifact to Markdown using Microsoft's MarkItDown MCP. The uri argument must be a PLA artifact reference; arbitrary network URLs are not accepted.",
+      "artifact_contract": {
+        "transport": "file_uri",
+        "inputs": [
+          "uri"
+        ],
+        "outputs": [],
+        "policy": {
+          "max_input_bytes": 67108864,
+          "max_output_bytes": 67108864,
+          "max_total_output_bytes": 134217728,
+          "max_output_artifacts": 8,
+          "output_ttl_seconds": 600,
+          "allowed_input_mime_types": [],
+          "allowed_output_mime_types": []
+        }
+      },
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "document",
+        "markdown",
+        "pdf",
+        "docx",
+        "pptx",
+        "xlsx"
+      ]
+    }
+  }
+}

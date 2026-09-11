@@ -1,5 +1,9 @@
 # Agent Runtime v0.8 — Durable Tasks and Transactional Workspace
 
+> Historical deep-dive for the durable local-executor layer. The current release
+> architecture is summarized in `docs/v1_overview.md`; v1.0 retains this v0.8
+> runtime foundation and adds the Artifact/Capability/Provider planes.
+
 ## Mainline: ChatGPT-native Agent Loop
 
 Agent Runtime v0.8 treats ChatGPT Plus as the brain and `plus-local-agent` as
@@ -49,6 +53,52 @@ allows `list_directory`, `read_text`, `write_text`, `replace_text`,
 `search_text`, and `run_process`. `run_powershell`, `apply_patch`, and `apply_changeset` deliberately
 remain single operations and are rejected from batches. `cancel_task` is a control-layer tool, excluded from both local execution and action batches. `submit_task` may run a
 single unified tool or a permitted action batch through the same worker path.
+
+## Multi-root / Self-Maintenance Architecture
+
+```text
+ChatGPT
+  ↓
+PLA
+  ↓
+Root Policy
+  ├── workspace  (default; read/write/execute)
+  └── pla        (explicit; read/write/execute with protected paths)
+```
+
+`workspace_manager.RootPolicy` is the single named-root registry and path
+resolver. Every filesystem, search, process workdir, PowerShell `LiteralPath`,
+patch, and changeset path goes through it. Omitting `root` preserves the original
+`workspace` behavior. `root="pla"` explicitly selects the PLA project root;
+unknown names are rejected, so callers cannot register arbitrary roots. The
+overlap between `pla/workspace/...` and `workspace/...` is intentional and
+unambiguous because resolution never guesses a root from a path prefix.
+
+Resolution canonicalizes paths before checking their boundary with
+`os.path.commonpath` and Windows-normalized case. External absolute paths,
+`..` escapes, UNC paths, and symlink/junction targets outside the selected root
+are rejected. Results remain relative to the explicitly selected root.
+
+The PLA root permits source reading, searching, editing, patching, changesets,
+and execution of the existing allow-listed programs. Ordinary path tools cannot
+access `.git`, runtime state/databases, cache/temporary directories, or
+credential/secret-like paths. `config/tunnel.yaml` is readable for diagnostics
+but is read-only. Git execution is rejected specifically in the PLA root, so
+self-maintenance does not add Git mutation capability. The default workspace
+program policy is unchanged.
+
+Protected-path checks govern PLA's own filesystem and path-bearing tools. An
+allowed child program is not an OS filesystem sandbox: trusted tests or Python
+code can create their normal runtime artifacts and could write files with the
+host account's authority. This release does not add an OS sandbox or a complete
+Permission Engine; callers must not use process execution as a protection
+bypass. The controlled PowerShell model, argument-array execution, `shell=False`,
+and existing allowlists remain in force.
+
+Self-maintenance preserves the restart boundary. A running PLA may change source
+on disk and launch an independent test process, but it does not hot-reload,
+replace running code, restart itself, or inject the modified module into the
+current server. An operator/external safe restart is required to load changes.
 
 ## `search_text`
 
@@ -312,8 +362,8 @@ changeset recovery. Cancellation and restart status never imply rolled-back file
 
 ## Security boundary
 
-- All filesystem and PowerShell path inputs resolve below `AGENT_WORKSPACE`
-  through `safe_path`; resolved outside targets and symlink escapes are rejected.
+- All filesystem, process-workdir, and PowerShell path inputs resolve through the
+  named Root Policy; resolved outside targets and symlink escapes are rejected.
 - Processes use argument arrays and `shell=False`. There is no arbitrary shell,
   `cmd.exe`, Bash, arbitrary PowerShell, or interactive terminal.
 - Read and process observations are bounded and never silently truncated.

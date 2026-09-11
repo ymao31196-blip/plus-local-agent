@@ -1,0 +1,8 @@
+# PLA v1.0 core runtime dependencies.
+fastmcp==4.0.3
+mcp==2.2.0
+mcp-types==2.2.0
+jsonschema==4.26.0
+pydantic==2.13.5
+PyYAML==6.0.3
+typing-extensions==4.16.0

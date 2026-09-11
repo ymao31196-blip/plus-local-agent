@@ -6,7 +6,8 @@ import json
 import os
 from pathlib import Path
 import sqlite3
-from threading import RLock
+from threading import Condition, RLock
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 from internal_tool_executor import execute_actions_request, execute_local_tool
@@ -37,6 +38,7 @@ class TaskStore:
         self.db_path = str(db_path)
         self.require_outside_workspace = require_outside_workspace
         self._lock = RLock()
+        self._condition = Condition(self._lock)
         self._db = None
         self._owner_file = None
         self._closed = False
@@ -106,6 +108,7 @@ class TaskStore:
         if cutoff:
             self._db.execute("UPDATE tasks SET dropped_cursor=? WHERE task_id=?", (cutoff[0], task_id))
             self._db.execute("DELETE FROM events WHERE task_id=? AND seq<=?", (task_id, cutoff[0]))
+        self._condition.notify_all()
 
     def _observe(self, task_id: str, kind: str, data: dict) -> None:
         with self._lock, self._ensure():
@@ -191,7 +194,7 @@ class TaskStore:
             with self._lock:
                 self._contexts.pop(task_id, None)
 
-    def get(self, task_id: str, cursor: int | None = None) -> dict[str, Any]:
+    def _get_once(self, task_id: str, cursor: int | None = None) -> dict[str, Any]:
         with self._lock:
             try:
                 if cursor is not None and (type(cursor) is not int or cursor < 0):
@@ -224,6 +227,37 @@ class TaskStore:
                 return record
             except Exception as exc:
                 return _error("TaskStoreError", str(exc), task_id)
+
+    def get(
+        self, task_id: str, cursor: int | None = None, wait_seconds: float = 0.0,
+    ) -> dict[str, Any]:
+        if (
+            isinstance(wait_seconds, bool)
+            or not isinstance(wait_seconds, (int, float))
+            or not 0 <= wait_seconds <= 60
+        ):
+            return _error(
+                "ValidationError", "wait_seconds must be a number between 0 and 60", task_id,
+            )
+        if wait_seconds == 0:
+            return self._get_once(task_id, cursor)
+
+        deadline = monotonic() + wait_seconds
+        with self._condition:
+            while True:
+                record = self._get_once(task_id, cursor)
+                if record.get("status") == "error":
+                    return record
+                if record["status"] in TERMINAL or (
+                    cursor is not None and (record.get("events") or record.get("has_more"))
+                ):
+                    record["wait_timed_out"] = False
+                    return record
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    record["wait_timed_out"] = True
+                    return record
+                self._condition.wait(remaining)
 
     def cancel(self, task_id: str) -> dict:
         with self._lock:

@@ -12,18 +12,28 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Timer, RLock
 from functools import wraps
+from xml.etree import ElementTree as ET
 
 from runtime_context import CURRENT, checkpoint
 from process_controller import controlled_run
-from typing import Any, Callable
+from typing import Any, Callable, Literal
+from typing_extensions import TypedDict
+from workspace_manager import RootPolicy, build_root_policy
 
 
 WORKSPACE = Path(
     os.environ.get("AGENT_WORKSPACE", r"D:\AI_Tools\plus-local-agent\workspace")
+).resolve()
+PLA_ROOT = Path(
+    os.environ.get("AGENT_PLA_ROOT", Path(__file__).resolve().parent)
+).resolve()
+RERUN_THESIS_ROOT = Path(
+    os.environ.get("AGENT_RERUN_THESIS_ROOT", Path.home() / "Desktop" / "rerun_thesis")
 ).resolve()
 
 ALLOWED_PROGRAMS = {
@@ -31,6 +41,11 @@ ALLOWED_PROGRAMS = {
 }
 
 MAX_TEXT_CHARACTERS = 20_000
+MAX_DOCUMENT_CHARACTERS = 100_000
+DOCUMENT_TEXT_EXTENSIONS = {
+    ".txt", ".md", ".markdown", ".py", ".json", ".csv", ".tsv",
+    ".yaml", ".yml", ".toml", ".ini", ".cfg", ".tex", ".rst", ".log",
+}
 MAX_SEARCH_RESULTS = 1_000
 MAX_ENV_OVERRIDES = 32
 MAX_PATCH_CHARACTERS = 1_000_000
@@ -72,18 +87,21 @@ def truncate_text(value: str, limit: int = MAX_TEXT_CHARACTERS) -> dict[str, Any
     }
 
 
-def safe_path(path: str) -> Path:
-    if not isinstance(path, str) or not path:
-        raise ValueError("path must be a non-empty string")
-    target = (WORKSPACE / path).resolve()
-    if target != WORKSPACE and WORKSPACE not in target.parents:
-        raise ValueError(f"Path outside workspace is not allowed: {target}")
-    return target
+def root_policy() -> RootPolicy:
+    """Build the registry from current roots so test/operator overrides stay effective."""
+    return build_root_policy(WORKSPACE, PLA_ROOT, RERUN_THESIS_ROOT)
 
 
-def _relative_path(target: Path) -> str:
-    relative = target.relative_to(WORKSPACE)
-    return "." if relative == Path(".") else relative.as_posix()
+def available_roots() -> dict[str, dict[str, bool]]:
+    return root_policy().capabilities()
+
+
+def safe_path(path: str, root: str = "workspace", access: str = "read") -> Path:
+    return root_policy().resolve(root, path, access).target
+
+
+def _relative_path(target: Path, root: str = "workspace") -> str:
+    return root_policy().resolve(root, str(target)).relative
 
 
 def _file_sha256(target: Path) -> str:
@@ -94,7 +112,9 @@ def _file_sha256(target: Path) -> str:
     return digest.hexdigest()
 
 
-def _validate_expected_sha256(target: Path, expected_sha256: str | None) -> None:
+def _validate_expected_sha256(
+    target: Path, expected_sha256: str | None, root: str = "workspace",
+) -> None:
     if expected_sha256 is None:
         return
     if not isinstance(expected_sha256, str) or not SHA256_PATTERN.fullmatch(
@@ -104,7 +124,7 @@ def _validate_expected_sha256(target: Path, expected_sha256: str | None) -> None
     actual = _file_sha256(target) if target.is_file() else None
     if actual != expected_sha256.lower():
         raise FileChangedSinceRead(
-            f"File hash precondition failed for {_relative_path(target)}"
+            f"File hash precondition failed for {_relative_path(target, root)}"
         )
 
 
@@ -154,8 +174,8 @@ def _atomic_write_text(target: Path, content: str) -> None:
             Path(temporary_name).unlink(missing_ok=True)
 
 
-def list_directory(path: str = ".") -> list[str]:
-    target = safe_path(path)
+def list_directory(path: str = ".", root: str = "workspace") -> list[str]:
+    target = safe_path(path, root)
     if not target.exists():
         raise ValueError(f"Path does not exist: {path}")
     if not target.is_dir():
@@ -163,8 +183,11 @@ def list_directory(path: str = ".") -> list[str]:
     return [item.name + ("/" if item.is_dir() else "") for item in target.iterdir()]
 
 
-def read_text(path: str, start_line: int = 1, end_line: int = 400) -> dict[str, Any]:
-    target = safe_path(path)
+def read_text(
+    path: str, start_line: int = 1, end_line: int = 400,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    target = safe_path(path, root)
     if not target.exists():
         raise ValueError(f"File does not exist: {path}")
     if not target.is_file():
@@ -180,9 +203,173 @@ def read_text(path: str, start_line: int = 1, end_line: int = 400) -> dict[str, 
     )
     stat = target.stat()
     return {
-        "path": _relative_path(target),
+        "path": _relative_path(target, root),
         **truncate_text(rendered),
         "sha256": hashlib.sha256(raw).hexdigest(),
+        "mtime": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        "size": stat.st_size,
+    }
+
+
+def extract_document_text(
+    path: str,
+    start: int = 1,
+    end: int | None = None,
+    max_chars: int = MAX_TEXT_CHARACTERS,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Extract bounded text from supported local documents.
+
+    Unit semantics depend on the file type: PDF pages, DOCX paragraphs, and
+    plain-text lines. PDF extraction requires the optional pypdf package.
+    """
+    if not isinstance(start, int) or isinstance(start, bool) or start < 1:
+        raise ValueError("start must be an integer >= 1")
+    if end is not None and (
+        not isinstance(end, int) or isinstance(end, bool) or end < start
+    ):
+        raise ValueError("end must be null or an integer >= start")
+    if (
+        not isinstance(max_chars, int)
+        or isinstance(max_chars, bool)
+        or not 1 <= max_chars <= MAX_DOCUMENT_CHARACTERS
+    ):
+        raise ValueError(
+            f"max_chars must be between 1 and {MAX_DOCUMENT_CHARACTERS}"
+        )
+
+    target = safe_path(path, root)
+    if not target.exists():
+        raise ValueError(f"File does not exist: {path}")
+    if not target.is_file():
+        raise ValueError(f"Not a file: {path}")
+
+    suffix = target.suffix.lower()
+    unit_name: str
+    unit_count: int
+    selected_start: int | None
+    selected_end: int | None
+    rendered: str
+
+    if suffix == ".pdf":
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise RuntimeError(
+                "PDF extraction requires pypdf in the plus-local-agent environment"
+            ) from exc
+
+        reader = PdfReader(str(target))
+        if reader.is_encrypted:
+            try:
+                unlocked = reader.decrypt("")
+            except Exception as exc:
+                raise ValueError("Encrypted PDF could not be opened") from exc
+            if not unlocked:
+                raise ValueError("Encrypted PDF requires a password")
+
+        unit_name = "page"
+        unit_count = len(reader.pages)
+        if unit_count == 0:
+            selected_start = selected_end = None
+            rendered = ""
+        else:
+            if start > unit_count:
+                raise ValueError(
+                    f"start exceeds document page count ({unit_count})"
+                )
+            selected_start = start
+            selected_end = min(end if end is not None else unit_count, unit_count)
+            parts = []
+            for page_number in range(selected_start, selected_end + 1):
+                page_text = reader.pages[page_number - 1].extract_text() or ""
+                parts.append(f"[Page {page_number}]\n{page_text.strip()}")
+            rendered = "\n\n".join(parts)
+
+        format_name = "pdf"
+
+    elif suffix == ".docx":
+        try:
+            with zipfile.ZipFile(target) as archive:
+                document_xml = archive.read("word/document.xml")
+        except KeyError as exc:
+            raise ValueError("DOCX is missing word/document.xml") from exc
+        except zipfile.BadZipFile as exc:
+            raise ValueError("Invalid DOCX container") from exc
+
+        namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        try:
+            xml_root = ET.fromstring(document_xml)
+        except ET.ParseError as exc:
+            raise ValueError("DOCX document.xml is not valid XML") from exc
+
+        paragraphs = []
+        paragraph_tag = f"{{{namespace}}}p"
+        text_tag = f"{{{namespace}}}t"
+        for paragraph in xml_root.iter(paragraph_tag):
+            value = "".join(node.text or "" for node in paragraph.iter(text_tag))
+            if value.strip():
+                paragraphs.append(value)
+
+        unit_name = "paragraph"
+        unit_count = len(paragraphs)
+        if unit_count == 0:
+            selected_start = selected_end = None
+            rendered = ""
+        else:
+            if start > unit_count:
+                raise ValueError(
+                    f"start exceeds document paragraph count ({unit_count})"
+                )
+            selected_start = start
+            selected_end = min(end if end is not None else unit_count, unit_count)
+            rendered = "\n".join(paragraphs[selected_start - 1:selected_end])
+
+        format_name = "docx"
+
+    elif suffix in DOCUMENT_TEXT_EXTENSIONS:
+        try:
+            text_value = target.read_text(encoding="utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Plain-text document is not valid UTF-8") from exc
+
+        lines = text_value.splitlines()
+        unit_name = "line"
+        unit_count = len(lines)
+        if unit_count == 0:
+            selected_start = selected_end = None
+            rendered = ""
+        else:
+            if start > unit_count:
+                raise ValueError(f"start exceeds document line count ({unit_count})")
+            selected_start = start
+            selected_end = min(end if end is not None else unit_count, unit_count)
+            rendered = "\n".join(lines[selected_start - 1:selected_end])
+
+        format_name = "text"
+
+    else:
+        raise ValueError(
+            "Unsupported document type. Supported: PDF, DOCX, and UTF-8 text formats"
+        )
+
+    original_length = len(rendered)
+    content = rendered[:max_chars]
+    stat = target.stat()
+    return {
+        "path": _relative_path(target, root),
+        "format": format_name,
+        "unit": unit_name,
+        "unit_count": unit_count,
+        "selected_start": selected_start,
+        "selected_end": selected_end,
+        "has_more_units": bool(
+            selected_end is not None and selected_end < unit_count
+        ),
+        "content": content,
+        "truncated": original_length > max_chars,
+        "original_length": original_length,
+        "sha256": _file_sha256(target),
         "mtime": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
         "size": stat.st_size,
     }
@@ -203,13 +390,14 @@ def workspace_mutation(function):
 @workspace_mutation
 def write_text(
     path: str, content: str, expected_sha256: str | None = None,
+    root: str = "workspace",
 ) -> dict[str, Any]:
-    target = safe_path(path)
-    _validate_expected_sha256(target, expected_sha256)
+    target = safe_path(path, root, "write")
+    _validate_expected_sha256(target, expected_sha256, root)
     _atomic_write_text(target, content)
     _remove_cached_bytecode(target)
     return {
-        "path": _relative_path(target),
+        "path": _relative_path(target, root),
         "characters_written": len(content),
         "sha256": _file_sha256(target),
     }
@@ -222,13 +410,14 @@ def replace_text(
     new: str,
     count: int = 1,
     expected_sha256: str | None = None,
+    root: str = "workspace",
 ) -> dict[str, Any]:
-    target = safe_path(path)
+    target = safe_path(path, root, "write")
     if not target.exists():
         raise ValueError(f"File does not exist: {path}")
     if not target.is_file():
         raise ValueError(f"Not a file: {path}")
-    _validate_expected_sha256(target, expected_sha256)
+    _validate_expected_sha256(target, expected_sha256, root)
     text = target.read_text(encoding="utf-8")
     matches = text.count(old)
     if matches == 0:
@@ -237,7 +426,7 @@ def replace_text(
     _atomic_write_text(target, updated)
     _remove_cached_bytecode(target)
     return {
-        "path": _relative_path(target),
+        "path": _relative_path(target, root),
         "matches_found": matches,
         "replacements": min(matches, count),
         "sha256": _file_sha256(target),
@@ -250,11 +439,12 @@ def search_text(
     glob: str | None = None,
     case_sensitive: bool = False,
     max_results: int = 100,
+    root: str = "workspace",
 ) -> dict[str, Any]:
     """Search workspace text through ripgrep and return bounded line matches."""
     if not isinstance(query, str) or not query:
         raise ValueError("query must be a non-empty string")
-    target = safe_path(path)
+    target = safe_path(path, root)
     if not target.exists():
         raise ValueError(f"Path does not exist: {path}")
     if not isinstance(max_results, int) or isinstance(max_results, bool):
@@ -267,7 +457,61 @@ def search_text(
         raise TypeError("case_sensitive must be a boolean")
     executable = shutil.which("rg")
     if executable is None:
-        raise SearchToolUnavailable("ripgrep (rg) is required for search_text")
+        needle = query if case_sensitive else query.casefold()
+        matches: list[dict[str, Any]] = []
+        truncated = False
+        deadline = datetime.now(timezone.utc).timestamp() + 30
+
+        def fallback_files():
+            if target.is_file():
+                yield target
+                return
+            for directory, dirnames, filenames in os.walk(target, followlinks=False):
+                dirnames[:] = [name for name in dirnames if not name.startswith(".")]
+                for filename in filenames:
+                    if not filename.startswith("."):
+                        yield Path(directory) / filename
+
+        for candidate in fallback_files():
+            if datetime.now(timezone.utc).timestamp() > deadline:
+                raise TimeoutError("search_text exceeded its 30 second timeout")
+            if candidate.is_symlink():
+                continue
+            resolved = candidate.resolve()
+            try:
+                root_policy().resolve(root, str(resolved))
+            except ValueError:
+                continue
+            relative = _relative_path(resolved, root)
+            if glob is not None and not Path(relative).match(glob):
+                continue
+            try:
+                handle = resolved.open("r", encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+            with handle:
+                for line_number, line in enumerate(handle, start=1):
+                    haystack = line if case_sensitive else line.casefold()
+                    if needle not in haystack:
+                        continue
+                    if len(matches) == max_results:
+                        truncated = True
+                        break
+                    matches.append({
+                        "path": relative,
+                        "line": line_number,
+                        "text": line.rstrip("\r\n"),
+                    })
+            if truncated:
+                break
+        return {
+            "status": "completed",
+            "query": query,
+            "path": _relative_path(target, root),
+            "matches": matches,
+            "match_count": len(matches),
+            "truncated": truncated,
+        }
 
     command = [executable, "--json", "--color", "never", "--fixed-strings"]
     if not case_sensitive:
@@ -277,7 +521,8 @@ def search_text(
     command.extend(["--", query, str(target)])
 
     process = subprocess.Popen(
-        command, cwd=WORKSPACE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        command, cwd=root_policy().resolve(root, ".").target,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", errors="replace", shell=False,
     )
     context = CURRENT.get()
@@ -305,15 +550,17 @@ def search_text(
             if raw_path is None:
                 continue
             matched_path = Path(raw_path).resolve()
-            if matched_path != WORKSPACE and WORKSPACE not in matched_path.parents:
+            try:
+                root_policy().resolve(root, str(matched_path))
+            except ValueError:
                 process.kill()
-                raise ValueError("ripgrep returned a path outside workspace")
+                raise ValueError(f"ripgrep returned a path outside root {root!r}")
             if len(matches) == max_results:
                 truncated = True
                 process.kill()
                 break
             matches.append({
-                "path": _relative_path(matched_path),
+                "path": _relative_path(matched_path, root),
                 "line": data["line_number"],
                 "text": data["lines"].get("text", "").rstrip("\r\n"),
             })
@@ -335,7 +582,7 @@ def search_text(
     return {
         "status": "completed",
         "query": query,
-        "path": _relative_path(target),
+        "path": _relative_path(target, root),
         "matches": matches,
         "match_count": len(matches),
         "truncated": truncated,
@@ -372,6 +619,7 @@ def run_process(
     workdir: str | None = None,
     env: dict[str, str] | None = None,
     stdin: str | None = None,
+    root: str = "workspace",
 ) -> dict[str, Any]:
     args = [] if args is None else args
     if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
@@ -385,7 +633,9 @@ def run_process(
     program_name = Path(program).name.lower()
     if program_name not in ALLOWED_PROGRAMS:
         raise ValueError(f"Program not allowed: {program}")
-    working_directory = safe_path(cwd)
+    if root == "pla" and program_name in {"git", "git.exe"}:
+        raise ValueError("Git execution is not allowed through root 'pla'")
+    working_directory = safe_path(cwd, root, "execute")
     if not working_directory.exists():
         raise ValueError(f"Working directory does not exist: {cwd}")
     if not working_directory.is_dir():
@@ -405,7 +655,7 @@ def run_process(
         return {
             "program": program,
             "args": args,
-            "cwd": _relative_path(working_directory),
+            "cwd": _relative_path(working_directory, root),
             "returncode": result.returncode,
             "stdout": stdout["content"],
             "stderr": stderr["content"],
@@ -420,7 +670,7 @@ def run_process(
         return {
             "program": program,
             "args": args,
-            "cwd": _relative_path(working_directory),
+            "cwd": _relative_path(working_directory, root),
             "timeout": True,
             "stdout": stdout["content"],
             "stderr": stderr["content"],
@@ -429,6 +679,742 @@ def run_process(
             "stdout_original_length": stdout["original_length"],
             "stderr_original_length": stderr["original_length"],
         }
+
+
+def _git_run(
+    working_directory: Path,
+    args: list[str],
+    *,
+    timeout: int = 30,
+    allow_failure: bool = False,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    executable = shutil.which("git")
+    if executable is None:
+        raise RuntimeError("Git executable is unavailable")
+    command = [
+        executable,
+        "-c", "core.fsmonitor=false",
+        "-c", "core.quotepath=false",
+        *args,
+    ]
+    common = {
+        "cwd": working_directory,
+        "capture_output": True,
+        "text": True,
+        "timeout": max(1, min(timeout, 60)),
+        "shell": False,
+        "env": env,
+    }
+    if CURRENT.get():
+        result = controlled_run(command, **common)
+    else:
+        result = subprocess.run(
+            command, **common, encoding="utf-8", errors="replace"
+        )
+    if result.returncode != 0 and not allow_failure:
+        message = (result.stderr or result.stdout).strip()
+        if not message:
+            message = f"git exited with code {result.returncode}"
+        raise ValueError(message[:MAX_TEXT_CHARACTERS])
+    return result
+
+
+def _git_repo_context(cwd: str, root: str) -> tuple[Path, Path]:
+    working_directory = safe_path(cwd, root, "execute")
+    if not working_directory.exists():
+        raise ValueError(f"Working directory does not exist: {cwd}")
+    if not working_directory.is_dir():
+        raise ValueError(f"Not a directory: {cwd}")
+    probe = _git_run(
+        working_directory,
+        ["rev-parse", "--show-toplevel"],
+        allow_failure=True,
+    )
+    if probe.returncode != 0:
+        raise ValueError("Working directory is not inside a Git repository")
+    repo_root = Path(probe.stdout.strip()).resolve()
+    try:
+        root_policy().resolve(root, str(repo_root), "read")
+    except ValueError as exc:
+        raise ValueError("Git repository root is outside the selected root") from exc
+    return working_directory, repo_root
+
+
+def _git_resolve_commit(working_directory: Path, revision: str) -> str:
+    if not isinstance(revision, str) or not revision:
+        raise ValueError("revision must be a non-empty string")
+    if len(revision) > 256:
+        raise ValueError("revision cannot exceed 256 characters")
+    if revision.startswith("-") or "\x00" in revision or "\n" in revision or "\r" in revision:
+        raise ValueError("revision is not allowed")
+    result = _git_run(
+        working_directory,
+        ["rev-parse", "--verify", f"{revision}^{{commit}}"],
+        allow_failure=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Revision does not resolve to a commit: {revision}")
+    resolved = result.stdout.strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{40,64}", resolved):
+        raise ValueError("Git returned an invalid commit id")
+    return resolved.lower()
+
+
+def git_status(cwd: str = ".", root: str = "workspace") -> dict[str, Any]:
+    """Return structured read-only Git status for a repository inside an allowed root."""
+    working_directory, repo_root = _git_repo_context(cwd, root)
+
+    branch_result = _git_run(
+        working_directory,
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
+        allow_failure=True,
+    )
+    branch = branch_result.stdout.strip() if branch_result.returncode == 0 else None
+
+    head_result = _git_run(
+        working_directory,
+        ["rev-parse", "--verify", "HEAD"],
+        allow_failure=True,
+    )
+    head = head_result.stdout.strip() if head_result.returncode == 0 else None
+
+    upstream_result = _git_run(
+        working_directory,
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        allow_failure=True,
+    )
+    upstream = upstream_result.stdout.strip() if upstream_result.returncode == 0 else None
+    ahead = behind = None
+    if upstream:
+        counts = _git_run(
+            working_directory,
+            ["rev-list", "--left-right", "--count", f"HEAD...{upstream}"],
+        ).stdout.strip().split()
+        if len(counts) == 2:
+            ahead, behind = int(counts[0]), int(counts[1])
+
+    porcelain_result = _git_run(
+        working_directory,
+        [
+            "-c", "status.relativePaths=false",
+            "status", "--porcelain=v1", "-z", "--untracked-files=normal",
+        ],
+    )
+    porcelain = porcelain_result.stdout
+    if getattr(porcelain, "original_length", len(porcelain)) > len(porcelain):
+        raise ValueError("Git status output exceeds the bounded process capture limit")
+
+    records = porcelain.split("\0")
+    files: list[dict[str, Any]] = []
+    total_files = 0
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
+            continue
+        if len(record) < 4 or record[2] != " ":
+            raise ValueError("Unexpected git status porcelain record")
+        code = record[:2]
+        path = record[3:]
+        item: dict[str, Any] = {
+            "path": path,
+            "code": code,
+            "index_status": code[0],
+            "worktree_status": code[1],
+        }
+        if code[0] in {"R", "C"} or code[1] in {"R", "C"}:
+            if index >= len(records) or not records[index]:
+                raise ValueError("Malformed rename/copy status record")
+            item["original_path"] = records[index]
+            index += 1
+        total_files += 1
+        if len(files) < MAX_SEARCH_RESULTS:
+            files.append(item)
+
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "branch": branch,
+        "detached": branch is None,
+        "head": head,
+        "upstream": upstream,
+        "ahead": ahead,
+        "behind": behind,
+        "clean": total_files == 0,
+        "file_count": total_files,
+        "files": files,
+        "truncated": total_files > len(files),
+    }
+
+
+def git_diff(
+    cwd: str = ".",
+    staged: bool = False,
+    path: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Return bounded read-only Git diff without external diff or textconv execution."""
+    if not isinstance(staged, bool):
+        raise TypeError("staged must be a boolean")
+    if path is not None and (not isinstance(path, str) or not path):
+        raise ValueError("path must be a non-empty string when provided")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    args = ["diff", "--no-ext-diff", "--no-textconv", "--no-color"]
+    if staged:
+        args.append("--cached")
+
+    rendered_path = None
+    if path is not None:
+        target = safe_path(path, root, "read")
+        try:
+            repo_relative = target.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError("Diff path is outside the selected Git repository") from exc
+        rendered_path = _relative_path(target, root)
+        args.extend(["--", repo_relative.as_posix()])
+
+    result = _git_run(working_directory, args)
+    diff = truncate_text(result.stdout)
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "staged": staged,
+        "path": rendered_path,
+        "diff": diff["content"],
+        "truncated": diff["truncated"],
+        "original_length": diff["original_length"],
+    }
+
+
+def git_log(
+    cwd: str = ".",
+    limit: int = 20,
+    path: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Return structured recent commit history without executing repository helpers."""
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("limit must be an integer between 1 and 100")
+    if path is not None and (not isinstance(path, str) or not path):
+        raise ValueError("path must be a non-empty string when provided")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    rendered_path = None
+    args = [
+        "log",
+        f"--max-count={limit + 1}",
+        "--date=iso-strict",
+        "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cI%x1f%s%x1e",
+    ]
+    if path is not None:
+        target = safe_path(path, root, "read")
+        try:
+            repo_relative = target.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError("Log path is outside the selected Git repository") from exc
+        rendered_path = _relative_path(target, root)
+        args.extend(["--", repo_relative.as_posix()])
+
+    result = _git_run(working_directory, args)
+    entries: list[dict[str, Any]] = []
+    for raw_record in result.stdout.split("\x1e"):
+        record = raw_record.strip("\r\n")
+        if not record:
+            continue
+        fields = record.split("\x1f")
+        if len(fields) != 7:
+            raise ValueError("Unexpected git log record")
+        commit, parents, author_name, author_email, authored_at, committed_at, subject = fields
+        entries.append({
+            "commit": commit,
+            "parents": parents.split() if parents else [],
+            "author_name": author_name,
+            "author_email": author_email,
+            "authored_at": authored_at,
+            "committed_at": committed_at,
+            "subject": subject,
+        })
+
+    truncated = len(entries) > limit
+    entries = entries[:limit]
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "path": rendered_path,
+        "limit": limit,
+        "entry_count": len(entries),
+        "entries": entries,
+        "truncated": truncated,
+    }
+
+
+def git_show(
+    revision: str = "HEAD",
+    cwd: str = ".",
+    path: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Return commit metadata and a bounded patch for one verified commit."""
+    if path is not None and (not isinstance(path, str) or not path):
+        raise ValueError("path must be a non-empty string when provided")
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    commit = _git_resolve_commit(working_directory, revision)
+
+    metadata_result = _git_run(
+        working_directory,
+        [
+            "show", "-s", "--date=iso-strict",
+            "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cI%x1f%s",
+            commit,
+        ],
+    )
+    fields = metadata_result.stdout.rstrip("\r\n").split("\x1f")
+    if len(fields) != 7:
+        raise ValueError("Unexpected git show metadata")
+    shown_commit, parents, author_name, author_email, authored_at, committed_at, subject = fields
+
+    args = [
+        "show", "--format=", "--no-ext-diff", "--no-textconv", "--no-color",
+        commit,
+    ]
+    rendered_path = None
+    if path is not None:
+        target = safe_path(path, root, "read")
+        try:
+            repo_relative = target.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError("Show path is outside the selected Git repository") from exc
+        rendered_path = _relative_path(target, root)
+        args.extend(["--", repo_relative.as_posix()])
+
+    patch_result = _git_run(working_directory, args)
+    patch = truncate_text(patch_result.stdout)
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "revision": revision,
+        "commit": shown_commit,
+        "parents": parents.split() if parents else [],
+        "author_name": author_name,
+        "author_email": author_email,
+        "authored_at": authored_at,
+        "committed_at": committed_at,
+        "subject": subject,
+        "path": rendered_path,
+        "patch": patch["content"],
+        "truncated": patch["truncated"],
+        "original_length": patch["original_length"],
+    }
+
+
+class GitStageRequest(TypedDict):
+    path: str
+    expected_sha256: str
+
+
+class AcceptanceCheckRequest(TypedDict):
+    id: str
+    description: str
+    evidence_kinds: list[str]
+
+
+class AcceptanceBindingRequest(TypedDict):
+    check_id: str
+    evidence_ids: list[str]
+
+
+class FileSha256Verification(TypedDict):
+    type: Literal["file_sha256"]
+    path: str
+
+
+class PytestVerification(TypedDict):
+    type: Literal["pytest"]
+    args: list[str]
+    cwd: str
+    timeout: int
+
+
+VerificationSpec = FileSha256Verification | PytestVerification
+
+
+@workspace_mutation
+def git_stage(
+    changes: list[GitStageRequest],
+    expected_head: str,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Stage exact current bytes for tracked files without repository clean filters."""
+    if not isinstance(changes, list) or not 1 <= len(changes) <= 32:
+        raise ValueError("changes must contain 1–32 explicit tracked files")
+    if not isinstance(expected_head, str) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", expected_head):
+        raise ValueError("expected_head must be a full 40–64 character hexadecimal commit id")
+    for change in changes:
+        if not isinstance(change, dict) or set(change) != {"path", "expected_sha256"}:
+            raise ValueError("Each stage change requires exactly path and expected_sha256")
+        if not isinstance(change["path"], str) or not change["path"]:
+            raise ValueError("each stage path must be a non-empty string")
+        expected = change["expected_sha256"]
+        if not isinstance(expected, str) or not SHA256_PATTERN.fullmatch(expected):
+            raise ValueError("expected_sha256 is required and must be 64 hexadecimal characters")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    root_base = root_policy().resolve(root, ".", "write").target.resolve()
+    git_dir = Path(
+        _git_run(working_directory, ["rev-parse", "--absolute-git-dir"]).stdout.strip()
+    ).resolve()
+    try:
+        common = os.path.commonpath(
+            (os.path.normcase(str(root_base)), os.path.normcase(str(git_dir)))
+        )
+    except ValueError as exc:
+        raise ValueError("Git metadata directory is outside the selected root") from exc
+    if common != os.path.normcase(str(root_base)):
+        raise ValueError("Git metadata directory is outside the selected root")
+
+    current_head = _git_resolve_commit(working_directory, "HEAD")
+    if current_head != expected_head.lower():
+        raise ValueError(
+            f"HEAD changed since inspection: expected {expected_head.lower()}, current {current_head}"
+        )
+    for marker in (
+        "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG",
+        "rebase-merge", "rebase-apply", "sequencer",
+    ):
+        if (git_dir / marker).exists():
+            raise ValueError(f"Structured stage is disabled while repository state {marker} exists")
+
+    index_path = git_dir / "index"
+    if not index_path.is_file():
+        raise ValueError("Structured stage requires an existing Git index")
+    lock_path = git_dir / "index.lock"
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise ValueError("Git index is locked by another operation") from exc
+
+    candidate_path: Path | None = None
+    lock_open = True
+    try:
+        snapshot = index_path.read_bytes()
+        snapshot_sha = hashlib.sha256(snapshot).hexdigest()
+        if _git_resolve_commit(working_directory, "HEAD") != current_head:
+            raise ValueError("HEAD changed while acquiring the Git index lock")
+
+        already_staged = [
+            item
+            for item in _git_run(
+                working_directory,
+                ["diff", "--cached", "--name-only", "-z", current_head],
+            ).stdout.split("\x00")
+            if item
+        ]
+        if already_staged:
+            raise ValueError(
+                "Git index already contains staged changes; commit or clear them before structured staging"
+            )
+
+        prepared: list[tuple[str, str, str, Path, str]] = []
+        seen: set[str] = set()
+        for change in changes:
+            path = change["path"]
+            target = safe_path(path, root, "read")
+            if not target.exists() or not target.is_file():
+                raise ValueError(f"Structured stage v1 requires an existing regular file: {path}")
+            try:
+                repo_relative = target.relative_to(repo_root)
+            except ValueError as exc:
+                raise ValueError(f"Stage path is outside the selected Git repository: {path}") from exc
+            repo_path = repo_relative.as_posix()
+            if repo_path in {"", "."}:
+                raise ValueError("Stage paths must name explicit files, not the repository root")
+            if repo_path in seen:
+                raise ValueError(f"Duplicate stage path: {path}")
+            seen.add(repo_path)
+            _validate_expected_sha256(target, change["expected_sha256"], root)
+
+            entry_result = _git_run(
+                working_directory,
+                ["ls-files", "--stage", "-z", "--", repo_path],
+            )
+            entries = [item for item in entry_result.stdout.split("\x00") if item]
+            if len(entries) != 1 or "\t" not in entries[0]:
+                raise ValueError(
+                    f"Structured stage v1 supports only already tracked, non-conflicted files: {path}"
+                )
+            metadata, listed_path = entries[0].split("\t", 1)
+            fields = metadata.split()
+            if len(fields) != 3 or fields[2] != "0" or listed_path != repo_path:
+                raise ValueError(
+                    f"Structured stage v1 supports only already tracked, non-conflicted files: {path}"
+                )
+            mode, _old_oid, _stage = fields
+            if mode not in {"100644", "100755"}:
+                raise ValueError(
+                    f"Structured stage v1 supports only regular tracked files: {path}"
+                )
+            prepared.append(
+                (repo_path, mode, change["expected_sha256"].lower(), target, _relative_path(target, root))
+            )
+
+        with tempfile.NamedTemporaryFile(
+            dir=git_dir, prefix=".pla-stage-index-", suffix=".tmp", delete=False
+        ) as candidate:
+            candidate.write(snapshot)
+            candidate.flush()
+            os.fsync(candidate.fileno())
+            candidate_path = Path(candidate.name)
+
+        candidate_env = os.environ.copy()
+        candidate_env["GIT_INDEX_FILE"] = str(candidate_path)
+        update_args = ["update-index"]
+        object_ids: dict[str, str] = {}
+        for repo_path, mode, _expected, _target, _rendered in prepared:
+            oid = _git_run(
+                working_directory,
+                ["hash-object", "-w", "--no-filters", "--", repo_path],
+            ).stdout.strip().lower()
+            if not re.fullmatch(r"[0-9a-f]{40,64}", oid):
+                raise ValueError("Git returned an invalid blob id")
+            object_ids[repo_path] = oid
+            update_args.extend(["--cacheinfo", f"{mode},{oid},{repo_path}"])
+
+        _git_run(working_directory, update_args, env=candidate_env)
+        staged_paths = [
+            item
+            for item in _git_run(
+                working_directory,
+                ["diff", "--cached", "--name-only", "-z", current_head],
+                env=candidate_env,
+            ).stdout.split("\x00")
+            if item
+        ]
+        expected_paths = [item[0] for item in prepared]
+        if set(staged_paths) != set(expected_paths) or len(staged_paths) != len(expected_paths):
+            raise ValueError(
+                "Structured stage requires every selected file to differ from HEAD and no other staged paths"
+            )
+
+        tree = _git_run(working_directory, ["write-tree"], env=candidate_env).stdout.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40,64}", tree):
+            raise ValueError("Git returned an invalid tree id")
+
+        for _repo_path, _mode, expected, target, _rendered in prepared:
+            _validate_expected_sha256(target, expected, root)
+        if _git_resolve_commit(working_directory, "HEAD") != current_head:
+            raise ValueError("HEAD changed during structured stage; Git index was not replaced")
+        if hashlib.sha256(index_path.read_bytes()).hexdigest() != snapshot_sha:
+            raise ValueError("Git index changed outside its lock; refusing to replace it")
+
+        candidate_bytes = candidate_path.read_bytes()
+        with os.fdopen(lock_fd, "wb", closefd=False) as lock_handle:
+            lock_handle.write(candidate_bytes)
+            lock_handle.flush()
+            os.fsync(lock_handle.fileno())
+        os.close(lock_fd)
+        lock_open = False
+        os.replace(lock_path, index_path)
+
+        actual_staged = [
+            item
+            for item in _git_run(
+                working_directory,
+                ["diff", "--cached", "--name-only", "-z", current_head],
+            ).stdout.split("\x00")
+            if item
+        ]
+        if set(actual_staged) != set(expected_paths) or len(actual_staged) != len(expected_paths):
+            raise RuntimeError("Structured stage could not verify the installed Git index")
+
+        return {
+            "status": "completed",
+            "repo_root": _relative_path(repo_root, root),
+            "cwd": _relative_path(working_directory, root),
+            "head": current_head,
+            "tree": tree,
+            "paths": [item[4] for item in prepared],
+            "file_count": len(prepared),
+            "blobs": {
+                item[4]: object_ids[item[0]]
+                for item in prepared
+            },
+            "preflight": {
+                "expected_head_matched": True,
+                "expected_sha256_matched": True,
+                "index_initially_clean": True,
+                "tracked_regular_files_only": True,
+                "clean_filters_disabled": True,
+                "index_lock_acquired": True,
+                "mode": "raw_bytes_tracked_only",
+            },
+        }
+    finally:
+        if lock_open:
+            os.close(lock_fd)
+        lock_path.unlink(missing_ok=True)
+        if candidate_path is not None:
+            candidate_path.unlink(missing_ok=True)
+@workspace_mutation
+def git_commit(
+    message: str,
+    paths: list[str],
+    expected_head: str,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Commit an exact already-staged tracked-file set with an atomic HEAD compare-and-swap."""
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("message must be a non-empty string")
+    if len(message) > MAX_TEXT_CHARACTERS or "\x00" in message:
+        raise ValueError(f"message must be at most {MAX_TEXT_CHARACTERS} characters and contain no NUL")
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 32:
+        raise ValueError("paths must contain 1–32 explicit tracked file paths")
+    if any(not isinstance(path, str) or not path for path in paths):
+        raise ValueError("each commit path must be a non-empty string")
+    if not isinstance(expected_head, str) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", expected_head):
+        raise ValueError("expected_head must be a full 40–64 character hexadecimal commit id")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    root_base = root_policy().resolve(root, ".", "write").target.resolve()
+    git_dir_result = _git_run(working_directory, ["rev-parse", "--absolute-git-dir"])
+    git_dir = Path(git_dir_result.stdout.strip()).resolve()
+    try:
+        common = os.path.commonpath((os.path.normcase(str(root_base)), os.path.normcase(str(git_dir))))
+    except ValueError as exc:
+        raise ValueError("Git metadata directory is outside the selected root") from exc
+    if common != os.path.normcase(str(root_base)):
+        raise ValueError("Git metadata directory is outside the selected root")
+
+    branch_result = _git_run(
+        working_directory, ["symbolic-ref", "--quiet", "HEAD"], allow_failure=True,
+    )
+    if branch_result.returncode != 0:
+        raise ValueError("Structured commit requires a named branch; detached HEAD is not allowed")
+    branch_ref = branch_result.stdout.strip()
+    if not branch_ref.startswith("refs/heads/"):
+        raise ValueError("HEAD does not point to a local branch")
+    branch = branch_ref.removeprefix("refs/heads/")
+
+    current_head = _git_resolve_commit(working_directory, "HEAD")
+    if current_head != expected_head.lower():
+        raise ValueError(
+            f"HEAD changed since inspection: expected {expected_head.lower()}, current {current_head}"
+        )
+
+    for marker in (
+        "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG",
+        "rebase-merge", "rebase-apply", "sequencer",
+    ):
+        if (git_dir / marker).exists():
+            raise ValueError(f"Structured commit is disabled while repository state {marker} exists")
+
+    repo_paths: list[str] = []
+    rendered_paths: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        target = safe_path(path, root, "read")
+        try:
+            repo_relative = target.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError(f"Commit path is outside the selected Git repository: {path}") from exc
+        repo_path = repo_relative.as_posix()
+        if repo_path in {"", "."}:
+            raise ValueError("Commit paths must name explicit files, not the repository root")
+        if repo_path in seen:
+            raise ValueError(f"Duplicate commit path: {path}")
+        seen.add(repo_path)
+        repo_paths.append(repo_path)
+        rendered_paths.append(_relative_path(target, root))
+
+    staged_result = _git_run(
+        working_directory,
+        ["diff", "--cached", "--name-only", "-z", current_head],
+    )
+    staged_paths = [item for item in staged_result.stdout.split("\x00") if item]
+    if set(staged_paths) != set(repo_paths) or len(staged_paths) != len(repo_paths):
+        raise ValueError(
+            "Staged paths must exactly match paths; stage only the intended tracked files before committing"
+        )
+
+    disallowed_result = _git_run(
+        working_directory,
+        ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACRTUXB", current_head],
+    )
+    disallowed = [item for item in disallowed_result.stdout.split("\x00") if item]
+    if disallowed:
+        raise ValueError(
+            "Structured commit v1 supports only modifications or deletions of already tracked files; "
+            f"unsupported staged paths: {', '.join(disallowed[:10])}"
+        )
+
+    unstaged_result = _git_run(
+        working_directory,
+        ["diff", "--name-only", "-z", "--", *repo_paths],
+    )
+    unstaged = [item for item in unstaged_result.stdout.split("\x00") if item]
+    if unstaged:
+        raise ValueError(
+            "Selected paths still have unstaged changes; stage the exact intended content before committing"
+        )
+
+    tree = _git_run(working_directory, ["write-tree"]).stdout.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", tree):
+        raise ValueError("Git returned an invalid tree id")
+    tree_paths_result = _git_run(
+        working_directory,
+        ["diff", "--name-only", "-z", current_head, tree],
+    )
+    tree_paths = [item for item in tree_paths_result.stdout.split("\x00") if item]
+    if set(tree_paths) != set(repo_paths) or len(tree_paths) != len(repo_paths):
+        raise RuntimeError("Git index changed during commit preflight; no branch ref was updated")
+
+    commit = _git_run(
+        working_directory,
+        ["commit-tree", tree, "-p", current_head, "-m", message],
+    ).stdout.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+        raise ValueError("Git returned an invalid commit id")
+
+    update = _git_run(
+        working_directory,
+        ["update-ref", "-m", "PLA structured commit", branch_ref, commit, current_head],
+        allow_failure=True,
+    )
+    if update.returncode != 0:
+        raise ValueError(
+            "HEAD changed while committing; branch ref was not updated. "
+            "An unreachable commit object may remain and can be garbage-collected by Git."
+        )
+    if _git_resolve_commit(working_directory, "HEAD") != commit:
+        raise RuntimeError("Structured commit could not verify the updated HEAD")
+
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "branch": branch,
+        "previous_head": current_head,
+        "commit": commit,
+        "tree": tree,
+        "subject": message.splitlines()[0],
+        "paths": rendered_paths,
+        "file_count": len(rendered_paths),
+        "preflight": {
+            "expected_head_matched": True,
+            "staged_paths_exact": True,
+            "selected_worktree_clean": True,
+            "repository_state": "normal",
+            "mode": "staged_tracked_only",
+        },
+    }
 
 
 POWERSHELL_PARAMETER_POLICY: dict[str, dict[str, str]] = {
@@ -481,7 +1467,7 @@ $result | Out-String -Width 240
 
 
 def _validate_powershell_parameters(
-    command: str, parameters: dict[str, Any],
+    command: str, parameters: dict[str, Any], root: str,
 ) -> dict[str, Any]:
     policy = POWERSHELL_PARAMETER_POLICY[command]
     result: dict[str, Any] = {}
@@ -494,7 +1480,7 @@ def _validate_powershell_parameters(
         if kind == "path":
             if not isinstance(value, str):
                 raise PowerShellValidationError(f"{name} must be a string path")
-            result[name] = str(safe_path(value))
+            result[name] = str(safe_path(value, root))
         elif kind == "bool":
             if not isinstance(value, bool):
                 raise PowerShellValidationError(f"{name} must be a boolean")
@@ -537,6 +1523,7 @@ def run_powershell(
     parameters: dict[str, Any] | None = None,
     workdir: str = ".",
     timeout: int = 30,
+    root: str = "workspace",
 ) -> dict[str, Any]:
     """Run one allow-listed cmdlet from validated structured parameters."""
     if command not in POWERSHELL_PARAMETER_POLICY:
@@ -545,10 +1532,10 @@ def run_powershell(
         parameters = {}
     if not isinstance(parameters, dict):
         raise TypeError("parameters must be an object")
-    working_directory = safe_path(workdir)
+    working_directory = safe_path(workdir, root, "execute")
     if not working_directory.exists() or not working_directory.is_dir():
         raise ValueError(f"Working directory does not exist or is not a directory: {workdir}")
-    validated = _validate_powershell_parameters(command, parameters)
+    validated = _validate_powershell_parameters(command, parameters, root)
     payload = base64.b64encode(json.dumps(
         {"command": command, "parameters": validated}, ensure_ascii=False,
     ).encode("utf-8")).decode("ascii")
@@ -682,21 +1669,22 @@ def _apply_unified_hunks(original: str, patch: str, expected_path: str) -> str:
 @workspace_mutation
 def apply_patch(
     path: str, patch: str, expected_sha256: str | None = None,
+    root: str = "workspace",
 ) -> dict[str, Any]:
     """Atomically apply a single-file unified text diff inside the workspace."""
-    target = safe_path(path)
+    target = safe_path(path, root, "write")
     if not target.exists():
         raise ValueError(f"File does not exist: {path}")
     if not target.is_file():
         raise ValueError(f"Not a file: {path}")
-    _validate_expected_sha256(target, expected_sha256)
+    _validate_expected_sha256(target, expected_sha256, root)
     original = target.read_bytes().decode("utf-8")
-    updated = _apply_unified_hunks(original, patch, _relative_path(target))
+    updated = _apply_unified_hunks(original, patch, _relative_path(target, root))
     _atomic_write_text(target, updated)
     _remove_cached_bytecode(target)
     return {
         "status": "completed",
-        "path": _relative_path(target),
+        "path": _relative_path(target, root),
         "sha256": _file_sha256(target),
         "characters_before": len(original),
         "characters_after": len(updated),
@@ -704,17 +1692,186 @@ def apply_patch(
     }
 
 
-def apply_changeset(changes: list[dict[str, str]]) -> dict[str, Any]:
+def apply_changeset(
+    changes: list[dict[str, str]], root: str = "workspace",
+) -> dict[str, Any]:
     from changeset_manager import apply_changeset as execute
-    return execute(changes)
+    return execute(changes, root)
+
+
+def project_state_init(
+    project_path: str = ".",
+    project_name: str | None = None,
+    objective: str = "",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import init_project_state
+    return init_project_state(project_path, project_name, objective, root)
+
+
+def project_state_get(
+    project_path: str = ".", root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import get_project_state
+    return get_project_state(project_path, root)
+
+
+def project_state_update(
+    expected_revision: int,
+    project_path: str = ".",
+    objective: str | None = None,
+    lifecycle: str | None = None,
+    current_phase: str | None = None,
+    next_action: str | None = None,
+    blockers: list[str] | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import update_project_state
+    return update_project_state(
+        expected_revision, project_path, objective, lifecycle,
+        current_phase, next_action, blockers, root,
+    )
+
+
+def project_checkpoint(
+    label: str, summary: str, expected_revision: int,
+    project_path: str = ".", checks: list[str] | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import create_checkpoint
+    return create_checkpoint(label, summary, expected_revision, project_path, checks, root)
+
+
+def project_decision_record(
+    title: str, decision: str, rationale: str, expected_revision: int,
+    project_path: str = ".", root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import record_decision
+    return record_decision(title, decision, rationale, expected_revision, project_path, root)
+
+
+def project_decisions_get(
+    project_path: str = ".", max_chars: int = 20000, root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import get_decisions
+    return get_decisions(project_path, max_chars, root)
+
+
+def project_evidence_record(
+    kind: str, status: str, summary: str, source: str, expected_revision: int,
+    project_path: str = ".", details: str = "", artifact_sha256: str | None = None,
+    verification: VerificationSpec | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import record_evidence
+    return record_evidence(
+        kind, status, summary, source, expected_revision,
+        project_path, details, artifact_sha256, verification, root,
+    )
+
+
+def project_evidence_get(
+    project_path: str = ".", limit: int = 20,
+    kind: str | None = None, status: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from project_state import get_evidence
+    return get_evidence(project_path, limit, kind, status, root)
+
+
+def project_acceptance_set(
+    title: str,
+    checks: list[AcceptanceCheckRequest],
+    expected_state_revision: int,
+    expected_contract_revision: int = 0,
+    project_path: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from acceptance_contract import set_contract
+    return set_contract(
+        title, checks, expected_state_revision, expected_contract_revision,
+        project_path, root,
+    )
+
+
+def project_acceptance_get(
+    project_path: str = ".", root: str = "workspace",
+) -> dict[str, Any]:
+    from acceptance_contract import get_contract
+    return get_contract(project_path, root)
+
+
+def project_acceptance_evaluate(
+    bindings: list[AcceptanceBindingRequest],
+    expected_state_revision: int,
+    expected_contract_revision: int,
+    project_path: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from acceptance_contract import evaluate_contract
+    return evaluate_contract(
+        bindings, expected_state_revision, expected_contract_revision,
+        project_path, root,
+    )
+
+
+def project_acceptance_evaluations_get(
+    project_path: str = ".", limit: int = 20, root: str = "workspace",
+) -> dict[str, Any]:
+    from acceptance_contract import get_evaluations
+    return get_evaluations(project_path, limit, root)
+
+
+def project_verify_acceptance(
+    evaluation_id: str,
+    expected_evaluation_sha256: str,
+    expected_state_revision: int,
+    expected_contract_revision: int,
+    project_path: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    from independent_verifier import verify_acceptance
+    return verify_acceptance(
+        evaluation_id, expected_evaluation_sha256,
+        expected_state_revision, expected_contract_revision,
+        project_path, root,
+    )
+
+
+def project_verifications_get(
+    project_path: str = ".", limit: int = 20, root: str = "workspace",
+) -> dict[str, Any]:
+    from independent_verifier import get_verifications
+    return get_verifications(project_path, limit, root)
 
 
 LOCAL_TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "list_directory": list_directory,
     "read_text": read_text,
+    "extract_document_text": extract_document_text,
     "write_text": write_text,
     "replace_text": replace_text,
     "search_text": search_text,
+    "git_status": git_status,
+    "git_diff": git_diff,
+    "git_log": git_log,
+    "git_show": git_show,
+    "git_stage": git_stage,
+    "git_commit": git_commit,
+    "project_state_init": project_state_init,
+    "project_state_get": project_state_get,
+    "project_state_update": project_state_update,
+    "project_checkpoint": project_checkpoint,
+    "project_decision_record": project_decision_record,
+    "project_decisions_get": project_decisions_get,
+    "project_evidence_record": project_evidence_record,
+    "project_evidence_get": project_evidence_get,
+    "project_acceptance_set": project_acceptance_set,
+    "project_acceptance_get": project_acceptance_get,
+    "project_acceptance_evaluate": project_acceptance_evaluate,
+    "project_acceptance_evaluations_get": project_acceptance_evaluations_get,
+    "project_verify_acceptance": project_verify_acceptance,
+    "project_verifications_get": project_verifications_get,
     "run_process": run_process,
     "run_powershell": run_powershell,
     "apply_patch": apply_patch,

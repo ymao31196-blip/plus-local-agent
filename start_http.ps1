@@ -5,7 +5,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$python = Join-Path $env:USERPROFILE "miniconda3\envs\plus-local-agent\python.exe"
+if ([string]::IsNullOrWhiteSpace($env:PLA_PYTHON)) {
+    $python = Join-Path $env:USERPROFILE "miniconda3\envs\plus-local-agent\python.exe"
+} else {
+    $python = $env:PLA_PYTHON
+}
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "Conda environment interpreter not found: $python"
@@ -18,6 +22,10 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($DebugE2E) {
     $env:CHATGPT_E2E_DEBUG = "1"
+}
+
+if ([string]::IsNullOrWhiteSpace($env:PLA_EXTERNAL_PROVIDERS)) {
+    $env:PLA_EXTERNAL_PROVIDERS = "*"
 }
 
 Set-Location -LiteralPath $projectRoot
