@@ -33,7 +33,7 @@ capabilities without changing the production decision boundary:
 - [x] Main environment and all five Python provider environments pass
       `pip check`.
 - [x] Project/test Python source compiles: **89 files**, **0 errors**.
-- [x] Public MCP schema count: **53 tools**.
+- [x] Public MCP schema count after controlled release operations: **55 tools**.
 - [x] Capability Registry count: **50 capabilities**.
 - [x] Capability Registry includes **5 core transaction capabilities** and
       **5 runtime provider hot-plug capabilities**.
@@ -48,8 +48,13 @@ capabilities without changing the production decision boundary:
 - [x] Structured Git staging supports explicit modified files and non-ignored
       new regular files while preserving SHA-256, expected-HEAD, clean-index,
       exact-path, raw-byte, and compare-and-swap constraints.
+- [x] Controlled release Git operations are implemented and locally E2E-tested:
+      `git_tag` creates only a new lightweight tag at the exact clean expected
+      HEAD; `git_push` requires `confirmation="PUSH"`, forbids force, pushes
+      branch + explicit tags atomically to an existing named remote, and verifies
+      resulting remote refs.
 - [x] Final v1.1.0 full `pytest -q` regression passes after hot-plug integration:
-      **407 passed in 86.19 s**.
+      **412 passed in 86.50 s**.
 - [x] Cold stop/start E2E passes after hot-plug integration. `stop_all.ps1`
       stopped Tunnel PID 3104, HTTP PID 25460, and Broker PID 24104;
       `start_all.ps1` restored Tunnel PID 884, HTTP PID 25640, and Broker PID

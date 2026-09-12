@@ -156,7 +156,7 @@ accepts only regular tracked files or non-ignored new files, bypasses clean filt
 raw bytes, and atomically replaces the index. `git_commit` requires the staged path set to
 match exactly and updates the branch with an expected-HEAD compare-and-swap.
 
-No automatic push is performed.
+Release operations are also controlled. `git_tag` atomically creates a lightweight tag only at the exact clean expected HEAD and never overwrites an existing tag. `git_push` accepts only an existing named remote, the current named branch, the exact expected HEAD, and explicit local tags that point to that HEAD; force push is unavailable, pre-push hooks are skipped for determinism, the push is atomic, and `confirmation="PUSH"` is required. Remote branch/tag refs are read back and verified after success.
 
 ## Installation
 

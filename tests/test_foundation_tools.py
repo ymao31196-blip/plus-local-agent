@@ -321,6 +321,97 @@ def test_structured_git_commit_accepts_exact_newly_added_file(workspace):
     assert "+new" in shown["patch"]
 
 
+
+def test_controlled_git_tag_creates_exact_lightweight_tag(workspace):
+    git = _init_git_repo(workspace)
+    head = local_tools.git_status()["head"]
+
+    result = local_tools.git_tag("v1.2.3", head)
+
+    assert result["status"] == "completed"
+    assert result["head"] == head
+    assert result["tag"] == "v1.2.3"
+    assert result["tag_commit"] == head
+    resolved = subprocess.run(
+        [git, "rev-parse", "refs/tags/v1.2.3^{commit}"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert resolved == head
+
+    with pytest.raises(ValueError, match="already exists"):
+        local_tools.git_tag("v1.2.3", head)
+
+
+def test_controlled_git_tag_requires_clean_repo(workspace):
+    _init_git_repo(workspace)
+    head = local_tools.git_status()["head"]
+    (workspace / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="clean worktree"):
+        local_tools.git_tag("v1.2.3", head)
+
+
+def test_controlled_git_push_branch_and_tag_to_configured_remote(workspace):
+    git = _init_git_repo(workspace)
+    head = local_tools.git_status()["head"]
+    branch = subprocess.run(
+        [git, "symbolic-ref", "--short", "HEAD"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    remote = workspace.parent / "remote.git"
+    subprocess.run([git, "init", "--bare", "-q", str(remote)], check=True)
+    subprocess.run(
+        [git, "remote", "add", "origin", str(remote)],
+        cwd=workspace,
+        check=True,
+    )
+
+    local_tools.git_tag("v1.2.3", head)
+
+    with pytest.raises(PermissionError, match="confirmation='PUSH'"):
+        local_tools.git_push(
+            "origin", branch, head, ["v1.2.3"]
+        )
+
+    result = local_tools.git_push(
+        "origin",
+        branch,
+        head,
+        ["v1.2.3"],
+        confirmation="PUSH",
+    )
+
+    assert result["status"] == "completed"
+    assert result["head"] == head
+    assert result["branch"] == branch
+    assert result["tags"] == ["v1.2.3"]
+    assert result["preflight"]["atomic_push"] is True
+    assert result["preflight"]["force_disabled"] is True
+    assert result["preflight"]["remote_refs_verified"] is True
+
+    remote_branch = subprocess.run(
+        [git, "--git-dir", str(remote), "rev-parse", f"refs/heads/{branch}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    remote_tag = subprocess.run(
+        [git, "--git-dir", str(remote), "rev-parse", "refs/tags/v1.2.3^{commit}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert remote_branch == head
+    assert remote_tag == head
+
+
 def test_structured_git_tools_are_batchable_read_only(workspace):
     _init_git_repo(workspace)
     (workspace / "tracked.txt").write_text("changed\n", encoding="utf-8")

@@ -22,6 +22,7 @@ All notable PLA release changes are recorded here.
   restored, or removed without restarting PLA HTTP.
 - Concurrent external provider discovery.
 - Structured Git staging support for explicit non-ignored new regular files.
+- Controlled release Git operations: atomic lightweight `git_tag` and confirmation-gated, non-force, atomic `git_push` with remote ref verification.
 
 ### Changed
 

@@ -241,7 +241,7 @@ def test_wait_timeout_returns_current_state(store):
     finish(store, task_id)
 
 
-@pytest.mark.parametrize("tool", ["cancel_task", "apply_changeset", "git_stage", "git_commit", "project_state_init", "project_state_update", "project_checkpoint", "project_decision_record", "project_evidence_record"])
+@pytest.mark.parametrize("tool", ["cancel_task", "apply_changeset", "git_stage", "git_commit", "git_tag", "git_push", "project_state_init", "project_state_update", "project_checkpoint", "project_decision_record", "project_evidence_record"])
 def test_control_and_transaction_excluded_from_batches(tool):
     result = execute_actions_request([{"tool": tool, "arguments": {}}])
     assert result["results"][0]["error"]["type"] == "ToolNotAllowedInActions"
@@ -255,6 +255,10 @@ def test_control_and_transaction_excluded_from_batches(tool):
     assert "git_commit" in EXECUTABLE_LOCAL_TOOLS
     assert "git_commit" not in ACTION_LOCAL_TOOLS
     assert "git_commit" in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
+    for name in ("git_tag", "git_push"):
+        assert name in EXECUTABLE_LOCAL_TOOLS
+        assert name not in ACTION_LOCAL_TOOLS
+        assert name in {item["name"] for item in INTERNAL_TOOL_SCHEMAS}
     for name in ("project_state_init", "project_state_update", "project_checkpoint"):
         assert name in EXECUTABLE_LOCAL_TOOLS
         assert name not in ACTION_LOCAL_TOOLS

@@ -37,6 +37,8 @@ from local_tools import (
     git_show as internal_git_show,
     git_stage as internal_git_stage,
     git_status as internal_git_status,
+    git_tag as internal_git_tag,
+    git_push as internal_git_push,
     project_acceptance_evaluate as internal_project_acceptance_evaluate,
     project_acceptance_evaluations_get as internal_project_acceptance_evaluations_get,
     project_acceptance_get as internal_project_acceptance_get,
@@ -430,6 +432,33 @@ def git_commit(
 ) -> dict:
     """仅提交显式且已精确staged的普通文件新增/修改；要求expected_head匹配，不自动stage、不运行hooks、不amend、不push。"""
     return internal_git_commit(message, paths, expected_head, cwd, root)
+
+
+@mcp.tool
+def git_tag(
+    tag: str,
+    expected_head: str,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict:
+    """在clean仓库的精确expected HEAD上原子创建一个lightweight tag；拒绝覆盖已有tag。"""
+    return internal_git_tag(tag, expected_head, cwd, root)
+
+
+@mcp.tool
+def git_push(
+    remote: str,
+    branch: str,
+    expected_head: str,
+    tags: list[str] | None = None,
+    confirmation: Literal["PUSH"] | None = None,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict:
+    """原子推送当前精确branch与显式tags到已配置remote；禁force并要求confirmation='PUSH'。"""
+    return internal_git_push(
+        remote, branch, expected_head, tags, confirmation, cwd, root
+    )
 
 
 @mcp.tool

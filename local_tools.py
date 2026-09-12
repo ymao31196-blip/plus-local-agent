@@ -1434,6 +1434,288 @@ def git_commit(
     }
 
 
+
+def _validate_git_ref_component(value: str, label: str, prefix: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 128:
+        raise ValueError(f"{label} must be a non-empty string up to 128 characters")
+    if value.startswith("-") or any(ch in value for ch in ("\x00", "\n", "\r")):
+        raise ValueError(f"{label} is not allowed")
+    probe = f"{prefix}/{value}"
+    return probe
+
+
+def _git_release_preflight(
+    working_directory: Path,
+    expected_head: str,
+) -> tuple[str, str]:
+    if not isinstance(expected_head, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40,64}", expected_head
+    ):
+        raise ValueError(
+            "expected_head must be a full 40–64 character hexadecimal commit id"
+        )
+
+    branch_result = _git_run(
+        working_directory,
+        ["symbolic-ref", "--quiet", "HEAD"],
+        allow_failure=True,
+    )
+    if branch_result.returncode != 0:
+        raise ValueError("Release Git operations require a named branch")
+    branch_ref = branch_result.stdout.strip()
+    if not branch_ref.startswith("refs/heads/"):
+        raise ValueError("HEAD does not point to a local branch")
+    branch = branch_ref.removeprefix("refs/heads/")
+
+    current_head = _git_resolve_commit(working_directory, "HEAD")
+    if current_head != expected_head.lower():
+        raise ValueError(
+            f"HEAD changed since inspection: expected {expected_head.lower()}, current {current_head}"
+        )
+
+    status = _git_run(
+        working_directory,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
+    )
+    if status.stdout:
+        raise ValueError(
+            "Release Git operations require a clean worktree and clean index"
+        )
+
+    git_dir = Path(
+        _git_run(
+            working_directory,
+            ["rev-parse", "--absolute-git-dir"],
+        ).stdout.strip()
+    ).resolve()
+    for marker in (
+        "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG",
+        "rebase-merge", "rebase-apply", "sequencer",
+    ):
+        if (git_dir / marker).exists():
+            raise ValueError(
+                f"Release Git operations are disabled while repository state {marker} exists"
+            )
+
+    return current_head, branch
+
+
+@workspace_mutation
+def git_tag(
+    tag: str,
+    expected_head: str,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Atomically create one lightweight tag at the exact clean expected HEAD."""
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    current_head, branch = _git_release_preflight(
+        working_directory,
+        expected_head,
+    )
+
+    tag_ref = _validate_git_ref_component(tag, "tag", "refs/tags")
+    check = _git_run(
+        working_directory,
+        ["check-ref-format", tag_ref],
+        allow_failure=True,
+    )
+    if check.returncode != 0:
+        raise ValueError(f"Invalid Git tag name: {tag}")
+
+    exists = _git_run(
+        working_directory,
+        ["show-ref", "--verify", "--quiet", tag_ref],
+        allow_failure=True,
+    )
+    if exists.returncode == 0:
+        raise ValueError(f"Git tag already exists: {tag}")
+
+    zero_oid = "0" * len(current_head)
+    update = _git_run(
+        working_directory,
+        ["update-ref", "-m", "PLA controlled release tag", tag_ref, current_head, zero_oid],
+        allow_failure=True,
+    )
+    if update.returncode != 0:
+        message = (update.stderr or update.stdout).strip()
+        raise ValueError(
+            (message or f"Failed to create Git tag: {tag}")[:MAX_TEXT_CHARACTERS]
+        )
+
+    resolved = _git_resolve_commit(working_directory, tag_ref)
+    if resolved != current_head:
+        raise RuntimeError("Controlled Git tag verification failed")
+
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "branch": branch,
+        "head": current_head,
+        "tag": tag,
+        "tag_ref": tag_ref,
+        "tag_commit": resolved,
+        "preflight": {
+            "expected_head_matched": True,
+            "worktree_clean": True,
+            "index_clean": True,
+            "repository_state": "normal",
+            "existing_tag_rejected": True,
+            "mode": "lightweight_atomic_ref",
+        },
+    }
+
+
+@workspace_mutation
+def git_push(
+    remote: str,
+    branch: str,
+    expected_head: str,
+    tags: list[str] | None = None,
+    confirmation: str | None = None,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Atomically push the exact current branch and explicit lightweight tags."""
+    if confirmation != "PUSH":
+        raise PermissionError("git_push requires confirmation='PUSH'")
+    if (
+        not isinstance(remote, str)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", remote)
+    ):
+        raise ValueError("remote must be an existing simple Git remote name")
+    if not isinstance(tags, list):
+        tags = [] if tags is None else tags
+    if len(tags) > 8 or any(not isinstance(tag, str) or not tag for tag in tags):
+        raise ValueError("tags must contain at most 8 explicit non-empty tag names")
+    if len(tags) != len(set(tags)):
+        raise ValueError("tags must not contain duplicates")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    current_head, current_branch = _git_release_preflight(
+        working_directory,
+        expected_head,
+    )
+    if branch != current_branch:
+        raise ValueError(
+            f"branch must equal the current named branch: {current_branch}"
+        )
+
+    branch_ref = _validate_git_ref_component(
+        branch, "branch", "refs/heads"
+    )
+    branch_check = _git_run(
+        working_directory,
+        ["check-ref-format", branch_ref],
+        allow_failure=True,
+    )
+    if branch_check.returncode != 0:
+        raise ValueError(f"Invalid Git branch name: {branch}")
+
+    remote_check = _git_run(
+        working_directory,
+        ["remote", "get-url", "--all", remote],
+        allow_failure=True,
+    )
+    if remote_check.returncode != 0 or not remote_check.stdout.strip():
+        raise ValueError(f"Unknown or unconfigured Git remote: {remote}")
+
+    tag_refs: list[str] = []
+    for tag in tags:
+        tag_ref = _validate_git_ref_component(tag, "tag", "refs/tags")
+        check = _git_run(
+            working_directory,
+            ["check-ref-format", tag_ref],
+            allow_failure=True,
+        )
+        if check.returncode != 0:
+            raise ValueError(f"Invalid Git tag name: {tag}")
+        resolved = _git_resolve_commit(working_directory, tag_ref)
+        if resolved != current_head:
+            raise ValueError(
+                f"Release tag {tag} does not point to expected HEAD {current_head}"
+            )
+        tag_refs.append(tag_ref)
+
+    refspecs = [f"{branch_ref}:{branch_ref}"] + [
+        f"{tag_ref}:{tag_ref}" for tag_ref in tag_refs
+    ]
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GCM_INTERACTIVE"] = "Never"
+    push = _git_run(
+        working_directory,
+        ["push", "--porcelain", "--atomic", "--no-verify", remote, *refspecs],
+        timeout=60,
+        allow_failure=True,
+        env=env,
+    )
+    if push.returncode != 0:
+        message = (push.stderr or push.stdout).strip()
+        raise ValueError(
+            (message or f"Git push failed with code {push.returncode}")[
+                :MAX_TEXT_CHARACTERS
+            ]
+        )
+
+    verify_refs = [branch_ref, *tag_refs]
+    verification = _git_run(
+        working_directory,
+        ["ls-remote", remote, *verify_refs],
+        timeout=60,
+        env=env,
+    )
+    remote_refs: dict[str, str] = {}
+    for line in verification.stdout.splitlines():
+        if "\t" not in line:
+            continue
+        oid, ref = line.split("\t", 1)
+        remote_refs[ref] = oid.lower()
+
+    missing_or_wrong = [
+        ref for ref in verify_refs
+        if remote_refs.get(ref) != current_head
+    ]
+    if missing_or_wrong:
+        raise RuntimeError(
+            "Remote verification failed for refs: "
+            + ", ".join(missing_or_wrong)
+        )
+
+    stdout = truncate_text(push.stdout)
+    stderr = truncate_text(push.stderr)
+    return {
+        "status": "completed",
+        "repo_root": _relative_path(repo_root, root),
+        "cwd": _relative_path(working_directory, root),
+        "remote": remote,
+        "branch": branch,
+        "head": current_head,
+        "tags": list(tags),
+        "verified_remote_refs": {
+            ref: remote_refs[ref] for ref in verify_refs
+        },
+        "stdout": stdout["content"],
+        "stderr": stderr["content"],
+        "stdout_truncated": stdout["truncated"],
+        "stderr_truncated": stderr["truncated"],
+        "preflight": {
+            "confirmation": "PUSH",
+            "expected_head_matched": True,
+            "current_branch_matched": True,
+            "worktree_clean": True,
+            "index_clean": True,
+            "repository_state": "normal",
+            "configured_remote_only": True,
+            "force_disabled": True,
+            "hooks_disabled": True,
+            "atomic_push": True,
+            "remote_refs_verified": True,
+        },
+    }
+
+
 POWERSHELL_PARAMETER_POLICY: dict[str, dict[str, str]] = {
     "Get-ChildItem": {
         "LiteralPath": "path", "Recurse": "bool", "File": "bool",
@@ -1875,6 +2157,8 @@ LOCAL_TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "git_show": git_show,
     "git_stage": git_stage,
     "git_commit": git_commit,
+    "git_tag": git_tag,
+    "git_push": git_push,
     "project_state_init": project_state_init,
     "project_state_get": project_state_get,
     "project_state_update": project_state_update,

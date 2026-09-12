@@ -38,7 +38,7 @@ def test_normalize_mcp_tools_from_live_server():
         "capability_search", "capability_describe", "capability_invoke", "provider_doctor",
         "artifact_verify", "artifact_gc",
         "read_text", "extract_document_text", "replace_text", "search_text", "run_process",
-        "run_powershell", "apply_patch", "git_status", "git_diff", "git_log", "git_show", "git_stage", "git_commit",
+        "run_powershell", "apply_patch", "git_status", "git_diff", "git_log", "git_show", "git_stage", "git_commit", "git_tag", "git_push",
         "project_state_init", "project_state_get", "project_state_update", "project_checkpoint",
         "project_decision_record", "project_decisions_get", "project_evidence_record", "project_evidence_get",
         "project_acceptance_set", "project_acceptance_get", "project_acceptance_evaluate", "project_acceptance_evaluations_get",
@@ -84,7 +84,7 @@ def test_normalize_mcp_tools_from_live_server():
     for name in (
         "list_directory", "read_text", "extract_document_text", "write_text", "replace_text",
         "search_text", "run_process", "run_powershell", "apply_patch",
-        "apply_changeset", "git_status", "git_diff", "git_log", "git_show", "git_stage", "git_commit",
+        "apply_changeset", "git_status", "git_diff", "git_log", "git_show", "git_stage", "git_commit", "git_tag", "git_push",
         "project_state_init", "project_state_get", "project_state_update", "project_checkpoint",
         "project_decision_record", "project_decisions_get", "project_evidence_record", "project_evidence_get",
         "project_acceptance_set", "project_acceptance_get", "project_acceptance_evaluate", "project_acceptance_evaluations_get",
@@ -101,6 +101,17 @@ def test_normalize_mcp_tools_from_live_server():
     commit_schema = tools_by_name["git_commit"]["input_schema"]
     assert set(commit_schema["required"]) == {"message", "paths", "expected_head"}
     assert set(commit_schema["properties"]) == {"message", "paths", "expected_head", "cwd", "root"}
+    tag_schema = tools_by_name["git_tag"]["input_schema"]
+    assert set(tag_schema["required"]) == {"tag", "expected_head"}
+    assert set(tag_schema["properties"]) == {"tag", "expected_head", "cwd", "root"}
+    push_schema = tools_by_name["git_push"]["input_schema"]
+    assert set(push_schema["required"]) == {"remote", "branch", "expected_head"}
+    assert set(push_schema["properties"]) == {
+        "remote", "branch", "expected_head", "tags", "confirmation", "cwd", "root"
+    }
+    confirmation_schema = push_schema["properties"]["confirmation"]
+    assert "PUSH" in str(confirmation_schema)
+    assert confirmation_schema["default"] is None
     state_update_schema = tools_by_name["project_state_update"]["input_schema"]
     assert state_update_schema["required"] == ["expected_revision"]
     assert state_update_schema["properties"]["expected_revision"]["minimum"] == 1

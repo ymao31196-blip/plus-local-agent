@@ -162,7 +162,9 @@ The safety properties remain:
 - raw bytes are hashed without clean filters;
 - staged paths must equal the requested set exactly;
 - structured commit uses compare-and-swap branch update;
-- no automatic push.
+- controlled `git_tag` creates only a new lightweight tag at the exact clean expected HEAD;
+- controlled `git_push` requires `confirmation="PUSH"`, an existing named remote, the current branch, exact expected HEAD, and explicit matching tags;
+- force push is unavailable; branch + tags are pushed atomically and verified with `ls-remote`.
 
 ## Security boundary
 
