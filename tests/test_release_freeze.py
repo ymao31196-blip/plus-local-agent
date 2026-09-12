@@ -10,7 +10,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_release_version_and_provider_catalog():
     assert server.mcp.version == "1.0.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
-    assert set(manifests) == {"docx", "markitdown", "pdf"}
+    assert set(manifests) == {
+        "docx",
+        "markitdown",
+        "pdf",
+        "software-migration",
+        "winget",
+        "windows-management",
+    }
+    assert manifests["winget"].runtime_kind == "executable_stdio"
+    assert manifests["windows-management"].runtime_kind == "isolated_python_stdio"
+    assert manifests["software-migration"].runtime_kind == "isolated_python_stdio"
 
 
 def test_release_entrypoint_documents_exist():

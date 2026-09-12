@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from mcp_client_manager import MCPClientManager
-from provider_manifest import ProviderManifest, load_provider_manifests
+from provider_manifest import (
+    ISOLATED_PYTHON_STDIO,
+    ProviderManifest,
+    load_provider_manifests,
+)
 
 
 _EXACT_PIN = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s;]+)$")
@@ -84,10 +88,45 @@ def _manifest_static_checks(
     manifest: ProviderManifest,
     project_root: Path,
 ) -> dict[str, Any]:
+    common = {
+        "manifest": str(manifest.path),
+        "manifest_exists": manifest.path.is_file(),
+        "runtime_kind": manifest.runtime_kind,
+        "command": str(manifest.command_path),
+        "command_exists": manifest.command_path.is_file(),
+        "cwd": str(manifest.cwd),
+        "cwd_exists": manifest.cwd.is_dir(),
+        "mode": manifest.mode,
+        "autostart": manifest.autostart,
+        "tool_allowlist": (
+            list(manifest.tool_allowlist)
+            if manifest.tool_allowlist is not None
+            else None
+        ),
+    }
+
+    if manifest.runtime_kind != ISOLATED_PYTHON_STDIO:
+        return {
+            **common,
+            "runtime_ready": manifest.command_path.is_file(),
+            "spec": None,
+            "spec_exists": None,
+            "python": None,
+            "python_exists": None,
+            "expected_versions": {},
+            "installed_versions": {},
+            "version_drift": {},
+            "version_drift_detected": False,
+            "unverifiable_spec_lines": [],
+            "version_probe_error": None,
+        }
+
     spec_path = project_root / "provider_specs" / f"{manifest.provider_id}.txt"
     expected, unverifiable = _read_expected_versions(spec_path)
+    python_path = manifest.python_path
+    assert python_path is not None
     installed, version_probe_error = _installed_versions(
-        manifest.python_path,
+        python_path,
         sorted(expected),
     )
     drift = {
@@ -101,21 +140,16 @@ def _manifest_static_checks(
     drift_detected = any(not item["match"] for item in drift.values())
 
     return {
-        "manifest": str(manifest.path),
-        "manifest_exists": manifest.path.is_file(),
+        **common,
+        "runtime_ready": (
+            spec_path.is_file()
+            and python_path.is_file()
+            and manifest.command_path.is_file()
+        ),
         "spec": str(spec_path),
         "spec_exists": spec_path.is_file(),
-        "python": str(manifest.python_path),
-        "python_exists": manifest.python_path.is_file(),
-        "cwd": str(manifest.cwd),
-        "cwd_exists": manifest.cwd.is_dir(),
-        "mode": manifest.mode,
-        "autostart": manifest.autostart,
-        "tool_allowlist": (
-            list(manifest.tool_allowlist)
-            if manifest.tool_allowlist is not None
-            else None
-        ),
+        "python": str(python_path),
+        "python_exists": python_path.is_file(),
         "expected_versions": expected,
         "installed_versions": installed,
         "version_drift": drift,
@@ -123,7 +157,6 @@ def _manifest_static_checks(
         "unverifiable_spec_lines": unverifiable,
         "version_probe_error": version_probe_error,
     }
-
 
 async def provider_doctor(
     manager: MCPClientManager,
@@ -151,8 +184,8 @@ async def provider_doctor(
         if manifest is None:
             static = {
                 "manifest_exists": False,
-                "spec_exists": False,
-                "python_exists": False,
+                "runtime_ready": False,
+                "command_exists": False,
                 "cwd_exists": False,
                 "version_drift_detected": True,
                 "version_probe_error": "configured provider has no manifest",
@@ -185,8 +218,8 @@ async def provider_doctor(
             bool(static.get(key))
             for key in (
                 "manifest_exists",
-                "spec_exists",
-                "python_exists",
+                "runtime_ready",
+                "command_exists",
                 "cwd_exists",
             )
         ) and not bool(static.get("version_drift_detected")) and not static.get(

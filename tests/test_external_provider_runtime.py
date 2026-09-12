@@ -14,6 +14,7 @@ def write_manifest(
     *,
     autostart: bool = True,
     tool_name: str = "convert",
+    runtime: dict | None = None,
 ):
     manifest_dir = root / "provider_manifests"
     manifest_dir.mkdir(parents=True, exist_ok=True)
@@ -22,7 +23,7 @@ def write_manifest(
         "id": provider_id,
         "autostart": autostart,
         "mode": "legacy",
-        "runtime": {
+        "runtime": runtime or {
             "kind": "isolated_python_stdio",
             "python": f".provider_envs/{provider_id}/Scripts/python.exe",
             "args": ["-m", f"{provider_id}_server"],
@@ -110,3 +111,27 @@ def test_manifest_tool_policy_is_forwarded_to_manager(tmp_path, monkeypatch):
         "inputs": ["uri"],
         "outputs": [],
     }
+
+def test_executable_stdio_provider_is_registered_without_python_env(tmp_path, monkeypatch):
+    executable = tmp_path / "bin" / "system-mcp.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"fake-executable")
+    write_manifest(
+        tmp_path,
+        "system",
+        runtime={
+            "kind": "executable_stdio",
+            "command": "bin/system-mcp.exe",
+            "args": ["--stdio"],
+            "cwd": ".",
+        },
+    )
+    monkeypatch.setenv("PLA_EXTERNAL_PROVIDERS", "system")
+    manager = MCPClientManager(CapabilityRegistry())
+
+    configured = configure_external_providers(manager, tmp_path)
+
+    assert configured["system"]["runtime_kind"] == "executable_stdio"
+    assert configured["system"]["command"] == str(executable.resolve())
+    assert configured["system"]["command_exists"] is True
+    assert "python" not in configured["system"]

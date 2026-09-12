@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "id": "software-migration",
+  "autostart": true,
+  "mode": "auto",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/software-migration/Scripts/python.exe",
+    "args": [
+      "providers/software_migration_server.py"
+    ],
+    "cwd": "."
+  },
+  "tool_allowlist": [
+    "assess_software_migration",
+    "preview_winget_reinstall",
+    "prepare_migration",
+    "execute_registered_uninstaller",
+    "elevation_broker_status",
+    "elevated_uninstall_status",
+    "execute_winget_uninstall",
+    "execute_elevated_winget_install",
+    "elevated_install_status",
+    "execute_winget_install",
+    "verify_migration"
+  ],
+  "tool_overrides": {
+    "assess_software_migration": {
+      "title": "Assess Software Migration",
+      "description": "Assess an installed Windows application for migration using uninstall-registry metadata. Read-only; performs no move, uninstall, install, or junction.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "software",
+        "migration",
+        "assessment"
+      ]
+    },
+    "preview_winget_reinstall": {
+      "title": "Preview WinGet Reinstall",
+      "description": "Build a structured WinGet install --location preview for an exact package identifier. Read-only; does not execute WinGet.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "winget",
+        "software",
+        "migration",
+        "preview"
+      ]
+    },
+    "prepare_migration": {
+      "title": "Prepare Software Migration",
+      "description": "Build a controlled migration plan with a registry snapshot, orchestration steps, and rollback guidance. Read-only; performs no uninstall or install.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "software",
+        "migration",
+        "plan"
+      ]
+    },
+    "execute_winget_install": {
+      "title": "Execute WinGet Install",
+      "description": "Execute a reviewed WinGet install, optionally with --location, after migration preconditions are satisfied.",
+      "risk_level": "privileged",
+      "requires_confirmation": true,
+      "requires_transaction": true,
+      "tags": [
+        "windows",
+        "winget",
+        "software",
+        "migration",
+        "install"
+      ]
+    },
+    "verify_migration": {
+      "title": "Verify Software Migration",
+      "description": "Verify the installed application's registry location against the requested migration target.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "software",
+        "migration",
+        "verify"
+      ]
+    },
+    "execute_winget_uninstall": {
+      "title": "Execute WinGet Uninstall",
+      "description": "Execute an exact WinGet uninstall with silent/noninteractive flags and verify the uninstall registry entry is gone.",
+      "risk_level": "destructive",
+      "requires_confirmation": true,
+      "requires_transaction": true,
+      "tags": [
+        "windows",
+        "winget",
+        "software",
+        "migration",
+        "uninstall"
+      ]
+    },
+    "execute_registered_uninstaller": {
+      "title": "Execute Registered Uninstaller",
+      "description": "Execute the exact uninstaller registered by the selected software with explicit additional arguments; verify the uninstall registry entry disappears.",
+      "risk_level": "destructive",
+      "requires_confirmation": true,
+      "requires_transaction": true,
+      "tags": [
+        "windows",
+        "software",
+        "migration",
+        "uninstall",
+        "registered"
+      ]
+    },
+    "elevated_uninstall_status": {
+      "title": "Elevated Uninstall Status",
+      "description": "Read the worker/UAC status and uninstall-registry result for a previously launched elevated registered uninstaller.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "software",
+        "migration",
+        "uninstall",
+        "elevation",
+        "status"
+      ]
+    },
+    "elevation_broker_status": {
+      "title": "Elevation Broker Status",
+      "description": "Read liveness, heartbeat, session, window-station and desktop context for the Interactive Elevation Broker.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "software",
+        "migration",
+        "elevation",
+        "broker",
+        "status"
+      ]
+    },
+    "execute_elevated_winget_install": {
+      "title": "Execute Elevated WinGet Install",
+      "description": "Queue an exact reviewed WinGet install with --location through the Interactive Elevation Broker.",
+      "risk_level": "privileged",
+      "requires_confirmation": true,
+      "requires_transaction": true,
+      "tags": [
+        "windows",
+        "winget",
+        "software",
+        "migration",
+        "install",
+        "elevation"
+      ]
+    },
+    "elevated_install_status": {
+      "title": "Elevated Install Status",
+      "description": "Read and semantically verify a broker-mediated WinGet install against the requested target directory.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "winget",
+        "software",
+        "migration",
+        "install",
+        "elevation",
+        "status"
+      ]
+    }
+  }
+}

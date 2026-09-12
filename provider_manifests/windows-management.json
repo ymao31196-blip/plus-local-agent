@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "id": "windows-management",
+  "autostart": true,
+  "mode": "legacy",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/windows-management/Scripts/python.exe",
+    "args": [
+      "-m",
+      "windows_mcp_server.server"
+    ],
+    "cwd": "."
+  },
+  "tool_allowlist": [
+    "get_cpu_usage",
+    "get_gpu_usage",
+    "get_memory_usage",
+    "get_disk_usage",
+    "get_top_processes",
+    "list_installed_software",
+    "analyze_directory_space",
+    "get_system_info",
+    "get_hardware_info",
+    "search_process_by_name",
+    "list_startup_apps",
+    "list_services",
+    "get_gpu_details",
+    "get_process_details",
+    "get_process_tree",
+    "get_listening_ports",
+    "get_windows_update_status",
+    "get_security_status",
+    "list_env_vars",
+    "get_smart_disk_health",
+    "get_volume_health",
+    "find_uninstall_entries",
+    "find_process_locking_file",
+    "uninstall_software"
+  ],
+  "tool_overrides": {
+    "get_cpu_usage": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_gpu_usage": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_memory_usage": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_disk_usage": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_top_processes": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "list_installed_software": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "analyze_directory_space": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_system_info": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_hardware_info": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "search_process_by_name": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "list_startup_apps": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "list_services": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_gpu_details": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_process_details": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_process_tree": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_listening_ports": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_windows_update_status": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_security_status": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "list_env_vars": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_smart_disk_health": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "get_volume_health": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "find_uninstall_entries": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "observation"
+      ]
+    },
+    "find_process_locking_file": {
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "system",
+        "software",
+        "migration",
+        "observation"
+      ]
+    },
+    "uninstall_software": {
+      "title": "Uninstall Software",
+      "description": "Preview or execute a matching installed software uninstaller. Real uninstall requires explicit PLA invocation confirmation.",
+      "risk_level": "destructive",
+      "requires_confirmation": true,
+      "requires_transaction": true,
+      "tags": [
+        "windows",
+        "software",
+        "uninstall",
+        "migration"
+      ]
+    }
+  }
+}

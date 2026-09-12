@@ -18,3 +18,10 @@ Current providers:
 - `markitdown`: Microsoft MarkItDown MCP, pinned to the legacy MCP SDK it requires.
 - `docx`: DOCX MCP Server, pinned to MCP 1.30.0 because version 0.7.4 still imports the MCP 1.x FastMCP API.
 - `pdf`: PDF MCP Server 0.1.2, isolated on FastMCP 4 / MCP 2 and restricted to the reviewed `add_text_watermark_direct` capability.
+- `windows-management`: Windows Management MCP Server 0.3.1, pinned to MCP
+  1.30.0 / FastMCP 3.4.7 because the upstream 0.3.1 server still imports the
+  MCP 1.x `mcp.server.fastmcp` API; only a reviewed read-only observation
+  allowlist is exposed by PLA.
+- `software-migration`: PLA's migration-specific provider on FastMCP 4 / MCP 2.
+  Its first surface is intentionally read-only: registry-based migration
+  assessment plus a non-executing WinGet `--location` reinstall preview.

@@ -166,7 +166,7 @@ def test_structured_git_stage_then_commit(workspace):
     assert staged["status"] == "completed"
     assert staged["head"] == before
     assert staged["paths"] == ["tracked.txt"]
-    assert staged["preflight"]["mode"] == "raw_bytes_tracked_only"
+    assert staged["preflight"]["mode"] == "raw_bytes_explicit_files"
     status = local_tools.git_status()
     tracked = {item["path"]: item for item in status["files"]}["tracked.txt"]
     assert tracked["index_status"] == "M"
@@ -202,15 +202,56 @@ def test_structured_git_stage_rejects_existing_staged_changes(workspace):
         )
 
 
-def test_structured_git_stage_rejects_untracked_file(workspace):
+def test_structured_git_stage_and_commit_new_file(workspace):
     _init_git_repo(workspace)
     before = local_tools.git_status()["head"]
     (workspace / "new.txt").write_text("new\n", encoding="utf-8")
     sha = local_tools.read_text("new.txt")["sha256"]
 
-    with pytest.raises(ValueError, match="already tracked"):
+    staged = local_tools.git_stage(
+        [{"path": "new.txt", "expected_sha256": sha}], before
+    )
+
+    assert staged["status"] == "completed"
+    assert staged["paths"] == ["new.txt"]
+    assert staged["preflight"]["new_files_allowed"] is True
+    status = local_tools.git_status()
+    new_file = {item["path"]: item for item in status["files"]}["new.txt"]
+    assert new_file["index_status"] == "A"
+    assert new_file["worktree_status"] == " "
+
+    committed = local_tools.git_commit("add new file", ["new.txt"], before)
+    assert committed["previous_head"] == before
+    assert local_tools.git_status()["head"] == committed["commit"]
+    shown = local_tools.git_show(committed["commit"], path="new.txt")
+    assert "+new" in shown["patch"]
+
+
+def test_structured_git_stage_rejects_ignored_untracked_file(workspace):
+    git = _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    subprocess.run(
+        [git, "add", ".gitignore"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [git, "commit", "-m", "ignore fixture"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    before = local_tools.git_status()["head"]
+    (workspace / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+    sha = hashlib.sha256((workspace / "ignored.txt").read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="refuses ignored"):
         local_tools.git_stage(
-            [{"path": "new.txt", "expected_sha256": sha}], before
+            [{"path": "ignored.txt", "expected_sha256": sha}], before
         )
     assert local_tools.git_diff(staged=True)["diff"] == ""
 
@@ -266,15 +307,18 @@ def test_structured_git_commit_rejects_stale_head_and_unstaged_selected_content(
     assert local_tools.git_status()["head"] == before
 
 
-def test_structured_git_commit_rejects_newly_added_file(workspace):
+def test_structured_git_commit_accepts_exact_newly_added_file(workspace):
     git = _init_git_repo(workspace)
     before = local_tools.git_status()["head"]
     (workspace / "new.txt").write_text("new\n", encoding="utf-8")
     subprocess.run([git, "add", "new.txt"], cwd=workspace, check=True)
 
-    with pytest.raises(ValueError, match="supports only modifications or deletions"):
-        local_tools.git_commit("new file", ["new.txt"], before)
-    assert local_tools.git_status()["head"] == before
+    committed = local_tools.git_commit("new file", ["new.txt"], before)
+
+    assert committed["previous_head"] == before
+    assert local_tools.git_status()["head"] == committed["commit"]
+    shown = local_tools.git_show(committed["commit"], path="new.txt")
+    assert "+new" in shown["patch"]
 
 
 def test_structured_git_tools_are_batchable_read_only(workspace):

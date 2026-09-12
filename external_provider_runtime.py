@@ -1,8 +1,8 @@
-"""Production external-provider configuration for PLA v0.17.
+"""Production external-provider configuration for the PLA v1 capability runtime.
 
 External providers are declared in provider_manifests/*.json. This module only
-loads validated manifests, applies environment selection, creates MCP transports,
-and registers providers with the shared MCPClientManager.
+loads validated manifests, applies environment selection, creates stdio MCP
+transports, and registers providers with the shared MCPClientManager.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _register_manifest(
     manifest: ProviderManifest,
 ) -> dict[str, Any]:
     transport = StdioTransport(
-        command=str(manifest.python_path),
+        command=str(manifest.command_path),
         args=list(manifest.args),
         cwd=str(manifest.cwd),
     )

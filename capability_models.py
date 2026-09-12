@@ -30,6 +30,7 @@ class CapabilityDescriptor:
     artifact_contract: dict[str, Any] = field(default_factory=dict)
     risk_level: RiskLevel = "read"
     requires_confirmation: bool = False
+    requires_transaction: bool = False
     enabled: bool = True
     tags: tuple[str, ...] = ()
 
@@ -71,6 +72,7 @@ class CapabilityDescriptor:
             "artifact_outputs": self.artifact_outputs,
             "risk_level": self.risk_level,
             "requires_confirmation": self.requires_confirmation,
+            "requires_transaction": self.requires_transaction,
             "enabled": self.enabled,
             "tags": list(self.tags),
         }

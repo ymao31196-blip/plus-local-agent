@@ -304,3 +304,42 @@ def test_managed_output_argument_cannot_be_supplied_by_caller(tmp_path, monkeypa
 
     with pytest.raises(ValueError, match="managed by PLA"):
         asyncio.run(scenario())
+
+
+def test_transaction_required_capability_blocks_direct_broker_call():
+    async def scenario():
+        registry = CapabilityRegistry()
+        manager = MCPClientManager(registry, discovery_timeout=10, invoke_timeout=10)
+        transport = PythonStdioTransport(FIXTURE, cwd=str(PROJECT_ROOT))
+        manager.add_provider(
+            "fixture",
+            transport,
+            tool_allowlist=["echo_text"],
+            tool_overrides={
+                "echo_text": {
+                    "requires_confirmation": True,
+                    "requires_transaction": True,
+                }
+            },
+        )
+        await manager.discover_provider("fixture")
+        broker = CapabilityBroker(registry, manager)
+
+        with pytest.raises(PermissionError, match="requires a transaction context"):
+            await broker.invoke(
+                "fixture.echo_text",
+                {"text": "blocked"},
+                confirmation="INVOKE",
+            )
+
+        return await broker.invoke(
+            "fixture.echo_text",
+            {"text": "allowed"},
+            confirmation="INVOKE",
+            transaction_context=True,
+        )
+
+    result = asyncio.run(scenario())
+
+    assert result["status"] == "completed"
+    assert result["data"]["echo"] == "allowed"

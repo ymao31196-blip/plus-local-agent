@@ -60,6 +60,9 @@ def test_streamable_http_endpoint_serves_tool_catalog():
         "list_directory", "read_text", "extract_document_text", "write_text", "replace_text",
         "search_text", "run_process", "run_powershell", "apply_patch",
         "execute_actions", "submit_task", "task_result",
+        "transaction_create", "transaction_get",
+        "transaction_checkpoint", "transaction_finalize",
+        "transaction_invoke_capability",
     } <= set(names)
 
 

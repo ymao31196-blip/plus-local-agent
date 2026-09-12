@@ -71,6 +71,7 @@ class MCPClientManager:
         invoke_timeout: float = 60.0,
         retry_base_seconds: float = 2.0,
         retry_max_seconds: float = 60.0,
+        discovery_concurrency: int = 4,
     ) -> None:
         if discovery_timeout <= 0:
             raise ValueError("discovery_timeout must be positive")
@@ -80,11 +81,14 @@ class MCPClientManager:
             raise ValueError("retry_base_seconds must be positive")
         if retry_max_seconds < retry_base_seconds:
             raise ValueError("retry_max_seconds must be >= retry_base_seconds")
+        if not isinstance(discovery_concurrency, int) or discovery_concurrency < 1:
+            raise ValueError("discovery_concurrency must be a positive integer")
         self._registry = registry
         self._discovery_timeout = float(discovery_timeout)
         self._invoke_timeout = float(invoke_timeout)
         self._retry_base_seconds = float(retry_base_seconds)
         self._retry_max_seconds = float(retry_max_seconds)
+        self._discovery_concurrency = discovery_concurrency
         self._sources: dict[str, Any] = {}
         self._enabled: dict[str, bool] = {}
         self._modes: dict[str, str] = {}
@@ -267,13 +271,23 @@ class MCPClientManager:
             raise
 
     async def discover_all(self) -> dict[str, dict[str, Any]]:
-        results: dict[str, dict[str, Any]] = {}
-        for provider_id in sorted(self._sources):
-            try:
-                results[provider_id] = await self.discover_provider(provider_id)
-            except Exception:
-                results[provider_id] = self._states[provider_id].as_dict()
-        return results
+        provider_ids = sorted(self._sources)
+        semaphore = asyncio.Semaphore(self._discovery_concurrency)
+
+        async def discover_one(
+            provider_id: str,
+        ) -> tuple[str, dict[str, Any]]:
+            async with semaphore:
+                try:
+                    state = await self.discover_provider(provider_id)
+                except Exception:
+                    state = self._states[provider_id].as_dict()
+                return provider_id, state
+
+        discovered = await asyncio.gather(
+            *(discover_one(provider_id) for provider_id in provider_ids)
+        )
+        return dict(discovered)
 
     def provider_status(self, provider_id: str | None = None) -> dict[str, Any]:
         if provider_id is not None:
@@ -487,6 +501,11 @@ class MCPClientManager:
                 raise ValueError(f"Invalid output_schema override for {remote_name}")
             risk_level = override.get("risk_level", "privileged")
             requires_confirmation = override.get("requires_confirmation", True)
+            requires_transaction = override.get("requires_transaction", False)
+            if not isinstance(requires_transaction, bool):
+                raise ValueError(
+                    f"Invalid requires_transaction override for {remote_name}"
+                )
 
             descriptors.append(CapabilityDescriptor(
                 id=capability_id,
@@ -515,6 +534,7 @@ class MCPClientManager:
                 artifact_contract=artifact_contract,
                 risk_level=risk_level,
                 requires_confirmation=bool(requires_confirmation),
+                requires_transaction=requires_transaction,
                 tags=tuple(dict.fromkeys(tags)),
             ))
         return descriptors

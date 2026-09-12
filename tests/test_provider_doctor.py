@@ -205,3 +205,49 @@ def test_provider_doctor_distinguishes_disabled_provider(tmp_path, monkeypatch):
     assert report["disabled_count"] == 1
     assert report["degraded_count"] == 0
     assert report["providers"][0]["status"] == "disabled"
+
+def test_provider_doctor_accepts_executable_stdio_without_python_spec(tmp_path):
+    manifest_dir = tmp_path / "provider_manifests"
+    executable = tmp_path / "bin" / "system-mcp.exe"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_bytes(b"fake-executable")
+    manifest = {
+        "schema_version": 1,
+        "id": "system",
+        "autostart": True,
+        "mode": "legacy",
+        "runtime": {
+            "kind": "executable_stdio",
+            "command": "bin/system-mcp.exe",
+            "args": [],
+            "cwd": ".",
+        },
+        "tool_allowlist": ["health_check"],
+        "tool_overrides": {},
+    }
+    (manifest_dir / "system.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    manager.add_provider(
+        "system",
+        _build_demo_mcp(),
+        mode="legacy",
+        tool_allowlist=["health_check"],
+    )
+    asyncio.run(manager.discover_provider("system"))
+
+    report = asyncio.run(provider_doctor(manager, tmp_path))
+
+    item = report["providers"][0]
+    assert report["status"] == "healthy"
+    assert item["status"] == "healthy"
+    assert item["static"]["runtime_kind"] == "executable_stdio"
+    assert item["static"]["runtime_ready"] is True
+    assert item["static"]["command_exists"] is True
+    assert item["static"]["spec"] is None
+    assert item["static"]["python"] is None

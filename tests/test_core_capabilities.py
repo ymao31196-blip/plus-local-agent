@@ -1,0 +1,242 @@
+import asyncio
+
+import pytest
+
+from capability_broker import CapabilityBroker
+from capability_models import CapabilityDescriptor
+from capability_registry import CapabilityRegistry
+from core_capabilities import register_core_transaction_capabilities
+from mcp_client_manager import MCPClientManager
+from transaction_runtime import ActionTransactionStore
+
+
+def _runtime():
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    broker = CapabilityBroker(registry, manager)
+    store = ActionTransactionStore()
+    register_core_transaction_capabilities(registry, broker, store)
+    return registry, broker, store
+
+
+def _fixture_descriptor() -> CapabilityDescriptor:
+    return CapabilityDescriptor(
+        id="fixture.write",
+        provider_id="fixture",
+        remote_name="write",
+        title="Fixture Write",
+        description="Fixture transaction-gated write capability.",
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "integer"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+        risk_level="write_local",
+        requires_transaction=True,
+        tags=("fixture", "write"),
+    )
+
+
+def test_core_transaction_capabilities_are_registered_on_stable_surface():
+    registry, _broker, store = _runtime()
+    try:
+        result = registry.search(
+            "transaction",
+            provider_id="core",
+            include_unavailable=True,
+            limit=20,
+        )
+
+        assert result["match_count"] == 5
+        assert {item["id"] for item in result["capabilities"]} == {
+            "core.transaction_create",
+            "core.transaction_get",
+            "core.transaction_checkpoint",
+            "core.transaction_finalize",
+            "core.transaction_invoke",
+        }
+    finally:
+        store.close()
+
+
+def test_core_transaction_create_get_and_finalize_roundtrip():
+    _registry, broker, store = _runtime()
+    try:
+        created = asyncio.run(
+            broker.invoke(
+                "core.transaction_create",
+                {
+                    "goal": "core gateway test",
+                    "steps": [
+                        {
+                            "step_id": "act",
+                            "title": "Act",
+                            "kind": "action",
+                        }
+                    ],
+                    "metadata": {"source": "test"},
+                },
+            )
+        )
+        record = created["data"]
+
+        fetched = asyncio.run(
+            broker.invoke(
+                "core.transaction_get",
+                {"transaction_id": record["transaction_id"]},
+            )
+        )
+        assert fetched["data"]["revision"] == 1
+
+        checkpointed = asyncio.run(
+            broker.invoke(
+                "core.transaction_checkpoint",
+                {
+                    "transaction_id": record["transaction_id"],
+                    "expected_revision": 1,
+                    "step_id": "act",
+                    "outcome": "succeeded",
+                    "summary": "completed",
+                    "evidence": {"ok": True},
+                },
+            )
+        )
+        assert checkpointed["data"]["steps"][0]["state"] == "succeeded"
+
+        finalized = asyncio.run(
+            broker.invoke(
+                "core.transaction_finalize",
+                {
+                    "transaction_id": record["transaction_id"],
+                    "expected_revision": checkpointed["data"]["revision"],
+                    "decision": "commit",
+                    "summary": "done",
+                },
+            )
+        )
+        assert finalized["data"]["status"] == "committed"
+    finally:
+        store.close()
+
+
+def test_core_transaction_invoke_preserves_transaction_gate_and_audit():
+    registry, broker, store = _runtime()
+    registry.register_provider("fixture", [_fixture_descriptor()], enabled=True)
+    broker.register_internal_handler(
+        "fixture.write",
+        lambda args: {
+            "status": "completed",
+            "written_value": args["value"],
+        },
+    )
+
+    try:
+        with pytest.raises(PermissionError, match="requires a transaction context"):
+            asyncio.run(
+                broker.invoke(
+                    "fixture.write",
+                    {"value": 7},
+                )
+            )
+
+        created = asyncio.run(
+            broker.invoke(
+                "core.transaction_create",
+                {
+                    "goal": "invoke gated target",
+                    "steps": [
+                        {
+                            "step_id": "write",
+                            "title": "Write",
+                            "kind": "action",
+                        }
+                    ],
+                },
+            )
+        )["data"]
+
+        invoked = asyncio.run(
+            broker.invoke(
+                "core.transaction_invoke",
+                {
+                    "transaction_id": created["transaction_id"],
+                    "expected_revision": created["revision"],
+                    "step_id": "write",
+                    "capability_id": "fixture.write",
+                    "arguments": {"value": 7},
+                },
+            )
+        )
+        envelope = invoked["data"]
+
+        assert envelope["status"] == "completed"
+        assert envelope["result"]["data"]["written_value"] == 7
+        assert envelope["transaction"]["steps"][0]["state"] == "succeeded"
+        evidence = envelope["transaction"]["steps"][0]["evidence"]
+        assert evidence["capability_id"] == "fixture.write"
+        assert evidence["provider_id"] == "fixture"
+        assert evidence["risk_level"] == "write_local"
+        assert isinstance(evidence["arguments_sha256"], str)
+        assert len(evidence["arguments_sha256"]) == 64
+    finally:
+        store.close()
+
+
+def test_core_transaction_invoke_forwards_target_confirmation():
+    registry, broker, store = _runtime()
+    descriptor = CapabilityDescriptor(
+        id="fixture.confirmed",
+        provider_id="fixture",
+        remote_name="confirmed",
+        title="Confirmed Fixture",
+        description="Fixture requiring confirmation and transaction context.",
+        input_schema={"type": "object", "additionalProperties": False},
+        risk_level="privileged",
+        requires_confirmation=True,
+        requires_transaction=True,
+        tags=("fixture", "confirmation"),
+    )
+    registry.register_provider("fixture", [descriptor], enabled=True)
+    broker.register_internal_handler(
+        "fixture.confirmed",
+        lambda _args: {"status": "completed"},
+    )
+
+    try:
+        created = asyncio.run(
+            broker.invoke(
+                "core.transaction_create",
+                {
+                    "goal": "confirmation forwarding",
+                    "steps": [
+                        {
+                            "step_id": "confirmed",
+                            "title": "Confirmed",
+                            "kind": "action",
+                        }
+                    ],
+                },
+            )
+        )["data"]
+
+        invoked = asyncio.run(
+            broker.invoke(
+                "core.transaction_invoke",
+                {
+                    "transaction_id": created["transaction_id"],
+                    "expected_revision": created["revision"],
+                    "step_id": "confirmed",
+                    "capability_id": "fixture.confirmed",
+                    "arguments": {},
+                    "confirmation": "INVOKE",
+                },
+            )
+        )
+
+        assert invoked["data"]["status"] == "completed"
+        evidence = invoked["data"]["transaction"]["steps"][0]["evidence"]
+        assert evidence["requires_confirmation"] is True
+        assert evidence["confirmation_supplied"] is True
+    finally:
+        store.close()

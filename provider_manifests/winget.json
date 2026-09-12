@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "winget",
+  "autostart": true,
+  "mode": "auto",
+  "runtime": {
+    "kind": "executable_stdio",
+    "command": "WindowsPackageManagerMCPServer.exe",
+    "args": [],
+    "cwd": "."
+  },
+  "tool_allowlist": [
+    "find-winget-packages",
+    "install-winget-package"
+  ],
+  "tool_overrides": {
+    "find-winget-packages": {
+      "title": "Find WinGet Packages",
+      "description": "Search the official WinGet package sources for software matching a natural-language request.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "windows",
+        "winget",
+        "package",
+        "software",
+        "search"
+      ]
+    },
+    "install-winget-package": {
+      "title": "Install WinGet Package",
+      "description": "Install a package through the official Windows Package Manager. Explicit PLA invocation confirmation is required.",
+      "risk_level": "privileged",
+      "requires_confirmation": true,
+      "tags": [
+        "windows",
+        "winget",
+        "package",
+        "software",
+        "install"
+      ]
+    }
+  }
+}

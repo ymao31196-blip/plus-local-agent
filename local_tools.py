@@ -1052,9 +1052,9 @@ def git_stage(
     cwd: str = ".",
     root: str = "workspace",
 ) -> dict[str, Any]:
-    """Stage exact current bytes for tracked files without repository clean filters."""
-    if not isinstance(changes, list) or not 1 <= len(changes) <= 32:
-        raise ValueError("changes must contain 1–32 explicit tracked files")
+    """Stage exact current bytes for explicit tracked or new regular files without clean filters."""
+    if not isinstance(changes, list) or not 1 <= len(changes) <= 64:
+        raise ValueError("changes must contain 1–64 explicit files")
     if not isinstance(expected_head, str) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", expected_head):
         raise ValueError("expected_head must be a full 40–64 character hexadecimal commit id")
     for change in changes:
@@ -1146,20 +1146,36 @@ def git_stage(
                 ["ls-files", "--stage", "-z", "--", repo_path],
             )
             entries = [item for item in entry_result.stdout.split("\x00") if item]
-            if len(entries) != 1 or "\t" not in entries[0]:
-                raise ValueError(
-                    f"Structured stage v1 supports only already tracked, non-conflicted files: {path}"
+            if entries:
+                if len(entries) != 1 or "\t" not in entries[0]:
+                    raise ValueError(
+                        f"Structured stage supports only non-conflicted regular files: {path}"
+                    )
+                metadata, listed_path = entries[0].split("\t", 1)
+                fields = metadata.split()
+                if len(fields) != 3 or fields[2] != "0" or listed_path != repo_path:
+                    raise ValueError(
+                        f"Structured stage supports only non-conflicted regular files: {path}"
+                    )
+                mode, _old_oid, _stage = fields
+                if mode not in {"100644", "100755"}:
+                    raise ValueError(
+                        f"Structured stage supports only regular files: {path}"
+                    )
+            else:
+                ignored = _git_run(
+                    working_directory,
+                    ["check-ignore", "--quiet", "--", repo_path],
+                    allow_failure=True,
                 )
-            metadata, listed_path = entries[0].split("\t", 1)
-            fields = metadata.split()
-            if len(fields) != 3 or fields[2] != "0" or listed_path != repo_path:
-                raise ValueError(
-                    f"Structured stage v1 supports only already tracked, non-conflicted files: {path}"
-                )
-            mode, _old_oid, _stage = fields
-            if mode not in {"100644", "100755"}:
-                raise ValueError(
-                    f"Structured stage v1 supports only regular tracked files: {path}"
+                if ignored.returncode == 0:
+                    raise ValueError(
+                        f"Structured stage refuses ignored untracked files: {path}"
+                    )
+                mode = (
+                    "100644"
+                    if os.name == "nt" or not (target.stat().st_mode & 0o111)
+                    else "100755"
                 )
             prepared.append(
                 (repo_path, mode, change["expected_sha256"].lower(), target, _relative_path(target, root))
@@ -1175,7 +1191,7 @@ def git_stage(
 
         candidate_env = os.environ.copy()
         candidate_env["GIT_INDEX_FILE"] = str(candidate_path)
-        update_args = ["update-index"]
+        update_args = ["update-index", "--add"]
         object_ids: dict[str, str] = {}
         for repo_path, mode, _expected, _target, _rendered in prepared:
             oid = _git_run(
@@ -1250,10 +1266,11 @@ def git_stage(
                 "expected_head_matched": True,
                 "expected_sha256_matched": True,
                 "index_initially_clean": True,
-                "tracked_regular_files_only": True,
+                "regular_files_only": True,
+                "new_files_allowed": True,
                 "clean_filters_disabled": True,
                 "index_lock_acquired": True,
-                "mode": "raw_bytes_tracked_only",
+                "mode": "raw_bytes_explicit_files",
             },
         }
     finally:
@@ -1270,13 +1287,13 @@ def git_commit(
     cwd: str = ".",
     root: str = "workspace",
 ) -> dict[str, Any]:
-    """Commit an exact already-staged tracked-file set with an atomic HEAD compare-and-swap."""
+    """Commit an exact already-staged explicit-file set with an atomic HEAD compare-and-swap."""
     if not isinstance(message, str) or not message.strip():
         raise ValueError("message must be a non-empty string")
     if len(message) > MAX_TEXT_CHARACTERS or "\x00" in message:
         raise ValueError(f"message must be at most {MAX_TEXT_CHARACTERS} characters and contain no NUL")
-    if not isinstance(paths, list) or not 1 <= len(paths) <= 32:
-        raise ValueError("paths must contain 1–32 explicit tracked file paths")
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 64:
+        raise ValueError("paths must contain 1–64 explicit file paths")
     if any(not isinstance(path, str) or not path for path in paths):
         raise ValueError("each commit path must be a non-empty string")
     if not isinstance(expected_head, str) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", expected_head):
@@ -1341,17 +1358,17 @@ def git_commit(
     staged_paths = [item for item in staged_result.stdout.split("\x00") if item]
     if set(staged_paths) != set(repo_paths) or len(staged_paths) != len(repo_paths):
         raise ValueError(
-            "Staged paths must exactly match paths; stage only the intended tracked files before committing"
+            "Staged paths must exactly match paths; stage only the intended explicit files before committing"
         )
 
     disallowed_result = _git_run(
         working_directory,
-        ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACRTUXB", current_head],
+        ["diff", "--cached", "--name-only", "-z", "--diff-filter=CDRTUXB", current_head],
     )
     disallowed = [item for item in disallowed_result.stdout.split("\x00") if item]
     if disallowed:
         raise ValueError(
-            "Structured commit v1 supports only modifications or deletions of already tracked files; "
+            "Structured commit supports only explicit regular-file additions or modifications; "
             f"unsupported staged paths: {', '.join(disallowed[:10])}"
         )
 

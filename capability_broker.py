@@ -8,7 +8,9 @@ plans follow-up calls.
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+import inspect
+import json
+from typing import Any, Callable
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
@@ -56,12 +58,27 @@ class CapabilityBroker:
     ) -> None:
         self._registry = registry
         self._mcp_clients = mcp_clients
+        self._internal_handlers: dict[str, Callable[[dict[str, Any]], Any]] = {}
+
+    def register_internal_handler(
+        self,
+        capability_id: str,
+        handler: Callable[[dict[str, Any]], Any],
+    ) -> None:
+        if not isinstance(capability_id, str) or not capability_id:
+            raise ValueError("capability_id must be a non-empty string")
+        if not callable(handler):
+            raise TypeError("handler must be callable")
+        if capability_id in self._internal_handlers:
+            raise ValueError(f"Internal handler already registered: {capability_id}")
+        self._internal_handlers[capability_id] = handler
 
     def _validated_descriptor_and_arguments(
         self,
         capability_id: str,
         arguments: dict[str, Any],
         confirmation: str | None,
+        transaction_context: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         if not isinstance(arguments, dict):
             raise TypeError("arguments must be an object")
@@ -73,6 +90,10 @@ class CapabilityBroker:
         if descriptor["requires_confirmation"] and confirmation != "INVOKE":
             raise PermissionError(
                 f"Capability {capability_id} requires confirmation='INVOKE'"
+            )
+        if descriptor.get("requires_transaction") and not transaction_context:
+            raise PermissionError(
+                f"Capability {capability_id} requires a transaction context"
             )
 
         contract = descriptor.get("artifact_contract") or {}
@@ -117,17 +138,67 @@ class CapabilityBroker:
             )
         return descriptor, dict(arguments)
 
+    def validate_invocation(
+        self,
+        capability_id: str,
+        arguments: dict[str, Any],
+        *,
+        confirmation: str | None = None,
+        transaction_context: bool = False,
+    ) -> dict[str, Any]:
+        """Validate one capability call without invoking the provider."""
+        descriptor, _ = self._validated_descriptor_and_arguments(
+            capability_id,
+            arguments,
+            confirmation,
+            transaction_context,
+        )
+        return descriptor
+
     async def invoke(
         self,
         capability_id: str,
         arguments: dict[str, Any],
         *,
         confirmation: str | None = None,
+        transaction_context: bool = False,
     ) -> dict[str, Any]:
         descriptor, provider_arguments = self._validated_descriptor_and_arguments(
-            capability_id, arguments, confirmation
+            capability_id, arguments, confirmation, transaction_context
         )
         contract = descriptor.get("artifact_contract") or {}
+        internal_handler = self._internal_handlers.get(capability_id)
+        if internal_handler is not None:
+            if contract:
+                raise ValueError(
+                    f"Internal capability cannot declare an artifact contract: {capability_id}"
+                )
+            value = internal_handler(provider_arguments)
+            if inspect.isawaitable(value):
+                value = await value
+            json_data = _jsonable(value)
+            return {
+                "status": "completed",
+                "provider_id": descriptor["provider_id"],
+                "capability_id": capability_id,
+                "remote_name": descriptor["remote_name"],
+                "data": json_data,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            json_data,
+                            ensure_ascii=False,
+                            default=repr,
+                            separators=(",", ":"),
+                        ),
+                    }
+                ],
+                "artifacts": [],
+                "is_error": False,
+                "meta": {"internal": True},
+            }
+
         if not contract:
             result = await self._mcp_clients.call_tool(
                 descriptor["provider_id"],

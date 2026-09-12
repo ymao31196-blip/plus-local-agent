@@ -39,6 +39,7 @@ def test_discover_external_mcp_into_registry():
     assert capability["id"] == "external.compress_pdf"
     assert capability["risk_level"] == "privileged"
     assert capability["requires_confirmation"] is True
+    assert capability["requires_transaction"] is False
 
     detail = registry.describe("external.compress_pdf")
     assert detail["remote_name"] == "compress_pdf"
@@ -119,6 +120,37 @@ def test_discover_all_isolates_provider_failures(monkeypatch):
     assert result["bad"]["state"] == "error"
     assert result["bad"]["error_type"] == "RuntimeError"
     assert registry.search("", provider_id="good")["match_count"] == 2
+
+
+def test_discover_all_runs_provider_discovery_concurrently(monkeypatch):
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(
+        registry,
+        discovery_timeout=1.0,
+        discovery_concurrency=2,
+    )
+    manager.add_provider("alpha", build_external_mcp())
+    manager.add_provider("beta", build_external_mcp())
+
+    async def scenario():
+        original = manager._list_tools
+        entered: set[int] = set()
+        both_started = asyncio.Event()
+
+        async def coordinated_list_tools(source, mode):
+            entered.add(id(source))
+            if len(entered) == 2:
+                both_started.set()
+            await asyncio.wait_for(both_started.wait(), timeout=0.5)
+            return await original(source, mode)
+
+        monkeypatch.setattr(manager, "_list_tools", coordinated_list_tools)
+        return await manager.discover_all()
+
+    result = asyncio.run(scenario())
+
+    assert result["alpha"]["state"] == "ready"
+    assert result["beta"]["state"] == "ready"
 
 
 def test_discovery_can_retry_after_failure(monkeypatch):
@@ -286,6 +318,7 @@ def test_tool_override_can_define_file_uri_artifact_contract_and_lower_risk():
                 },
                 "risk_level": "read",
                 "requires_confirmation": False,
+                "requires_transaction": True,
                 "tags": ["document", "pdf"],
             }
         },
@@ -304,6 +337,7 @@ def test_tool_override_can_define_file_uri_artifact_contract_and_lower_risk():
     assert detail["artifact_contract"]["policy"]["max_output_artifacts"] > 0
     assert detail["risk_level"] == "read"
     assert detail["requires_confirmation"] is False
+    assert detail["requires_transaction"] is True
     assert {"mcp", "document", "pdf"} <= set(detail["tags"])
 
 

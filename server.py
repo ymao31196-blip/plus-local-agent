@@ -68,6 +68,8 @@ from mcp_sampling_backend import (
     SamplingUnsupported,
 )
 from task_store import TASK_STORE
+from transaction_runtime import TRANSACTION_STORE
+from transaction_action_envelope import invoke_capability_in_transaction
 from changeset_manager import ChangeRequest, apply_changeset as internal_apply_changeset
 from artifact_bridge import (
     artifact_gc as internal_artifact_gc,
@@ -80,9 +82,9 @@ from artifact_bridge import (
     verify_artifact_provenance as internal_verify_artifact_provenance,
 )
 from capability_registry import CapabilityRegistry
-from fake_capability_provider import FakeCapabilityProvider
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
+from core_capabilities import register_core_transaction_capabilities
 from external_provider_runtime import configure_external_providers
 from provider_doctor import provider_doctor as run_provider_doctor
 
@@ -90,10 +92,10 @@ from provider_doctor import provider_doctor as run_provider_doctor
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
 CAPABILITY_BROKER = CapabilityBroker(CAPABILITY_REGISTRY, MCP_CLIENT_MANAGER)
-_FAKE_CAPABILITY_PROVIDER = FakeCapabilityProvider()
-CAPABILITY_REGISTRY.register_provider(
-    _FAKE_CAPABILITY_PROVIDER.provider_id,
-    _FAKE_CAPABILITY_PROVIDER.discover(),
+register_core_transaction_capabilities(
+    CAPABILITY_REGISTRY,
+    CAPABILITY_BROKER,
+    TRANSACTION_STORE,
 )
 EXTERNAL_PROVIDER_CONFIG = configure_external_providers(
     MCP_CLIENT_MANAGER,
@@ -407,7 +409,7 @@ def git_stage(
     cwd: str = ".",
     root: str = "workspace",
 ) -> dict:
-    """仅stage显式tracked文件的已校验当前字节；要求expected_head和文件SHA匹配，不运行clean filters。"""
+    """仅stage显式普通文件（已跟踪或未忽略的新文件）的已校验当前字节；要求expected_head和文件SHA匹配，不运行clean filters。"""
     return internal_git_stage(changes, expected_head, cwd, root)
 
 
@@ -419,7 +421,7 @@ def git_commit(
     cwd: str = ".",
     root: str = "workspace",
 ) -> dict:
-    """仅提交显式且已精确 staged 的 tracked 文件；要求 expected_head 匹配，不自动 stage、不运行 hooks、不 amend、不 push。"""
+    """仅提交显式且已精确staged的普通文件新增/修改；要求expected_head匹配，不自动stage、不运行hooks、不amend、不push。"""
     return internal_git_commit(message, paths, expected_head, cwd, root)
 
 
@@ -648,6 +650,82 @@ def apply_changeset(
 def cancel_task(task_id: str) -> dict:
     """Request cancellation of this runtime's task; no PID input is accepted."""
     return TASK_STORE.cancel(task_id)
+
+
+@mcp.tool
+def transaction_create(
+    goal: str,
+    steps: list[dict],
+    metadata: dict | None = None,
+) -> dict:
+    """Create a durable multi-step transaction plan without executing any action."""
+    return TRANSACTION_STORE.create(goal, steps, metadata)
+
+
+@mcp.tool
+def transaction_get(transaction_id: str) -> dict:
+    """Read one durable action transaction with its bounded event history."""
+    return TRANSACTION_STORE.get(transaction_id)
+
+
+@mcp.tool
+def transaction_checkpoint(
+    transaction_id: str,
+    expected_revision: int,
+    step_id: str,
+    outcome: Literal[
+        "started", "succeeded", "failed", "verified", "rolled_back", "skipped"
+    ],
+    summary: str,
+    evidence: dict | None = None,
+) -> dict:
+    """Record one transaction step outcome using optimistic revision concurrency."""
+    return TRANSACTION_STORE.checkpoint(
+        transaction_id,
+        expected_revision,
+        step_id,
+        outcome,
+        summary,
+        evidence,
+    )
+
+
+@mcp.tool
+def transaction_finalize(
+    transaction_id: str,
+    expected_revision: int,
+    decision: Literal["commit", "abort", "rolled_back"],
+    summary: str,
+) -> dict:
+    """Commit, abort, or close a fully rolled-back transaction after state checks."""
+    return TRANSACTION_STORE.finalize(
+        transaction_id,
+        expected_revision,
+        decision,
+        summary,
+    )
+
+
+@mcp.tool
+async def transaction_invoke_capability(
+    transaction_id: str,
+    expected_revision: int,
+    step_id: str,
+    capability_id: str,
+    arguments: dict,
+    confirmation: Literal["INVOKE"] | None = None,
+) -> dict:
+    """Invoke one caller-selected capability and bind its outcome to one transaction step."""
+    return await invoke_capability_in_transaction(
+        TRANSACTION_STORE,
+        CAPABILITY_BROKER,
+        transaction_id=transaction_id,
+        expected_revision=expected_revision,
+        step_id=step_id,
+        capability_id=capability_id,
+        arguments=arguments,
+        confirmation=confirmation,
+    )
 
 
 @mcp.tool

@@ -1,13 +1,13 @@
-"""Declarative provider manifest loading for PLA v0.17.
+"""Declarative provider manifest loading for the PLA v1 capability runtime.
 
-Provider manifests describe external MCP processes and capability policies. The
-runtime intentionally supports only isolated Python stdio providers in v0.17;
-additional transport kinds can be added without changing capability semantics.
+Provider manifests describe external MCP processes and capability policies.
+Runtime kinds share the same capability semantics and stdio transport boundary.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,7 +16,9 @@ from capability_models import PROVIDER_ID_RE
 
 
 SCHEMA_VERSION = 1
-RUNTIME_KIND = "isolated_python_stdio"
+ISOLATED_PYTHON_STDIO = "isolated_python_stdio"
+EXECUTABLE_STDIO = "executable_stdio"
+RUNTIME_KINDS = frozenset({ISOLATED_PYTHON_STDIO, EXECUTABLE_STDIO})
 
 
 @dataclass(frozen=True)
@@ -25,20 +27,23 @@ class ProviderManifest:
     path: Path
     autostart: bool
     mode: str
-    python_path: Path
+    runtime_kind: str
+    command_path: Path
+    python_path: Path | None
     args: tuple[str, ...]
     cwd: Path
     tool_allowlist: tuple[str, ...] | None
     tool_overrides: dict[str, dict[str, Any]]
 
     def summary(self) -> dict[str, Any]:
-        return {
+        value = {
             "provider_id": self.provider_id,
             "manifest": str(self.path),
             "autostart": self.autostart,
             "mode": self.mode,
-            "python": str(self.python_path),
-            "python_exists": self.python_path.is_file(),
+            "runtime_kind": self.runtime_kind,
+            "command": str(self.command_path),
+            "command_exists": self.command_path.is_file(),
             "cwd": str(self.cwd),
             "tool_allowlist": (
                 list(self.tool_allowlist)
@@ -46,6 +51,10 @@ class ProviderManifest:
                 else None
             ),
         }
+        if self.python_path is not None:
+            value["python"] = str(self.python_path)
+            value["python_exists"] = self.python_path.is_file()
+        return value
 
 
 def _require_object(value: Any, label: str) -> dict[str, Any]:
@@ -70,6 +79,18 @@ def _resolve_inside(base: Path, relative: str, label: str) -> Path:
     except ValueError as exc:
         raise ValueError(f"{label} escapes the PLA project root") from exc
     return resolved
+
+
+def _resolve_command(project_root: Path, raw_value: str, label: str) -> Path:
+    raw = Path(raw_value)
+    if raw.is_absolute():
+        return raw.resolve()
+    if raw.parent == Path("."):
+        discovered = shutil.which(raw_value)
+        if discovered is None:
+            raise ValueError(f"{label} was not found on PATH: {raw_value!r}")
+        return Path(discovered).resolve()
+    return _resolve_inside(project_root, raw_value, label)
 
 
 def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
@@ -115,36 +136,57 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         raise ValueError(f"{path.name}.mode must be 'auto' or 'legacy'")
 
     runtime = _require_object(payload.get("runtime"), f"{path.name}.runtime")
-    runtime_unknown = set(runtime) - {"kind", "python", "args", "cwd"}
+    runtime_unknown = set(runtime) - {"kind", "python", "command", "args", "cwd"}
     if runtime_unknown:
         raise ValueError(
             f"Unknown runtime fields in {path.name}: "
             + ", ".join(sorted(runtime_unknown))
         )
-    if runtime.get("kind") != RUNTIME_KIND:
+
+    runtime_kind = runtime.get("kind")
+    if runtime_kind not in RUNTIME_KINDS:
         raise ValueError(
-            f"Unsupported runtime kind in {path.name}: {runtime.get('kind')!r}"
+            f"Unsupported runtime kind in {path.name}: {runtime_kind!r}"
         )
 
-    python_relative = _require_string(
-        runtime.get("python"), f"{path.name}.runtime.python"
-    )
-    python_path = _resolve_inside(
-        project_root, python_relative, f"{path.name}.runtime.python"
-    )
-    provider_env = (
-        project_root / ".provider_envs" / provider_id
-    ).resolve()
-    try:
-        python_path.relative_to(provider_env)
-    except ValueError as exc:
-        raise ValueError(
-            f"{path.name}.runtime.python must be inside "
-            f".provider_envs/{provider_id}"
-        ) from exc
-    if python_path.name.casefold() not in {"python.exe", "python"}:
-        raise ValueError(
-            f"{path.name}.runtime.python must point to a Python interpreter"
+    python_path: Path | None = None
+    if runtime_kind == ISOLATED_PYTHON_STDIO:
+        if "command" in runtime:
+            raise ValueError(
+                f"{path.name}.runtime.command is not valid for "
+                "isolated_python_stdio"
+            )
+        python_relative = _require_string(
+            runtime.get("python"), f"{path.name}.runtime.python"
+        )
+        python_path = _resolve_inside(
+            project_root, python_relative, f"{path.name}.runtime.python"
+        )
+        provider_env = (
+            project_root / ".provider_envs" / provider_id
+        ).resolve()
+        try:
+            python_path.relative_to(provider_env)
+        except ValueError as exc:
+            raise ValueError(
+                f"{path.name}.runtime.python must be inside "
+                f".provider_envs/{provider_id}"
+            ) from exc
+        if python_path.name.casefold() not in {"python.exe", "python"}:
+            raise ValueError(
+                f"{path.name}.runtime.python must point to a Python interpreter"
+            )
+        command_path = python_path
+    else:
+        if "python" in runtime:
+            raise ValueError(
+                f"{path.name}.runtime.python is not valid for executable_stdio"
+            )
+        command_value = _require_string(
+            runtime.get("command"), f"{path.name}.runtime.command"
+        )
+        command_path = _resolve_command(
+            project_root, command_value, f"{path.name}.runtime.command"
         )
 
     raw_args = runtime.get("args", [])
@@ -198,6 +240,8 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         path=path,
         autostart=autostart,
         mode=mode,
+        runtime_kind=runtime_kind,
+        command_path=command_path,
         python_path=python_path,
         args=tuple(raw_args),
         cwd=cwd,
