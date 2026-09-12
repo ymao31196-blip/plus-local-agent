@@ -9,6 +9,7 @@ from __future__ import annotations
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
+from event_runtime import EventStore
 from local_tools import git_push as controlled_git_push, git_tag as controlled_git_tag
 from transaction_action_envelope import invoke_capability_in_transaction
 from transaction_runtime import ActionTransactionStore
@@ -201,6 +202,58 @@ def core_transaction_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_event_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    return (
+        _descriptor(
+            "core.event_query",
+            "event_query",
+            "Query Runtime Events",
+            (
+                "Read append-only runtime events by cursor and optional filters. "
+                "This control capability is excluded from event self-recording."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "after_sequence": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "default": 0,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 200,
+                        "default": 100,
+                    },
+                    "event_types": {
+                        "type": ["array", "null"],
+                        "minItems": 1,
+                        "maxItems": 32,
+                        "items": {"type": "string"},
+                        "default": None,
+                    },
+                    "correlation_id": {
+                        "type": ["string", "null"],
+                        "default": None,
+                    },
+                    "capability_id": {
+                        "type": ["string", "null"],
+                        "default": None,
+                    },
+                    "provider_id": {
+                        "type": ["string", "null"],
+                        "default": None,
+                    },
+                },
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("event", "runtime", "audit", "event-control"),
+        ),
+    )
+
+
 def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
     root_schema = {
         "type": "string",
@@ -269,12 +322,20 @@ def register_core_transaction_capabilities(
     registry: CapabilityRegistry,
     broker: CapabilityBroker,
     transaction_store: ActionTransactionStore,
+    event_store: EventStore | None = None,
 ) -> None:
-    """Register stable core transaction capabilities and their in-process handlers."""
+    """Register stable core governance capabilities and in-process handlers."""
+
+    descriptors = [
+        *core_transaction_descriptors(),
+        *core_release_descriptors(),
+    ]
+    if event_store is not None:
+        descriptors.extend(core_event_descriptors())
 
     registry.register_provider(
         "core",
-        (*core_transaction_descriptors(), *core_release_descriptors()),
+        descriptors,
         enabled=True,
     )
 
@@ -348,3 +409,15 @@ def register_core_transaction_capabilities(
             args.get("root", "pla"),
         ),
     )
+    if event_store is not None:
+        broker.register_internal_handler(
+            "core.event_query",
+            lambda args: event_store.query(
+                after_sequence=args.get("after_sequence", 0),
+                limit=args.get("limit", 100),
+                event_types=args.get("event_types"),
+                correlation_id=args.get("correlation_id"),
+                capability_id=args.get("capability_id"),
+                provider_id=args.get("provider_id"),
+            ),
+        )

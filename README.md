@@ -93,6 +93,41 @@ A capability with `requires_transaction: true` cannot be invoked directly. A cap
 Legacy top-level transaction MCP tools remain available for compatibility, but new orchestration
 should prefer `core.transaction_*` so the ChatGPT-facing MCP schema can remain stable.
 
+## Event Plane (v1.2 development)
+
+PLA v1.2 Phase 1 introduces an append-only cross-cutting Event Plane without changing capability
+control flow. The global event database lives under ignored runtime state at
+`state/events.sqlite3`.
+
+Capability Broker invocations emit:
+
+```text
+capability.before_invoke
+capability.succeeded
+capability.failed
+```
+
+Each EventEnvelope contains a monotonic sequence, event id, schema version, UTC timestamp,
+source/subject, correlation and causation ids, optional capability/provider/task/transaction ids,
+a JSON payload, and a payload SHA-256.
+
+The broker deliberately records hashes and bounded metadata rather than raw capability arguments,
+results, or exception messages. Event persistence is fail-open: an EventStore failure does not
+change the selected capability's execution semantics.
+
+Events can be read through the stable surface:
+
+```text
+core.event_query
+```
+
+The query capability is tagged as `event-control` and is excluded from self-recording to avoid
+recursive audit noise. Existing TaskStore and ActionTransactionStore event histories remain
+unchanged and continue to be their own state/recovery sources of truth.
+
+Phase 1 contains no Hook/Gate execution. Hooks are intentionally deferred until the event
+schema, persistence, querying, and broker instrumentation are proven stable.
+
 ## Interactive Elevation Broker
 
 PLA's HTTP runtime normally runs without administrator privileges. UAC-sensitive work is

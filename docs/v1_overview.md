@@ -104,6 +104,42 @@ The transaction store never chooses capabilities. The action envelope invokes ex
 caller-selected capability, records target policy and argument/result hashes, and updates one
 transaction step. Verification steps require an explicit checkpoint before final commit.
 
+## Event Plane (v1.2 Phase 1)
+
+The global Event Plane is an append-only SQLite fact log, not a replacement for explicit control
+flow or existing durable stores.
+
+```text
+Capability Broker
+    -> schema/policy validation
+    -> capability.before_invoke
+    -> explicit invocation path
+    -> capability.succeeded | capability.failed
+```
+
+Every EventEnvelope has a monotonically increasing sequence, stable event id, schema version,
+timestamp, source, subject, correlation id, optional causation id, optional capability/provider/
+transaction/task identifiers, JSON payload, and payload SHA-256.
+
+The Capability Broker creates one correlation id per validated invocation. The terminal event
+causes from the matching `before_invoke` event, making each invocation pair reconstructable
+without handing control to an event bus.
+
+The global store intentionally does not retain raw arguments, returned content, or exception
+messages. Broker events contain argument/result hashes and bounded metadata. Event persistence
+is fail-open so observability cannot silently become a new capability-availability dependency.
+
+`core.event_query` provides cursor-based, filtered read access through the stable Capability
+Broker surface. Because it carries the `event-control` tag, querying the event log does not
+create new events.
+
+Existing TaskStore and ActionTransactionStore local event tables remain untouched. They retain
+their recovery/state-machine responsibilities; the global Event Plane records cross-cutting
+facts for future audit, metrics, notification, and Hook/Gate subscribers.
+
+Phase 1 intentionally does not implement Hook execution, ALLOW/DENY decisions, argument
+transformation, or event-driven dispatch.
+
 ## Interactive elevation plane
 
 Windows UAC interaction is deliberately separated from the background HTTP runtime.

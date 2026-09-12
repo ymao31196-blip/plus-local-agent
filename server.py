@@ -84,6 +84,7 @@ from artifact_bridge import (
     verify_artifact_provenance as internal_verify_artifact_provenance,
 )
 from capability_registry import CapabilityRegistry
+from event_runtime import EVENT_STORE
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
 from core_capabilities import register_core_transaction_capabilities
@@ -94,11 +95,16 @@ from provider_doctor import provider_doctor as run_provider_doctor
 
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
-CAPABILITY_BROKER = CapabilityBroker(CAPABILITY_REGISTRY, MCP_CLIENT_MANAGER)
+CAPABILITY_BROKER = CapabilityBroker(
+    CAPABILITY_REGISTRY,
+    MCP_CLIENT_MANAGER,
+    EVENT_STORE,
+)
 register_core_transaction_capabilities(
     CAPABILITY_REGISTRY,
     CAPABILITY_BROKER,
     TRANSACTION_STORE,
+    EVENT_STORE,
 )
 EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,

@@ -8,15 +8,18 @@ plans follow-up calls.
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import inspect
 import json
 from typing import Any, Callable
+from uuid import uuid4
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
 from artifact_runtime import ArtifactInvocation
 from capability_registry import CapabilityRegistry
+from event_runtime import EventStore
 from mcp_client_manager import MCPClientManager
 
 
@@ -31,6 +34,39 @@ def _jsonable(value: Any) -> Any:
     if callable(model_dump):
         return model_dump(mode="json", by_alias=True)
     return repr(value)
+
+
+_SEMANTIC_FAILURE_STATUSES = {
+    "failed",
+    "error",
+    "timeout",
+    "precondition_failed",
+    "blocked",
+    "not_ready",
+}
+
+
+def _stable_sha256(value: Any) -> str:
+    serialized = json.dumps(
+        _jsonable(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=repr,
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _semantic_result_status(result: dict[str, Any]) -> str:
+    if result.get("is_error") is True:
+        return "failed"
+    top = result.get("status")
+    data = result.get("data")
+    if isinstance(data, dict):
+        nested = data.get("status")
+        if isinstance(nested, str) and nested:
+            return nested
+    return str(top or "completed")
 
 
 def _public_artifact(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -55,9 +91,11 @@ class CapabilityBroker:
         self,
         registry: CapabilityRegistry,
         mcp_clients: MCPClientManager,
+        event_store: EventStore | None = None,
     ) -> None:
         self._registry = registry
         self._mcp_clients = mcp_clients
+        self._event_store = event_store
         self._internal_handlers: dict[str, Callable[[dict[str, Any]], Any]] = {}
 
     def register_internal_handler(
@@ -155,7 +193,126 @@ class CapabilityBroker:
         )
         return descriptor
 
+    def _emit_runtime_event(
+        self,
+        event_type: str,
+        descriptor: dict[str, Any],
+        capability_id: str,
+        *,
+        correlation_id: str,
+        causation_id: str | None,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if self._event_store is None:
+            return None
+        if "event-control" in set(descriptor.get("tags") or []):
+            return None
+        try:
+            return self._event_store.emit(
+                event_type,
+                source="capability_broker",
+                subject=capability_id,
+                correlation_id=correlation_id,
+                causation_id=causation_id,
+                capability_id=capability_id,
+                provider_id=descriptor.get("provider_id"),
+                payload=payload,
+            )
+        except Exception:
+            # The event plane is observability, not the source of capability
+            # correctness. Event persistence failures must not alter the
+            # selected capability's execution semantics.
+            return None
+
     async def invoke(
+        self,
+        capability_id: str,
+        arguments: dict[str, Any],
+        *,
+        confirmation: str | None = None,
+        transaction_context: bool = False,
+    ) -> dict[str, Any]:
+        descriptor, provider_arguments = self._validated_descriptor_and_arguments(
+            capability_id,
+            arguments,
+            confirmation,
+            transaction_context,
+        )
+        correlation_id = uuid4().hex
+        arguments_sha256 = _stable_sha256(provider_arguments)
+        before = self._emit_runtime_event(
+            "capability.before_invoke",
+            descriptor,
+            capability_id,
+            correlation_id=correlation_id,
+            causation_id=None,
+            payload={
+                "arguments_sha256": arguments_sha256,
+                "argument_keys": sorted(provider_arguments),
+                "risk_level": descriptor.get("risk_level"),
+                "requires_confirmation": bool(
+                    descriptor.get("requires_confirmation")
+                ),
+                "confirmation_supplied": confirmation == "INVOKE",
+                "requires_transaction": bool(
+                    descriptor.get("requires_transaction")
+                ),
+                "transaction_context": bool(transaction_context),
+            },
+        )
+        causation_id = before.get("event_id") if before else None
+
+        try:
+            result = await self._invoke_without_events(
+                capability_id,
+                provider_arguments,
+                confirmation=confirmation,
+                transaction_context=transaction_context,
+            )
+        except Exception as exc:
+            self._emit_runtime_event(
+                "capability.failed",
+                descriptor,
+                capability_id,
+                correlation_id=correlation_id,
+                causation_id=causation_id,
+                payload={
+                    "arguments_sha256": arguments_sha256,
+                    "exception_type": type(exc).__name__,
+                    "message_sha256": hashlib.sha256(
+                        str(exc).encode("utf-8", errors="replace")
+                    ).hexdigest(),
+                    "message_length": len(str(exc)),
+                },
+            )
+            raise
+
+        semantic_status = _semantic_result_status(result)
+        failed = (
+            result.get("is_error") is True
+            or semantic_status in _SEMANTIC_FAILURE_STATUSES
+        )
+        self._emit_runtime_event(
+            "capability.failed" if failed else "capability.succeeded",
+            descriptor,
+            capability_id,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+            payload={
+                "arguments_sha256": arguments_sha256,
+                "result_sha256": _stable_sha256(result),
+                "semantic_status": semantic_status,
+                "is_error": bool(result.get("is_error")),
+                "artifact_ids": [
+                    item.get("artifact_id")
+                    for item in result.get("artifacts", [])
+                    if isinstance(item, dict) and item.get("artifact_id")
+                ],
+            },
+        )
+        return result
+
+    async def _invoke_without_events(
         self,
         capability_id: str,
         arguments: dict[str, Any],

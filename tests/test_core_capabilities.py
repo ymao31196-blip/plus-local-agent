@@ -7,6 +7,7 @@ from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
 import core_capabilities
 from core_capabilities import register_core_transaction_capabilities
+from event_runtime import EventStore
 from mcp_client_manager import MCPClientManager
 from transaction_runtime import ActionTransactionStore
 
@@ -325,3 +326,69 @@ def test_core_release_capabilities_are_confirmation_gated(monkeypatch):
     finally:
         store.close()
 
+
+
+def test_core_event_query_reads_events_without_self_recording(tmp_path):
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    event_store = EventStore(tmp_path / "events.sqlite3")
+    broker = CapabilityBroker(registry, manager, event_store)
+    tx_store = ActionTransactionStore()
+    register_core_transaction_capabilities(
+        registry,
+        broker,
+        tx_store,
+        event_store,
+    )
+    fixture = CapabilityDescriptor(
+        id="fixture.read",
+        provider_id="fixture",
+        remote_name="read",
+        title="Fixture Read",
+        description="Read fixture for event-plane testing.",
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "integer"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+        risk_level="read",
+        tags=("fixture", "event-test"),
+    )
+    registry.register_provider("fixture", [fixture], enabled=True)
+    broker.register_internal_handler(
+        "fixture.read",
+        lambda args: {"status": "completed", "value": args["value"]},
+    )
+
+    try:
+        result = asyncio.run(
+            broker.invoke(
+                "fixture.read",
+                {"value": 7},
+            )
+        )
+        assert result["data"]["value"] == 7
+        assert event_store.query()["returned_count"] == 2
+
+        queried = asyncio.run(
+            broker.invoke(
+                "core.event_query",
+                {
+                    "after_sequence": 0,
+                    "limit": 20,
+                    "capability_id": "fixture.read",
+                },
+            )
+        )
+        events = queried["data"]["events"]
+        assert [event["event_type"] for event in events] == [
+            "capability.before_invoke",
+            "capability.succeeded",
+        ]
+
+        # event-control capabilities never record themselves.
+        assert event_store.query()["returned_count"] == 2
+    finally:
+        tx_store.close()
+        event_store.close()

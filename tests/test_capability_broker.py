@@ -7,7 +7,9 @@ from fastmcp.client.transports import PythonStdioTransport
 import artifact_bridge
 import local_tools
 from capability_broker import CapabilityBroker
+from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
+from event_runtime import EventStore
 from mcp_client_manager import MCPClientManager
 
 
@@ -343,3 +345,134 @@ def test_transaction_required_capability_blocks_direct_broker_call():
 
     assert result["status"] == "completed"
     assert result["data"]["echo"] == "allowed"
+
+
+def test_capability_broker_records_success_events_without_raw_arguments(tmp_path):
+    async def scenario():
+        registry = CapabilityRegistry()
+        manager = MCPClientManager(registry, discovery_timeout=10, invoke_timeout=10)
+        transport = PythonStdioTransport(FIXTURE, cwd=str(PROJECT_ROOT))
+        manager.add_provider("fixture", transport)
+        await manager.discover_provider("fixture")
+        store = EventStore(tmp_path / "events.sqlite3")
+        broker = CapabilityBroker(registry, manager, store)
+        result = await broker.invoke(
+            "fixture.echo_text",
+            {"text": "super-secret-value", "repeat": 2},
+            confirmation="INVOKE",
+        )
+        events = store.query(capability_id="fixture.echo_text")["events"]
+        store.close()
+        return result, events
+
+    result, events = asyncio.run(scenario())
+
+    assert result["data"]["echo"] == "super-secret-valuesuper-secret-value"
+    assert [event["event_type"] for event in events] == [
+        "capability.before_invoke",
+        "capability.succeeded",
+    ]
+    before, succeeded = events
+    assert before["correlation_id"] == succeeded["correlation_id"]
+    assert succeeded["causation_id"] == before["event_id"]
+    assert before["payload"]["argument_keys"] == ["repeat", "text"]
+    assert len(before["payload"]["arguments_sha256"]) == 64
+    assert len(succeeded["payload"]["result_sha256"]) == 64
+    assert "super-secret-value" not in str(events)
+
+
+def test_capability_broker_records_failed_event_on_provider_exception(
+    tmp_path,
+    monkeypatch,
+):
+    async def scenario():
+        registry = CapabilityRegistry()
+        manager = MCPClientManager(registry, discovery_timeout=10, invoke_timeout=10)
+        transport = PythonStdioTransport(FIXTURE, cwd=str(PROJECT_ROOT))
+        manager.add_provider("fixture", transport)
+        await manager.discover_provider("fixture")
+        store = EventStore(tmp_path / "events.sqlite3")
+        broker = CapabilityBroker(registry, manager, store)
+
+        async def broken(*_args, **_kwargs):
+            raise RuntimeError("provider exploded")
+
+        monkeypatch.setattr(manager, "call_tool", broken)
+        with pytest.raises(RuntimeError, match="provider exploded"):
+            await broker.invoke(
+                "fixture.echo_text",
+                {"text": "x"},
+                confirmation="INVOKE",
+            )
+        events = store.query(capability_id="fixture.echo_text")["events"]
+        store.close()
+        return events
+
+    events = asyncio.run(scenario())
+
+    assert [event["event_type"] for event in events] == [
+        "capability.before_invoke",
+        "capability.failed",
+    ]
+    assert events[-1]["payload"]["exception_type"] == "RuntimeError"
+    assert len(events[-1]["payload"]["message_sha256"]) == 64
+    assert events[-1]["payload"]["message_length"] == len("provider exploded")
+    assert "provider exploded" not in str(events)
+
+
+def test_capability_validation_failure_emits_no_runtime_event(tmp_path):
+    registry, manager, _broker = build_runtime()
+    store = EventStore(tmp_path / "events.sqlite3")
+    broker = CapabilityBroker(registry, manager, store)
+    try:
+        with pytest.raises(ValueError, match="Invalid arguments"):
+            asyncio.run(
+                broker.invoke(
+                    "fixture.add_numbers",
+                    {"a": 1},
+                    confirmation="INVOKE",
+                )
+            )
+        assert store.query()["events"] == []
+    finally:
+        store.close()
+
+
+def test_event_persistence_failure_does_not_change_capability_result():
+    class BrokenEventStore:
+        def emit(self, *_args, **_kwargs):
+            raise OSError("event database unavailable")
+
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    descriptor = CapabilityDescriptor(
+        id="fixture.internal",
+        provider_id="fixture",
+        remote_name="internal",
+        title="Internal Fixture",
+        description="Internal fixture for event fail-open testing.",
+        input_schema={
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+            "additionalProperties": False,
+        },
+        risk_level="read",
+        tags=("fixture", "event-test"),
+    )
+    registry.register_provider("fixture", [descriptor], enabled=True)
+    broker = CapabilityBroker(registry, manager, BrokenEventStore())
+    broker.register_internal_handler(
+        "fixture.internal",
+        lambda args: {"status": "completed", "echo": args["text"]},
+    )
+
+    result = asyncio.run(
+        broker.invoke(
+            "fixture.internal",
+            {"text": "still-runs"},
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert result["data"]["echo"] == "still-runs"
