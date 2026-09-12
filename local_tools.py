@@ -1429,7 +1429,7 @@ def git_commit(
             "staged_paths_exact": True,
             "selected_worktree_clean": True,
             "repository_state": "normal",
-            "mode": "staged_tracked_only",
+            "mode": "staged_explicit_files",
         },
     }
 

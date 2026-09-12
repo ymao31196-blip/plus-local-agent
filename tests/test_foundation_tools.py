@@ -268,7 +268,7 @@ def test_structured_git_commit_exact_staged_tracked_file(workspace):
     assert result["previous_head"] == before
     assert result["commit"] == local_tools.git_status()["head"]
     assert result["paths"] == ["tracked.txt"]
-    assert result["preflight"]["mode"] == "staged_tracked_only"
+    assert result["preflight"]["mode"] == "staged_explicit_files"
     shown = local_tools.git_show(result["commit"], path="tracked.txt")
     assert shown["subject"] == "structured commit"
     assert shown["parents"] == [before]
