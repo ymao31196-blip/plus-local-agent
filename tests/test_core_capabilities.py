@@ -5,6 +5,7 @@ import pytest
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
+import core_capabilities
 from core_capabilities import register_core_transaction_capabilities
 from mcp_client_manager import MCPClientManager
 from transaction_runtime import ActionTransactionStore
@@ -58,6 +59,10 @@ def test_core_transaction_capabilities_are_registered_on_stable_surface():
         }
     finally:
         store.close()
+
+
+
+
 
 
 def test_core_transaction_create_get_and_finalize_roundtrip():
@@ -118,6 +123,10 @@ def test_core_transaction_create_get_and_finalize_roundtrip():
         assert finalized["data"]["status"] == "committed"
     finally:
         store.close()
+
+
+
+
 
 
 def test_core_transaction_invoke_preserves_transaction_gate_and_audit():
@@ -183,6 +192,10 @@ def test_core_transaction_invoke_preserves_transaction_gate_and_audit():
         store.close()
 
 
+
+
+
+
 def test_core_transaction_invoke_forwards_target_confirmation():
     registry, broker, store = _runtime()
     descriptor = CapabilityDescriptor(
@@ -240,3 +253,75 @@ def test_core_transaction_invoke_forwards_target_confirmation():
         assert evidence["confirmation_supplied"] is True
     finally:
         store.close()
+
+
+def test_core_release_capabilities_are_confirmation_gated(monkeypatch):
+    registry, broker, store = _runtime()
+    calls = {}
+
+    def fake_tag(tag, expected_head, cwd, root):
+        calls["tag"] = (tag, expected_head, cwd, root)
+        return {"status": "completed", "tag": tag, "head": expected_head}
+
+    def fake_push(remote, branch, expected_head, tags, confirmation, cwd, root):
+        calls["push"] = (
+            remote, branch, expected_head, tags, confirmation, cwd, root
+        )
+        return {"status": "completed", "remote": remote, "head": expected_head}
+
+    monkeypatch.setattr(core_capabilities, "controlled_git_tag", fake_tag)
+    monkeypatch.setattr(core_capabilities, "controlled_git_push", fake_push)
+
+    try:
+        release = registry.search(
+            "release",
+            provider_id="core",
+            include_unavailable=True,
+            limit=20,
+        )
+        assert {item["id"] for item in release["capabilities"]} == {
+            "core.git_tag",
+            "core.git_push",
+        }
+        assert all(
+            item["requires_confirmation"] is True
+            for item in release["capabilities"]
+        )
+
+        with pytest.raises(PermissionError, match="requires confirmation"):
+            asyncio.run(
+                broker.invoke(
+                    "core.git_tag",
+                    {"tag": "v1.1.0", "expected_head": "a" * 40},
+                )
+            )
+
+        tagged = asyncio.run(
+            broker.invoke(
+                "core.git_tag",
+                {"tag": "v1.1.0", "expected_head": "a" * 40},
+                confirmation="INVOKE",
+            )
+        )
+        assert tagged["data"]["tag"] == "v1.1.0"
+        assert calls["tag"] == ("v1.1.0", "a" * 40, ".", "pla")
+
+        pushed = asyncio.run(
+            broker.invoke(
+                "core.git_push",
+                {
+                    "remote": "origin",
+                    "branch": "master",
+                    "expected_head": "a" * 40,
+                    "tags": ["v1.1.0"],
+                },
+                confirmation="INVOKE",
+            )
+        )
+        assert pushed["data"]["remote"] == "origin"
+        assert calls["push"] == (
+            "origin", "master", "a" * 40, ["v1.1.0"], "PUSH", ".", "pla"
+        )
+    finally:
+        store.close()
+

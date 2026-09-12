@@ -158,6 +158,8 @@ match exactly and updates the branch with an expected-HEAD compare-and-swap.
 
 Release operations are also controlled. `git_tag` atomically creates a lightweight tag only at the exact clean expected HEAD and never overwrites an existing tag. `git_push` accepts only an existing named remote, the current named branch, the exact expected HEAD, and explicit local tags that point to that HEAD; force push is unavailable, pre-push hooks are skipped for determinism, the push is atomic, and `confirmation="PUSH"` is required. Remote branch/tag refs are read back and verified after success.
 
+The same operations are exposed through the stable Capability Broker as `core.git_tag` and `core.git_push`. Both require explicit broker `INVOKE` confirmation; `core.git_push` then enters the underlying controlled push with its separate `PUSH` gate. This avoids dependence on ChatGPT refreshing top-level MCP schemas during a release.
+
 ## Installation
 
 Use Python 3.11 for the main runtime.

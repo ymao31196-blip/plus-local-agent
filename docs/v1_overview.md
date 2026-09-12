@@ -164,7 +164,8 @@ The safety properties remain:
 - structured commit uses compare-and-swap branch update;
 - controlled `git_tag` creates only a new lightweight tag at the exact clean expected HEAD;
 - controlled `git_push` requires `confirmation="PUSH"`, an existing named remote, the current branch, exact expected HEAD, and explicit matching tags;
-- force push is unavailable; branch + tags are pushed atomically and verified with `ls-remote`.
+- force push is unavailable; branch + tags are pushed atomically and verified with `ls-remote`;
+- `core.git_tag` and `core.git_push` mirror these same operations through the stable Capability Broker and require explicit `INVOKE` confirmation, so release actions do not depend on host MCP-schema refresh.
 
 ## Security boundary
 

@@ -37,6 +37,21 @@ def test_release_version_and_provider_catalog():
         "runtime.provider_disable",
     }
 
+    release_caps = server.CAPABILITY_REGISTRY.search(
+        "release",
+        provider_id="core",
+        include_unavailable=True,
+        limit=20,
+    )
+    assert {item["id"] for item in release_caps["capabilities"]} == {
+        "core.git_tag",
+        "core.git_push",
+    }
+    assert all(
+        item["requires_confirmation"] is True
+        for item in release_caps["capabilities"]
+    )
+
 
 def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "README.md").is_file()

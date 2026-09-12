@@ -9,6 +9,7 @@ from __future__ import annotations
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
+from local_tools import git_push as controlled_git_push, git_tag as controlled_git_tag
 from transaction_action_envelope import invoke_capability_in_transaction
 from transaction_runtime import ActionTransactionStore
 
@@ -40,6 +41,7 @@ def _descriptor(
     *,
     risk_level: str,
     tags: tuple[str, ...],
+    requires_confirmation: bool = False,
 ) -> CapabilityDescriptor:
     return CapabilityDescriptor(
         id=capability_id,
@@ -50,7 +52,7 @@ def _descriptor(
         input_schema=input_schema,
         output_schema=_OBJECT_OUTPUT,
         risk_level=risk_level,
-        requires_confirmation=False,
+        requires_confirmation=requires_confirmation,
         requires_transaction=False,
         tags=tags,
     )
@@ -199,6 +201,70 @@ def core_transaction_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    root_schema = {
+        "type": "string",
+        "enum": ["workspace", "pla"],
+        "default": "pla",
+    }
+    return (
+        _descriptor(
+            "core.git_tag",
+            "git_tag",
+            "Create Release Tag",
+            (
+                "Atomically create one lightweight Git tag at the exact clean "
+                "expected HEAD. Existing tags are never overwritten."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "tag": {"type": "string"},
+                    "expected_head": {"type": "string"},
+                    "cwd": {"type": "string", "default": "."},
+                    "root": root_schema,
+                },
+                "required": ["tag", "expected_head"],
+                "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("git", "release", "tag"),
+            requires_confirmation=True,
+        ),
+        _descriptor(
+            "core.git_push",
+            "git_push",
+            "Push Release Refs",
+            (
+                "Atomically push the exact current branch and explicit local "
+                "lightweight tags to an existing named remote, without force, "
+                "then verify remote refs."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "remote": {"type": "string"},
+                    "branch": {"type": "string"},
+                    "expected_head": {"type": "string"},
+                    "tags": {
+                        "type": "array",
+                        "maxItems": 8,
+                        "items": {"type": "string"},
+                        "default": [],
+                    },
+                    "cwd": {"type": "string", "default": "."},
+                    "root": root_schema,
+                },
+                "required": ["remote", "branch", "expected_head"],
+                "additionalProperties": False,
+            },
+            risk_level="write_external",
+            tags=("git", "release", "push"),
+            requires_confirmation=True,
+        ),
+    )
+
+
 def register_core_transaction_capabilities(
     registry: CapabilityRegistry,
     broker: CapabilityBroker,
@@ -208,7 +274,7 @@ def register_core_transaction_capabilities(
 
     registry.register_provider(
         "core",
-        core_transaction_descriptors(),
+        (*core_transaction_descriptors(), *core_release_descriptors()),
         enabled=True,
     )
 
@@ -260,4 +326,25 @@ def register_core_transaction_capabilities(
     broker.register_internal_handler(
         "core.transaction_invoke",
         invoke_handler,
+    )
+    broker.register_internal_handler(
+        "core.git_tag",
+        lambda args: controlled_git_tag(
+            args["tag"],
+            args["expected_head"],
+            args.get("cwd", "."),
+            args.get("root", "pla"),
+        ),
+    )
+    broker.register_internal_handler(
+        "core.git_push",
+        lambda args: controlled_git_push(
+            args["remote"],
+            args["branch"],
+            args["expected_head"],
+            args.get("tags", []),
+            "PUSH",
+            args.get("cwd", "."),
+            args.get("root", "pla"),
+        ),
     )

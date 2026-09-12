@@ -34,8 +34,9 @@ capabilities without changing the production decision boundary:
       `pip check`.
 - [x] Project/test Python source compiles: **89 files**, **0 errors**.
 - [x] Public MCP schema count after controlled release operations: **55 tools**.
-- [x] Capability Registry count: **50 capabilities**.
-- [x] Capability Registry includes **5 core transaction capabilities** and
+- [x] Capability Registry count: **52 capabilities**.
+- [x] Capability Registry includes **5 core transaction capabilities**,
+      **2 confirmation-gated core release capabilities**, and
       **5 runtime provider hot-plug capabilities**.
 - [x] Software Migration provider exposes **11 reviewed capabilities**.
 - [x] Windows Management exposes **24 allowlisted capabilities**.
@@ -54,7 +55,7 @@ capabilities without changing the production decision boundary:
       branch + explicit tags atomically to an existing named remote, and verifies
       resulting remote refs.
 - [x] Final v1.1.0 full `pytest -q` regression passes after hot-plug integration:
-      **412 passed in 86.50 s**.
+      **413 passed in 84.68 s**.
 - [x] Cold stop/start E2E passes after hot-plug integration. `stop_all.ps1`
       stopped Tunnel PID 3104, HTTP PID 25460, and Broker PID 24104;
       `start_all.ps1` restored Tunnel PID 884, HTTP PID 25640, and Broker PID
