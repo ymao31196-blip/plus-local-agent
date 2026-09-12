@@ -56,6 +56,34 @@ runtime availability, and pinned-version drift.
 Tool discovery is dynamic but filtered through manifest allowlists and per-tool overrides.
 A downstream tool that appears but is not allowlisted stays hidden.
 
+### Provider hot-plug runtime
+
+Provider lifecycle changes are exposed through an internal `runtime` provider on the same
+stable Capability Broker surface:
+
+```text
+runtime.provider_status
+runtime.provider_rescan
+runtime.provider_reload
+runtime.provider_enable
+runtime.provider_disable
+```
+
+The hot-plug runtime serializes manifest changes and performs full manifest parsing before
+mutating the active provider set. `rescan` computes add/change/remove differences, updates the
+shared MCPClientManager, and refreshes only affected providers. A removed provider is removed
+from both the manager and Capability Registry. A changed provider is hidden before its new
+configuration is rediscovered, so stale capabilities are not left available.
+
+Temporary enable/disable overrides live only in process memory. Persistent configuration remains
+`provider_manifests/*.json` plus `PLA_EXTERNAL_PROVIDERS`. Mutating hot-plug operations require
+explicit `INVOKE` confirmation and cannot install dependencies, discover arbitrary executables,
+or bypass manifest allowlists and capability policy.
+
+A live E2E added a temporary read-only WinGet-backed provider, disabled and re-enabled it,
+changed its manifest and reloaded it, then deleted its manifest and rescanned it away while the
+PLA HTTP PID remained unchanged.
+
 ## Durable local runtime
 
 The local executor retains and extends the v0.8 foundations:

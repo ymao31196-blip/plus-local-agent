@@ -59,6 +59,13 @@ class CapabilityRegistry:
             raise ValueError(f"Unknown provider: {provider_id}")
         self._provider_enabled[provider_id] = bool(enabled)
 
+    def remove_provider(self, provider_id: str) -> None:
+        if provider_id not in self._provider_members:
+            raise ValueError(f"Unknown provider: {provider_id}")
+        for capability_id in self._provider_members.pop(provider_id):
+            self._capabilities.pop(capability_id, None)
+        self._provider_enabled.pop(provider_id, None)
+
     def describe(self, capability_id: str) -> dict:
         descriptor = self._capabilities.get(capability_id)
         if descriptor is None:

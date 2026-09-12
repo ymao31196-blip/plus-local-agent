@@ -17,6 +17,9 @@ All notable PLA release changes are recorded here.
 - Reviewed Microsoft WinGet and Windows Management providers.
 - Generic provider runtime support for isolated Python stdio and reviewed native
   executable stdio providers.
+- Provider hot-plug control plane through `runtime.provider_status/rescan/reload/enable/disable`,
+  allowing validated manifest-backed providers to be added, refreshed, hidden,
+  restored, or removed without restarting PLA HTTP.
 - Concurrent external provider discovery.
 - Structured Git staging support for explicit non-ignored new regular files.
 
@@ -38,6 +41,9 @@ All notable PLA release changes are recorded here.
   with install-location and user-data integrity verification.
 - Provider Doctor reports all six reviewed providers healthy with no pinned
   Python dependency drift.
+- Live hot-plug E2E added a temporary read-only WinGet-backed provider, disabled
+  and re-enabled it, reloaded a changed manifest, removed the manifest, and
+  rescanned the provider away while the PLA HTTP PID remained unchanged.
 
 ## 1.0.0 - 2026-09-11
 

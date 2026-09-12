@@ -22,6 +22,21 @@ def test_release_version_and_provider_catalog():
     assert manifests["windows-management"].runtime_kind == "isolated_python_stdio"
     assert manifests["software-migration"].runtime_kind == "isolated_python_stdio"
 
+    runtime_caps = server.CAPABILITY_REGISTRY.search(
+        "",
+        provider_id="runtime",
+        include_unavailable=True,
+        limit=20,
+    )
+    assert runtime_caps["match_count"] == 5
+    assert {item["id"] for item in runtime_caps["capabilities"]} == {
+        "runtime.provider_status",
+        "runtime.provider_rescan",
+        "runtime.provider_reload",
+        "runtime.provider_enable",
+        "runtime.provider_disable",
+    }
+
 
 def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "README.md").is_file()

@@ -85,7 +85,8 @@ from capability_registry import CapabilityRegistry
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
 from core_capabilities import register_core_transaction_capabilities
-from external_provider_runtime import configure_external_providers
+from external_provider_runtime import ExternalProviderRuntime
+from provider_runtime_capabilities import register_provider_runtime_capabilities
 from provider_doctor import provider_doctor as run_provider_doctor
 
 
@@ -97,9 +98,15 @@ register_core_transaction_capabilities(
     CAPABILITY_BROKER,
     TRANSACTION_STORE,
 )
-EXTERNAL_PROVIDER_CONFIG = configure_external_providers(
+EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,
     Path(__file__).resolve().parent,
+)
+EXTERNAL_PROVIDER_CONFIG = EXTERNAL_PROVIDER_RUNTIME.configure_initial()
+register_provider_runtime_capabilities(
+    CAPABILITY_REGISTRY,
+    CAPABILITY_BROKER,
+    EXTERNAL_PROVIDER_RUNTIME,
 )
 
 

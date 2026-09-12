@@ -85,14 +85,22 @@ For an isolated Python provider:
 1. Add `provider_specs/<provider_id>.txt`.
 2. Add `provider_manifests/<provider_id>.json`.
 3. Run `setup_providers.ps1`.
-4. Restart PLA.
+4. While PLA is running, invoke `runtime.provider_rescan` with explicit
+   `INVOKE` confirmation. No HTTP restart is required.
 
 For an executable provider:
 
 1. Install or place the reviewed MCP executable.
 2. Add `provider_manifests/<provider_id>.json` with
    `runtime.kind = "executable_stdio"`.
-3. Restart PLA.
+3. Invoke `runtime.provider_rescan` with explicit `INVOKE` confirmation.
+
+Use `runtime.provider_reload` after editing an active manifest, and
+`runtime.provider_enable` / `runtime.provider_disable` for temporary
+process-local availability changes. Removing a selected manifest followed by
+`runtime.provider_rescan` removes that provider from the runtime and Capability
+Registry.
 
 No PLA Python runtime code change is required for either supported stdio runtime
-kind when the provider fits the v1 manifest schema.
+kind when the provider fits the v1 manifest schema. Restart PLA HTTP only when
+PLA's own runtime source code changes.

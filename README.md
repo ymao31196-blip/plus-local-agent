@@ -46,6 +46,29 @@ capability_invoke
 Python providers run from isolated `.provider_envs/<provider_id>/` environments.
 Reviewed native executables can use `executable_stdio` without a Python wrapper.
 
+### Provider hot-plug
+
+Manifest-backed providers can be changed without restarting PLA HTTP through the built-in
+`runtime` capabilities:
+
+```text
+runtime.provider_status
+runtime.provider_rescan
+runtime.provider_reload
+runtime.provider_enable
+runtime.provider_disable
+```
+
+`rescan` re-reads validated manifests and applies selected additions, removals, and changes.
+`reload` refreshes one provider and its allowlisted tool catalog. `enable` / `disable`
+are temporary process-local overrides and do not modify manifests; restart returns to
+`provider_manifests/*.json` plus `PLA_EXTERNAL_PROVIDERS` as the persistent source of truth.
+All mutating hot-plug operations require explicit `INVOKE` confirmation.
+
+Hot-plug never scans arbitrary executables, installs provider dependencies, or bypasses
+manifest runtime constraints, tool allowlists, risk policy, confirmation policy, or transaction
+policy.
+
 ## Durable action transactions
 
 High-risk multi-step work uses the same stable capability surface through the built-in

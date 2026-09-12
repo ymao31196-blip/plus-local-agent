@@ -96,6 +96,9 @@ class MCPClientManager:
         self._tool_allowlists: dict[str, set[str] | None] = {}
         self._states: dict[str, MCPProviderState] = {}
 
+    def has_provider(self, provider_id: str) -> bool:
+        return provider_id in self._sources
+
     def add_provider(
         self,
         provider_id: str,
@@ -114,6 +117,8 @@ class MCPClientManager:
             raise ValueError("mode must be 'auto' or 'legacy'")
         if tool_overrides is not None and not isinstance(tool_overrides, dict):
             raise TypeError("tool_overrides must be an object")
+        if provider_id in self._sources:
+            self._set_registry_available(provider_id, False)
         if tool_allowlist is not None:
             if not isinstance(tool_allowlist, (list, tuple, set)):
                 raise TypeError("tool_allowlist must be an array of tool names")
@@ -140,6 +145,21 @@ class MCPClientManager:
         except ValueError:
             # A configured provider does not enter the registry until discovery succeeds.
             pass
+
+    def remove_provider(self, provider_id: str) -> None:
+        if provider_id not in self._sources:
+            raise ValueError(f"Unknown MCP provider: {provider_id}")
+        self._set_registry_available(provider_id, False)
+        try:
+            self._registry.remove_provider(provider_id)
+        except ValueError:
+            pass
+        self._sources.pop(provider_id, None)
+        self._enabled.pop(provider_id, None)
+        self._modes.pop(provider_id, None)
+        self._tool_overrides.pop(provider_id, None)
+        self._tool_allowlists.pop(provider_id, None)
+        self._states.pop(provider_id, None)
 
     def _next_retry_after(self, failure_count: int) -> str:
         delay = min(
