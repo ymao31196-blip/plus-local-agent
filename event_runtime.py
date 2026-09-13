@@ -195,6 +195,10 @@ class EventStore:
                 "CREATE INDEX IF NOT EXISTS runtime_events_by_provider "
                 "ON runtime_events(provider_id, sequence)"
             )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS runtime_events_by_transaction "
+                "ON runtime_events(transaction_id, sequence)"
+            )
             self._db = db
             return db
         except Exception:
@@ -332,6 +336,7 @@ class EventStore:
         correlation_id: str | None = None,
         capability_id: str | None = None,
         provider_id: str | None = None,
+        transaction_id: str | None = None,
     ) -> dict[str, Any]:
         if type(after_sequence) is not int or after_sequence < 0:
             raise ValueError("after_sequence must be a non-negative integer")
@@ -368,6 +373,7 @@ class EventStore:
             ("correlation_id", correlation_id, 128),
             ("capability_id", capability_id, 256),
             ("provider_id", provider_id, 128),
+            ("transaction_id", transaction_id, 128),
         ):
             normalized = _bounded_optional_text(
                 column, value, limit=maximum

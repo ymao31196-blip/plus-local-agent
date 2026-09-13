@@ -122,6 +122,7 @@ async def invoke_capability_in_transaction(
             arguments,
             confirmation=confirmation,
             transaction_context=True,
+            transaction_id=transaction_id,
         )
     except Exception as exc:
         failed = transaction_store.checkpoint(

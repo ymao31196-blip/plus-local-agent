@@ -207,6 +207,7 @@ class CapabilityBroker:
         *,
         correlation_id: str,
         causation_id: str | None,
+        transaction_id: str | None,
         payload: dict[str, Any],
     ) -> dict[str, Any] | None:
         if self._event_store is None:
@@ -223,6 +224,7 @@ class CapabilityBroker:
                 causation_id=causation_id,
                 capability_id=capability_id,
                 provider_id=descriptor.get("provider_id"),
+                transaction_id=transaction_id,
                 payload=payload,
             )
         except Exception:
@@ -247,7 +249,19 @@ class CapabilityBroker:
         *,
         confirmation: str | None = None,
         transaction_context: bool = False,
+        transaction_id: str | None = None,
     ) -> dict[str, Any]:
+        if transaction_id is not None:
+            if not transaction_context:
+                raise ValueError("transaction_id requires transaction_context=True")
+            if (
+                not isinstance(transaction_id, str)
+                or not transaction_id.strip()
+                or "\x00" in transaction_id
+                or len(transaction_id.strip()) > 128
+            ):
+                raise ValueError("transaction_id must be a bounded non-empty string")
+            transaction_id = transaction_id.strip()
         descriptor, provider_arguments = self._validated_descriptor_and_arguments(
             capability_id,
             arguments,
@@ -271,6 +285,7 @@ class CapabilityBroker:
                 "confirmation_supplied": confirmation == "INVOKE",
                 "requires_transaction": bool(descriptor.get("requires_transaction")),
                 "transaction_context": bool(transaction_context),
+                "transaction_id": transaction_id,
                 "arguments_sha256": arguments_sha256,
                 "argument_keys": sorted(provider_arguments),
                 "arguments": deepcopy(provider_arguments),
@@ -301,6 +316,7 @@ class CapabilityBroker:
                     capability_id,
                     correlation_id=correlation_id,
                     causation_id=None,
+                    transaction_id=transaction_id,
                     payload={
                         "arguments_sha256": arguments_sha256,
                         "deny_hook_ids": list(gate_result.get("deny_hook_ids") or []),
@@ -318,6 +334,7 @@ class CapabilityBroker:
             capability_id,
             correlation_id=correlation_id,
             causation_id=None,
+            transaction_id=transaction_id,
             payload={
                 "arguments_sha256": arguments_sha256,
                 "argument_keys": sorted(provider_arguments),
@@ -348,6 +365,7 @@ class CapabilityBroker:
                 capability_id,
                 correlation_id=correlation_id,
                 causation_id=causation_id,
+                transaction_id=transaction_id,
                 payload={
                     "arguments_sha256": arguments_sha256,
                     "exception_type": type(exc).__name__,
@@ -370,6 +388,7 @@ class CapabilityBroker:
             capability_id,
             correlation_id=correlation_id,
             causation_id=causation_id,
+            transaction_id=transaction_id,
             payload={
                 "arguments_sha256": arguments_sha256,
                 "result_sha256": _stable_sha256(result),

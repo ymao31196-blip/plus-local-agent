@@ -381,6 +381,61 @@ def test_capability_broker_records_success_events_without_raw_arguments(tmp_path
     assert "super-secret-value" not in str(events)
 
 
+def test_capability_broker_records_transaction_id_on_transaction_invocation(tmp_path):
+    async def scenario():
+        registry = CapabilityRegistry()
+        manager = MCPClientManager(registry, discovery_timeout=10, invoke_timeout=10)
+        transport = PythonStdioTransport(FIXTURE, cwd=str(PROJECT_ROOT))
+        manager.add_provider("fixture", transport)
+        await manager.discover_provider("fixture")
+        store = EventStore(tmp_path / "events.sqlite3")
+        broker = CapabilityBroker(registry, manager, store)
+        result = await broker.invoke(
+            "fixture.echo_text",
+            {"text": "transactional"},
+            confirmation="INVOKE",
+            transaction_context=True,
+            transaction_id="tx-123",
+        )
+        events = store.query(
+            capability_id="fixture.echo_text",
+            transaction_id="tx-123",
+        )["events"]
+        store.close()
+        return result, events
+
+    result, events = asyncio.run(scenario())
+
+    assert result["status"] == "completed"
+    assert [event["event_type"] for event in events] == [
+        "capability.before_invoke",
+        "capability.succeeded",
+    ]
+    assert {event["transaction_id"] for event in events} == {"tx-123"}
+
+
+def test_capability_broker_rejects_transaction_id_without_transaction_context():
+    async def scenario():
+        registry = CapabilityRegistry()
+        manager = MCPClientManager(registry, discovery_timeout=10, invoke_timeout=10)
+        transport = PythonStdioTransport(FIXTURE, cwd=str(PROJECT_ROOT))
+        manager.add_provider("fixture", transport)
+        await manager.discover_provider("fixture")
+        broker = CapabilityBroker(registry, manager)
+        with pytest.raises(
+            ValueError,
+            match="transaction_id requires transaction_context=True",
+        ):
+            await broker.invoke(
+                "fixture.echo_text",
+                {"text": "blocked"},
+                confirmation="INVOKE",
+                transaction_id="fake-transaction",
+            )
+
+    asyncio.run(scenario())
+
+
 def test_capability_broker_records_failed_event_on_provider_exception(
     tmp_path,
     monkeypatch,

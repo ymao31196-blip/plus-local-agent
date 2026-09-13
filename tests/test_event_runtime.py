@@ -65,6 +65,7 @@ def test_event_store_query_cursor_and_filters(tmp_path):
             correlation_id="corr-a",
             capability_id="alpha.one",
             provider_id="alpha",
+            transaction_id="tx-a",
         )
         store.emit(
             "capability.succeeded",
@@ -74,6 +75,7 @@ def test_event_store_query_cursor_and_filters(tmp_path):
             causation_id=a1["event_id"],
             capability_id="alpha.one",
             provider_id="alpha",
+            transaction_id="tx-a",
         )
         store.emit(
             "capability.failed",
@@ -102,6 +104,12 @@ def test_event_store_query_cursor_and_filters(tmp_path):
 
         correlated = store.query(correlation_id="corr-a")
         assert len(correlated["events"]) == 2
+
+        transactional = store.query(transaction_id="tx-a")
+        assert len(transactional["events"]) == 2
+        assert {event["transaction_id"] for event in transactional["events"]} == {
+            "tx-a"
+        }
     finally:
         store.close()
 

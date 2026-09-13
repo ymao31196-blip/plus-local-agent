@@ -125,7 +125,10 @@ transaction/task identifiers, JSON payload, and payload SHA-256.
 
 The Capability Broker creates one correlation id per validated invocation. The terminal event
 causes from the matching `before_invoke` event, making each invocation pair reconstructable
-without handing control to an event bus.
+without handing control to an event bus. When the Transaction Envelope invokes a target
+Capability, the real durable transaction id is propagated internally into both Event facts;
+`core.event_query` can filter directly by that transaction id. Ordinary public
+`capability_invoke` does not accept caller-supplied transaction ids.
 
 The global store intentionally does not retain raw arguments, returned content, or exception
 messages. Broker events contain argument/result hashes and bounded metadata. Event persistence
@@ -342,3 +345,6 @@ Important boundaries remain:
 
 The design goal is capability, auditability, and recoverability without moving planning
 authority away from ChatGPT.
+
+The consolidated v1.2 security assumptions, trust boundaries, failure semantics, and residual
+risks are documented in `docs/v1_2_threat_model.md`.

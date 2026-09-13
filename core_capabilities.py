@@ -247,6 +247,10 @@ def core_event_descriptors() -> tuple[CapabilityDescriptor, ...]:
                         "type": ["string", "null"],
                         "default": None,
                     },
+                    "transaction_id": {
+                        "type": ["string", "null"],
+                        "default": None,
+                    },
                 },
                 "additionalProperties": False,
             },
@@ -532,6 +536,7 @@ def register_core_transaction_capabilities(
                 correlation_id=args.get("correlation_id"),
                 capability_id=args.get("capability_id"),
                 provider_id=args.get("provider_id"),
+                transaction_id=args.get("transaction_id"),
             ),
         )
     if observer_hooks is not None:

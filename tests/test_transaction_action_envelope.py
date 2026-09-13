@@ -47,9 +47,11 @@ class _Broker:
         *,
         confirmation=None,
         transaction_context=False,
+        transaction_id=None,
     ):
         assert transaction_context is True
-        self.calls.append((capability_id, arguments, confirmation))
+        assert transaction_id
+        self.calls.append((capability_id, arguments, confirmation, transaction_id))
         if self.error is not None:
             raise self.error
         return dict(self.result)
@@ -108,7 +110,14 @@ def test_action_envelope_marks_success_and_records_hash():
         assert evidence["capability_id"] == "fixture.write"
         assert len(evidence["arguments_sha256"]) == 64
         assert len(evidence["result_sha256"]) == 64
-        assert broker.calls == [("fixture.write", {"path": "x"}, None)]
+        assert broker.calls == [
+            (
+                "fixture.write",
+                {"path": "x"},
+                None,
+                record["transaction_id"],
+            )
+        ]
     finally:
         store.close()
 

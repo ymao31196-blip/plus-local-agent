@@ -23,7 +23,9 @@ PLA Local Capability Runtime
         +-- Capability Registry / Broker
         +-- Durable Transaction Store
         +-- Artifact Plane
-        +-- Provider Manifest + Lifecycle
+        +-- Event / Observer / Gate Plane
+        +-- Provider + External Observer Runtime
+        +-- Runtime Lifecycle Broker
         +-- Local execution boundary
         +-- Interactive Elevation Broker
         +-- External MCP providers
