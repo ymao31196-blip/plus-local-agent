@@ -126,6 +126,29 @@ def test_run_ui_is_shell_free_json_and_disables_update_check(tmp_path, monkeypat
     )
 
 
+def test_internal_indicator_is_hidden_from_computer_observation():
+    value = {
+        "windows": [
+            {
+                "title": "__PLA_INTERNAL_COMPUTER_USE_INDICATOR__",
+                "processName": "python",
+            },
+            {
+                "title": "Editor",
+                "elements": [
+                    {"name": "PLA Computer Use Indicator", "selector": "internal"},
+                    {"name": "Save", "selector": "save"},
+                ],
+            },
+        ]
+    }
+
+    filtered = computer._filter_internal_ui(value)
+
+    assert [item["title"] for item in filtered["windows"]] == ["Editor"]
+    assert filtered["windows"][0]["elements"] == [{"name": "Save", "selector": "save"}]
+
+
 def test_run_ui_preserves_parseable_no_match_envelope(tmp_path, monkeypatch):
     _prepare_backend(tmp_path, monkeypatch)
 

@@ -86,6 +86,7 @@ from artifact_bridge import (
 from capability_registry import CapabilityRegistry
 from event_runtime import EVENT_STORE
 from observer_hook_runtime import OBSERVER_HOOK_RUNTIME
+from computer_use_indicator import computer_use_indicator_observer
 from gate_hook_runtime import GATE_HOOK_RUNTIME
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
@@ -96,6 +97,15 @@ from provider_runtime_capabilities import register_provider_runtime_capabilities
 from provider_doctor import provider_doctor as run_provider_doctor
 
 
+OBSERVER_HOOK_RUNTIME.register(
+    "computer-use-indicator",
+    (
+        "capability.before_invoke",
+        "capability.succeeded",
+        "capability.failed",
+    ),
+    computer_use_indicator_observer,
+)
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
 CAPABILITY_BROKER = CapabilityBroker(

@@ -2,6 +2,18 @@
 
 All notable PLA release changes are recorded here.
 
+## Unreleased
+
+### Added
+
+- User-visible Windows Computer Use activity indicator driven by the existing
+  Event/Observer plane rather than the Computer Provider itself.
+- The non-activating, click-through top banner distinguishes desktop observation
+  from desktop control and lingers briefly after an action so local users can
+  tell when PLA has been using the desktop.
+- Indicator windows are filtered from Computer Provider observations so the
+  user-visible self-UI does not become an Agent interaction target.
+
 ## 1.4.0 - 2026-09-13
 
 ### Added

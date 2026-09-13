@@ -27,6 +27,10 @@ PACKAGE_DIR = (
 STATE_DIR = PROJECT_ROOT / "state" / "computer"
 CACHE_DIR = STATE_DIR / "winapp-cache"
 _TYPE_CHUNK_CHARS = 128
+_INTERNAL_WINDOW_TITLES = {
+    "PLA Computer Use Indicator",
+    "__PLA_INTERNAL_COMPUTER_USE_INDICATOR__",
+}
 
 _SAFE_KEYS = {
     "enter",
@@ -145,6 +149,29 @@ def _parse_json_output(stdout: str) -> Any:
         raise RuntimeError("winapp CLI returned non-JSON output") from exc
 
 
+def _is_internal_ui_record(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return any(
+        value.get(field) in _INTERNAL_WINDOW_TITLES
+        for field in ("title", "name")
+    )
+
+
+def _filter_internal_ui(value: Any) -> Any:
+    if isinstance(value, list):
+        return [
+            _filter_internal_ui(item)
+            for item in value
+            if not _is_internal_ui_record(item)
+        ]
+    if isinstance(value, dict):
+        if _is_internal_ui_record(value):
+            return {}
+        return {key: _filter_internal_ui(item) for key, item in value.items()}
+    return value
+
+
 def _run_ui(
     args: list[str],
     *,
@@ -180,7 +207,7 @@ def _run_ui(
 
     data: Any = None
     if completed.stdout.strip():
-        data = _parse_json_output(completed.stdout)
+        data = _filter_internal_ui(_parse_json_output(completed.stdout))
     if completed.returncode != 0 and data is None:
         detail = completed.stderr.strip()[:4000] or "winapp UI operation failed"
         raise RuntimeError(detail)
