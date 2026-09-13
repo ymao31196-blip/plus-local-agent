@@ -137,8 +137,38 @@ Existing TaskStore and ActionTransactionStore local event tables remain untouche
 their recovery/state-machine responsibilities; the global Event Plane records cross-cutting
 facts for future audit, metrics, notification, and Hook/Gate subscribers.
 
-Phase 1 intentionally does not implement Hook execution, ALLOW/DENY decisions, argument
-transformation, or event-driven dispatch.
+## Observer Hook Plane (v1.2 Phase 2)
+
+Observer Hooks consume EventEnvelope facts only after the corresponding event has been appended
+to EventStore:
+
+```text
+EventStore.append
+    -> ObserverHookRuntime.dispatch
+    -> HookInvocationStore
+```
+
+The built-in `audit-observer` subscribes to Capability before/succeeded/failed events. Hook
+dispatch order is deterministic by `hook_id`. Hook execution records are stored separately in
+`state/hooks.sqlite3` with event identity, correlation, duration, status, result hash, and
+hashed exception metadata.
+
+Observer failure is fail-open. A failing observer cannot modify arguments, deny execution,
+replace results, or schedule follow-up capabilities. The Capability Broker remains the explicit
+control-flow owner.
+
+Stable read-only inspection is provided by:
+
+```text
+core.hook_status
+core.hook_invocation_query
+```
+
+Both are tagged `hook-control`; like `event-control`, they are excluded from EventStore
+instrumentation and therefore cannot recursively create audit records.
+
+Phase 2 intentionally stops before Gate Hooks, external Hook manifests, Hook hot-plug,
+subprocess/plugin Hook execution, retries, or asynchronous delivery.
 
 ## Interactive elevation plane
 

@@ -10,6 +10,7 @@ from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
 from event_runtime import EventStore
+from observer_hook_runtime import ObserverHookRuntime
 from local_tools import git_push as controlled_git_push, git_tag as controlled_git_tag
 from transaction_action_envelope import invoke_capability_in_transaction
 from transaction_runtime import ActionTransactionStore
@@ -254,6 +255,67 @@ def core_event_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_hook_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    return (
+        _descriptor(
+            "core.hook_status",
+            "hook_status",
+            "Observer Hook Status",
+            (
+                "Read registered observer hooks. Hook-control capabilities are "
+                "excluded from event recording and observer dispatch."
+            ),
+            {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("hook", "observer", "runtime", "hook-control"),
+        ),
+        _descriptor(
+            "core.hook_invocation_query",
+            "hook_invocation_query",
+            "Query Observer Hook Invocations",
+            (
+                "Read durable observer-hook invocation records by cursor and "
+                "optional filters without creating recursive hook observations."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "after_sequence": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "default": 0,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 200,
+                        "default": 100,
+                    },
+                    "hook_id": {"type": ["string", "null"], "default": None},
+                    "event_id": {"type": ["string", "null"], "default": None},
+                    "event_type": {"type": ["string", "null"], "default": None},
+                    "correlation_id": {
+                        "type": ["string", "null"],
+                        "default": None,
+                    },
+                    "status": {
+                        "type": ["string", "null"],
+                        "enum": ["completed", "failed", None],
+                        "default": None,
+                    },
+                },
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("hook", "observer", "runtime", "audit", "hook-control"),
+        ),
+    )
+
+
 def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
     root_schema = {
         "type": "string",
@@ -323,6 +385,7 @@ def register_core_transaction_capabilities(
     broker: CapabilityBroker,
     transaction_store: ActionTransactionStore,
     event_store: EventStore | None = None,
+    observer_hooks: ObserverHookRuntime | None = None,
 ) -> None:
     """Register stable core governance capabilities and in-process handlers."""
 
@@ -332,6 +395,8 @@ def register_core_transaction_capabilities(
     ]
     if event_store is not None:
         descriptors.extend(core_event_descriptors())
+    if observer_hooks is not None:
+        descriptors.extend(core_hook_descriptors())
 
     registry.register_provider(
         "core",
@@ -419,5 +484,22 @@ def register_core_transaction_capabilities(
                 correlation_id=args.get("correlation_id"),
                 capability_id=args.get("capability_id"),
                 provider_id=args.get("provider_id"),
+            ),
+        )
+    if observer_hooks is not None:
+        broker.register_internal_handler(
+            "core.hook_status",
+            lambda _args: observer_hooks.status(),
+        )
+        broker.register_internal_handler(
+            "core.hook_invocation_query",
+            lambda args: observer_hooks.query_invocations(
+                after_sequence=args.get("after_sequence", 0),
+                limit=args.get("limit", 100),
+                hook_id=args.get("hook_id"),
+                event_id=args.get("event_id"),
+                event_type=args.get("event_type"),
+                correlation_id=args.get("correlation_id"),
+                status=args.get("status"),
             ),
         )

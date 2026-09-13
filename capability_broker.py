@@ -20,6 +20,7 @@ from jsonschema.exceptions import SchemaError
 from artifact_runtime import ArtifactInvocation
 from capability_registry import CapabilityRegistry
 from event_runtime import EventStore
+from observer_hook_runtime import ObserverHookRuntime
 from mcp_client_manager import MCPClientManager
 
 
@@ -92,10 +93,12 @@ class CapabilityBroker:
         registry: CapabilityRegistry,
         mcp_clients: MCPClientManager,
         event_store: EventStore | None = None,
+        observer_hooks: ObserverHookRuntime | None = None,
     ) -> None:
         self._registry = registry
         self._mcp_clients = mcp_clients
         self._event_store = event_store
+        self._observer_hooks = observer_hooks
         self._internal_handlers: dict[str, Callable[[dict[str, Any]], Any]] = {}
 
     def register_internal_handler(
@@ -205,10 +208,11 @@ class CapabilityBroker:
     ) -> dict[str, Any] | None:
         if self._event_store is None:
             return None
-        if "event-control" in set(descriptor.get("tags") or []):
+        control_tags = {"event-control", "hook-control"}
+        if control_tags.intersection(set(descriptor.get("tags") or [])):
             return None
         try:
-            return self._event_store.emit(
+            event = self._event_store.emit(
                 event_type,
                 source="capability_broker",
                 subject=capability_id,
@@ -223,6 +227,15 @@ class CapabilityBroker:
             # correctness. Event persistence failures must not alter the
             # selected capability's execution semantics.
             return None
+
+        if self._observer_hooks is not None:
+            try:
+                self._observer_hooks.dispatch(event)
+            except Exception:
+                # Observer hooks are fail-open in Phase 2 and can never change
+                # the selected capability path.
+                pass
+        return event
 
     async def invoke(
         self,

@@ -85,6 +85,7 @@ from artifact_bridge import (
 )
 from capability_registry import CapabilityRegistry
 from event_runtime import EVENT_STORE
+from observer_hook_runtime import OBSERVER_HOOK_RUNTIME
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
 from core_capabilities import register_core_transaction_capabilities
@@ -99,12 +100,14 @@ CAPABILITY_BROKER = CapabilityBroker(
     CAPABILITY_REGISTRY,
     MCP_CLIENT_MANAGER,
     EVENT_STORE,
+    OBSERVER_HOOK_RUNTIME,
 )
 register_core_transaction_capabilities(
     CAPABILITY_REGISTRY,
     CAPABILITY_BROKER,
     TRANSACTION_STORE,
     EVENT_STORE,
+    OBSERVER_HOOK_RUNTIME,
 )
 EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,

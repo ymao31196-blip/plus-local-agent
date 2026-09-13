@@ -9,6 +9,11 @@ import core_capabilities
 from core_capabilities import register_core_transaction_capabilities
 from event_runtime import EventStore
 from mcp_client_manager import MCPClientManager
+from observer_hook_runtime import (
+    HookInvocationStore,
+    ObserverHookRuntime,
+    audit_observer,
+)
 from transaction_runtime import ActionTransactionStore
 
 
@@ -391,4 +396,89 @@ def test_core_event_query_reads_events_without_self_recording(tmp_path):
         assert event_store.query()["returned_count"] == 2
     finally:
         tx_store.close()
+        event_store.close()
+
+
+def test_core_hook_status_and_invocation_query_do_not_self_observe(tmp_path):
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    event_store = EventStore(tmp_path / "events.sqlite3")
+    hook_store = HookInvocationStore(tmp_path / "hooks.sqlite3")
+    hooks = ObserverHookRuntime(hook_store)
+    hooks.register(
+        "audit-observer",
+        (
+            "capability.before_invoke",
+            "capability.succeeded",
+            "capability.failed",
+        ),
+        audit_observer,
+    )
+    broker = CapabilityBroker(registry, manager, event_store, hooks)
+    tx_store = ActionTransactionStore()
+    register_core_transaction_capabilities(
+        registry,
+        broker,
+        tx_store,
+        event_store,
+        hooks,
+    )
+    fixture = CapabilityDescriptor(
+        id="fixture.read",
+        provider_id="fixture",
+        remote_name="read",
+        title="Fixture Read",
+        description="Fixture hook-control test capability.",
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "integer"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+        risk_level="read",
+        tags=("fixture", "hook-test"),
+    )
+    registry.register_provider("fixture", [fixture], enabled=True)
+    broker.register_internal_handler(
+        "fixture.read",
+        lambda args: {"status": "completed", "value": args["value"]},
+    )
+
+    try:
+        result = asyncio.run(broker.invoke("fixture.read", {"value": 11}))
+        assert result["data"]["value"] == 11
+        assert event_store.query()["returned_count"] == 2
+        assert hook_store.query()["returned_count"] == 2
+
+        status = asyncio.run(
+            broker.invoke(
+                "core.hook_status",
+                {},
+            )
+        )
+        assert status["data"]["hook_count"] == 1
+        assert status["data"]["hooks"][0]["hook_id"] == "audit-observer"
+
+        queried = asyncio.run(
+            broker.invoke(
+                "core.hook_invocation_query",
+                {
+                    "after_sequence": 0,
+                    "limit": 20,
+                    "hook_id": "audit-observer",
+                },
+            )
+        )
+        invocations = queried["data"]["invocations"]
+        assert [item["event_type"] for item in invocations] == [
+            "capability.before_invoke",
+            "capability.succeeded",
+        ]
+
+        # hook-control capabilities create neither EventStore nor HookStore noise.
+        assert event_store.query()["returned_count"] == 2
+        assert hook_store.query()["returned_count"] == 2
+    finally:
+        tx_store.close()
+        hook_store.close()
         event_store.close()

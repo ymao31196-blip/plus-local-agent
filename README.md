@@ -125,8 +125,28 @@ The query capability is tagged as `event-control` and is excluded from self-reco
 recursive audit noise. Existing TaskStore and ActionTransactionStore event histories remain
 unchanged and continue to be their own state/recovery sources of truth.
 
-Phase 1 contains no Hook/Gate execution. Hooks are intentionally deferred until the event
-schema, persistence, querying, and broker instrumentation are proven stable.
+### Observer Hooks
+
+Phase 2 adds fail-open Observer Hooks on top of already-persisted EventEnvelope facts. The
+production runtime currently registers one built-in `audit-observer` for
+`capability.before_invoke`, `capability.succeeded`, and `capability.failed`.
+
+Observer execution records are stored separately in `state/hooks.sqlite3`; raw Hook results and
+raw exception text are not persisted. Hook failures never change the selected Capability's
+result or exception semantics.
+
+Read-only inspection is available through:
+
+```text
+core.hook_status
+core.hook_invocation_query
+```
+
+These capabilities carry the `hook-control` tag and therefore create neither EventStore entries
+nor Audit Hook records when inspected.
+
+Phase 2 remains observer-only: it does not implement ALLOW/DENY gates, argument transformation,
+Hook manifests, Hook hot-plug, or Hook-triggered Capability execution.
 
 ## Interactive Elevation Broker
 
