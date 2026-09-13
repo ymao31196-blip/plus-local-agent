@@ -1,7 +1,13 @@
 [CmdletBinding()]
-param()
+param(
+    [int]$ExpectedPid = 0,
+    [switch]$Json
+)
 
 $ErrorActionPreference = "Stop"
+if ($Json) {
+    [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
+}
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $httpScript = Join-Path $projectRoot "start_http.ps1"
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
@@ -30,7 +36,7 @@ function Assert-OwnedHttp([int]$ProcessId) {
     }
     foreach ($fragment in @($projectRoot, "server.py")) {
         if (-not $commandLine.Contains($fragment)) {
-            throw "Port 8766 belongs to PID $ProcessId, but it is not the expected PLA HTTP process. Refusing to stop it.`nCommandLine: $commandLine"
+            throw "Port 8766 belongs to PID $ProcessId, but it is not the expected PLA HTTP process. Refusing to stop it. CommandLine: $commandLine"
         }
     }
 }
@@ -52,12 +58,23 @@ function Wait-PortState([int]$Port, [bool]$Listening, [int]$TimeoutSeconds) {
 }
 
 $oldPid = Get-ListenerPid 8766
+if ($ExpectedPid -gt 0) {
+    if ($null -eq $oldPid) {
+        throw "Expected PLA HTTP PID $ExpectedPid, but port 8766 is not listening."
+    }
+    if ($oldPid -ne $ExpectedPid) {
+        throw "Expected PLA HTTP PID $ExpectedPid, but port 8766 belongs to PID $oldPid. Refusing restart."
+    }
+}
+
 if ($null -ne $oldPid) {
     Assert-OwnedHttp $oldPid
-    Write-Host "Stopping PLA HTTP (PID $oldPid)..."
+    if (-not $Json) {
+        Write-Host "Stopping PLA HTTP (PID $oldPid)..."
+    }
     Stop-Process -Id $oldPid -Force
     Wait-PortState 8766 $false 10 | Out-Null
-} else {
+} elseif (-not $Json) {
     Write-Host "PLA HTTP is not currently running; starting it."
 }
 
@@ -68,10 +85,20 @@ $newPid = Wait-PortState 8766 $true 20
 Assert-OwnedHttp $newPid
 
 $tunnelPid = Get-ListenerPid 18081
-if ($null -ne $tunnelPid) {
-    Write-Host "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid); tunnel remains running (PID $tunnelPid)."
-} else {
-    Write-Warning "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid), but tunnel health port 18081 is not listening. Run .\start_tunnel.ps1 or .\start_all.ps1."
+$result = [ordered]@{
+    status = "completed"
+    old_pid = if ($null -ne $oldPid) { [int]$oldPid } else { $null }
+    new_pid = [int]$newPid
+    tunnel_pid = if ($null -ne $tunnelPid) { [int]$tunnelPid } else { $null }
+    tunnel_listening = ($null -ne $tunnelPid)
 }
 
-Write-Host "PLA HTTP RESTARTED"
+if ($Json) {
+    $result | ConvertTo-Json -Compress
+} elseif ($null -ne $tunnelPid) {
+    Write-Host "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid); tunnel remains running (PID $tunnelPid)."
+    Write-Host "PLA HTTP RESTARTED"
+} else {
+    Write-Warning "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid), but tunnel health port 18081 is not listening. Run .\start_tunnel.ps1 or .\start_all.ps1."
+    Write-Host "PLA HTTP RESTARTED"
+}

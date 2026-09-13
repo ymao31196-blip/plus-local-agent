@@ -7,6 +7,8 @@ $httpScript = Join-Path $projectRoot "start_http.ps1"
 $tunnelScript = Join-Path $projectRoot "start_tunnel.ps1"
 $brokerScript = Join-Path $projectRoot "start_elevation_broker.ps1"
 $brokerStatusPath = Join-Path $projectRoot "state\elevation\broker_status.json"
+$lifecycleScript = Join-Path $projectRoot "start_lifecycle_broker.ps1"
+$lifecycleStatusPath = Join-Path $projectRoot "state\lifecycle\broker_status.json"
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
 
 function Get-ListenerPid([int]$Port) {
@@ -79,7 +81,31 @@ function Wait-BrokerReady([int]$TimeoutSeconds = 10) {
     throw "Timed out waiting for Interactive Elevation Broker."
 }
 
-foreach ($required in @($httpScript, $tunnelScript, $brokerScript)) {
+function Wait-LifecycleBrokerReady([int]$TimeoutSeconds = 10) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $lifecycleStatusPath -PathType Leaf) {
+            try {
+                $status = Get-Content -LiteralPath $lifecycleStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $lifecyclePid = [int]$status.pid
+                if ($status.state -eq "running" -and $lifecyclePid -gt 0) {
+                    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $lifecyclePid" -ErrorAction SilentlyContinue
+                    if ($null -ne $process) {
+                        $commandLine = [string]$process.CommandLine
+                        if ($commandLine.Contains($projectRoot) -and $commandLine.Contains("runtime_lifecycle_broker.py")) {
+                            return $lifecyclePid
+                        }
+                    }
+                }
+            } catch {
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Timed out waiting for Runtime Lifecycle Broker."
+}
+
+foreach ($required in @($httpScript, $tunnelScript, $brokerScript, $lifecycleScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing startup script: $required"
     }
@@ -95,6 +121,17 @@ $brokerStartArgs = @{
 Start-Process @brokerStartArgs | Out-Null
 $brokerPid = Wait-BrokerReady 10
 Write-Host "Interactive Elevation Broker ready (PID $brokerPid)."
+
+Write-Host "Ensuring Runtime Lifecycle Broker..."
+$lifecycleStartArgs = @{
+    FilePath = $powershell
+    ArgumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $lifecycleScript)
+    WorkingDirectory = $projectRoot
+    WindowStyle = "Hidden"
+}
+Start-Process @lifecycleStartArgs | Out-Null
+$lifecyclePid = Wait-LifecycleBrokerReady 10
+Write-Host "Runtime Lifecycle Broker ready (PID $lifecyclePid)."
 
 $httpPid = Assert-OwnedListener 8766 @($projectRoot, "server.py") "PLA HTTP"
 if ($null -eq $httpPid) {

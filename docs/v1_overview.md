@@ -229,6 +229,38 @@ External Gate plugins, arbitrary executables, shell commands, automatic package 
 network sandboxing, background delivery/retries, transformation, and plugin-triggered PLA
 Capability calls remain outside Phase 4.
 
+## Runtime Lifecycle Plane (v1.2 Phase 5)
+
+Runtime self-maintenance is separated from the HTTP process that is being restarted:
+
+```text
+runtime.restart_http
+    -> versioned restart request
+    -> independent Runtime Lifecycle Broker
+    -> restart_pla.ps1 -ExpectedPid <current-http-pid> -Json
+    -> verify listener ownership
+    -> restart PLA HTTP only
+    -> keep Secure MCP Tunnel running
+    -> durable restart status
+```
+
+The public lifecycle surface is `runtime.lifecycle_status`, `runtime.restart_http`, and
+`runtime.restart_status`. Restart requires explicit `INVOKE`; it does not expose arbitrary
+PID, executable, command, port, shell, service, or tunnel controls.
+
+The HTTP process returns an accepted request id before termination. The lifecycle broker runs in
+a separate process, validates the fixed request shape and age, verifies the expected current HTTP
+PID through `restart_pla.ps1`, and records a durable terminal result. After reconnect,
+`runtime.restart_status` reports the verified old/new HTTP PIDs and tunnel state.
+
+Lifecycle status combines broker heartbeat freshness with actual broker-process liveness. This
+prevents a freshly written but orphaned `state=running` status file from temporarily reporting
+the lifecycle plane as ready.
+
+`start_all.ps1` ensures the Lifecycle Broker alongside the existing elevation broker, HTTP, and
+tunnel. During shutdown, `stop_all.ps1` closes tunnel ingress, then removes restart authority,
+then stops HTTP.
+
 ## Interactive elevation plane
 
 Windows UAC interaction is deliberately separated from the background HTTP runtime.

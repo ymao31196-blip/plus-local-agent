@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tunnelConfig = Join-Path $projectRoot "config\tunnel.yaml"
 $brokerStopScript = Join-Path $projectRoot "stop_elevation_broker.ps1"
+$lifecycleStopScript = Join-Path $projectRoot "stop_lifecycle_broker.ps1"
 
 function Get-ListenerPid([int]$Port) {
     $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
@@ -52,6 +53,15 @@ function Stop-OwnedListener([int]$Port, [string[]]$RequiredFragments, [string]$N
 
 # Stop ingress first so no new remote work is forwarded while local services shut down.
 Stop-OwnedListener 18081 @("tunnel-client", $tunnelConfig) "PLA tunnel"
+
+# Stop the restart authority before stopping HTTP so a queued lifecycle request
+# cannot bring the service back during shutdown.
+if (Test-Path -LiteralPath $lifecycleStopScript -PathType Leaf) {
+    & $lifecycleStopScript
+} else {
+    Write-Warning "Runtime Lifecycle Broker stop script is missing: $lifecycleStopScript"
+}
+
 Stop-OwnedListener 8766 @($projectRoot, "server.py") "PLA HTTP"
 
 if (Test-Path -LiteralPath $brokerStopScript -PathType Leaf) {

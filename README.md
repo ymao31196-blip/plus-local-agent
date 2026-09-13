@@ -195,6 +195,31 @@ not recursively create Event, Observer, or Gate records. External Observer failu
 fail-open relative to Capability execution. Third-party external Gate plugins remain deliberately
 out of scope until a stronger trust/sandbox boundary exists.
 
+### Runtime Lifecycle Plane
+
+Phase 5 replaces ad-hoc self-restart helpers with an independent Runtime Lifecycle Broker.
+The stable runtime surface is:
+
+```text
+runtime.lifecycle_status
+runtime.restart_http
+runtime.restart_status
+```
+
+`runtime.restart_http` requires explicit `INVOKE`, queues one exact restart of the current
+PLA HTTP PID, and returns a durable request id before the process is terminated. The independent
+broker then invokes the repository-owned `restart_pla.ps1` with the exact expected HTTP PID.
+That script independently verifies port 8766 ownership and the `server.py` command line before
+stopping anything.
+
+The Secure MCP Tunnel is deliberately left running. After reconnect, `runtime.restart_status`
+is the source of truth for the verified old/new HTTP PIDs and tunnel state; a dropped connection
+alone is never treated as success. `runtime.lifecycle_status` also verifies broker heartbeat and
+process liveness so a stale `running` status file cannot be mistaken for a live restart broker.
+
+`start_all.ps1` now ensures both the Interactive Elevation Broker and Runtime Lifecycle Broker.
+`stop_all.ps1` stops tunnel ingress first, then disables restart authority before stopping HTTP.
+
 ## Interactive Elevation Broker
 
 PLA's HTTP runtime normally runs without administrator privileges. UAC-sensitive work is

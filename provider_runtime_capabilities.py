@@ -11,6 +11,10 @@ from observer_runtime_capabilities import (
     external_observer_runtime_descriptors,
     register_external_observer_handlers,
 )
+from runtime_lifecycle_capabilities import (
+    register_runtime_lifecycle_handlers,
+    runtime_lifecycle_descriptors,
+)
 
 
 _OBJECT_OUTPUT = {"type": "object"}
@@ -140,6 +144,7 @@ def register_provider_runtime_capabilities(
     descriptors = list(provider_runtime_descriptors())
     if observer_runtime is not None:
         descriptors.extend(external_observer_runtime_descriptors())
+    descriptors.extend(runtime_lifecycle_descriptors())
     registry.register_provider(
         "runtime",
         descriptors,
@@ -170,3 +175,4 @@ def register_provider_runtime_capabilities(
             broker,
             observer_runtime,
         )
+    register_runtime_lifecycle_handlers(broker)
