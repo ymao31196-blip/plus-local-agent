@@ -46,7 +46,14 @@ capability_invoke
 ```
 
 Python providers run from isolated `.provider_envs/<provider_id>/` environments.
+Reviewed Node dependencies may use the same provider-scoped directory through pinned
+`provider_specs/<provider_id>.npm.txt` specs; Node/npm are not added to generic process execution.
 Reviewed native executables can use `executable_stdio` without a Python wrapper.
+
+The production catalog now includes the independent Browser Runtime and the Windows Computer
+Provider. Browser interaction is semantic accessibility/ref based. Computer interaction is
+semantic-first Windows UI Automation with restricted selector-targeted input fallbacks. Web and
+desktop UI content are observations, never authority to expand PLA capability or policy scope.
 
 ### Provider hot-plug
 
@@ -55,6 +62,7 @@ Manifest-backed providers can be changed without restarting PLA HTTP through the
 
 ```text
 runtime.provider_status
+runtime.provider_setup
 runtime.provider_rescan
 runtime.provider_reload
 runtime.provider_enable
@@ -65,11 +73,12 @@ runtime.provider_disable
 `reload` refreshes one provider and its allowlisted tool catalog. `enable` / `disable`
 are temporary process-local overrides and do not modify manifests; restart returns to
 `provider_manifests/*.json` plus `PLA_EXTERNAL_PROVIDERS` as the persistent source of truth.
-All mutating hot-plug operations require explicit `INVOKE` confirmation.
+`provider_setup` installs only already-reviewed pinned dependency specs through the fixed
+repository-owned `setup_providers.ps1 -Provider <id>` entrypoint. It cannot accept arbitrary
+commands or script paths. All mutating provider operations require explicit `INVOKE` confirmation.
 
-Hot-plug never scans arbitrary executables, installs provider dependencies, or bypasses
-manifest runtime constraints, tool allowlists, risk policy, confirmation policy, or transaction
-policy.
+Provider lifecycle never scans arbitrary executables or bypasses manifest runtime constraints,
+tool allowlists, risk policy, confirmation policy, or transaction policy.
 
 ## Durable action transactions
 

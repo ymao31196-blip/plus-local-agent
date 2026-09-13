@@ -24,6 +24,10 @@ Current providers:
 
 - `browser`: Microsoft Playwright MCP `0.0.80`, installed into a provider-scoped npm prefix.
   The Browser Runtime uses a PLA-managed browser profile and exposes only reviewed semantic tools.
+- `computer`: PLA's Windows Computer Use provider. It wraps Microsoft winapp CLI `0.5.0`
+  from a provider-scoped npm prefix and exposes a semantic-first UI Automation surface.
+  Raw coordinates, system shortcuts, touch/pen, recording, arbitrary command execution, and
+  full-screen capture are intentionally excluded from the v1.4 surface.
 - `markitdown`: Microsoft MarkItDown MCP, pinned to the legacy MCP SDK it requires.
 - `docx`: DOCX MCP Server, pinned to MCP 1.30.0 because version 0.7.4 still imports the MCP 1.x FastMCP API.
 - `pdf`: PDF MCP Server 0.1.2, isolated on FastMCP 4 / MCP 2 and restricted to the reviewed `add_text_watermark_direct` capability.

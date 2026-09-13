@@ -128,6 +128,7 @@ def test_runtime_hotplug_capabilities_use_confirmation_gate(tmp_path, monkeypatc
 
     assert registry.describe("runtime.provider_status")["requires_confirmation"] is False
     for capability_id in (
+        "runtime.provider_setup",
         "runtime.provider_rescan",
         "runtime.provider_reload",
         "runtime.provider_enable",

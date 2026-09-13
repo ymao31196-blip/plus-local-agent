@@ -8,10 +8,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.3.0"
+    assert server.mcp.version == "1.4.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
+        "computer",
         "docx",
         "markitdown",
         "pdf",
@@ -20,6 +21,7 @@ def test_release_version_and_provider_catalog():
         "windows-management",
     }
     assert manifests["winget"].runtime_kind == "executable_stdio"
+    assert manifests["computer"].runtime_kind == "isolated_python_stdio"
     assert manifests["windows-management"].runtime_kind == "isolated_python_stdio"
     assert manifests["software-migration"].runtime_kind == "isolated_python_stdio"
 
@@ -30,9 +32,10 @@ def test_release_version_and_provider_catalog():
         limit=20,
     )
     runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
-    assert runtime_caps["match_count"] == 17
+    assert runtime_caps["match_count"] == 18
     assert runtime_ids == {
         "runtime.provider_status",
+        "runtime.provider_setup",
         "runtime.provider_rescan",
         "runtime.provider_reload",
         "runtime.provider_enable",
@@ -96,6 +99,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.1.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.2.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.3.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v1.4.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()

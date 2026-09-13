@@ -20,6 +20,7 @@ def test_production_provider_catalog_matches_specs():
 
     assert manifest_ids == {
         "browser",
+        "computer",
         "docx",
         "markitdown",
         "pdf",
@@ -29,6 +30,7 @@ def test_production_provider_catalog_matches_specs():
     }
     assert spec_ids == {
         "browser",
+        "computer",
         "docx",
         "markitdown",
         "pdf",
@@ -38,6 +40,73 @@ def test_production_provider_catalog_matches_specs():
     assert manifests["winget"].runtime_kind == "executable_stdio"
     assert manifests["winget"].python_path is None
     assert all(manifest.autostart for manifest in manifests.values())
+
+
+def test_computer_provider_is_semantic_first_and_version_pinned():
+    manifests = load_provider_manifests(PROJECT_ROOT)
+    provider = manifests["computer"]
+
+    assert provider.runtime_kind == "isolated_python_stdio"
+    assert provider.mode == "auto"
+    assert set(provider.tool_allowlist or ()) == {
+        "backend_status",
+        "list_windows",
+        "inspect",
+        "search",
+        "get_property",
+        "get_value",
+        "get_focused",
+        "invoke",
+        "set_value",
+        "focus",
+        "scroll_into_view",
+        "scroll",
+        "wait_for",
+        "screenshot",
+        "click",
+        "type_text",
+        "press_key",
+    }
+
+    forbidden = {
+        "drag",
+        "touch",
+        "pen",
+        "record",
+        "send_keys",
+        "run",
+        "evaluate",
+    }
+    assert forbidden.isdisjoint(set(provider.tool_allowlist or ()))
+
+    screenshot = provider.tool_overrides["screenshot"]
+    assert screenshot["risk_level"] == "read"
+    assert screenshot["requires_confirmation"] is False
+    assert "capture_screen" not in screenshot["input_schema"]["properties"]
+    assert screenshot["artifact_contract"]["policy"]["allowed_output_mime_types"] == [
+        "image/png"
+    ]
+
+    click = provider.tool_overrides["click"]
+    assert click["risk_level"] == "write_external"
+    assert "input-injection" in click["tags"]
+
+    python_lines = [
+        line.strip()
+        for line in (PROJECT_ROOT / "provider_specs" / "computer.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    node_lines = [
+        line.strip()
+        for line in (PROJECT_ROOT / "provider_specs" / "computer.npm.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert python_lines == ["fastmcp==4.0.3", "mcp==2.2.0"]
+    assert node_lines == ["@microsoft/winappcli@0.5.0"]
 
 
 def test_winget_provider_exposes_reviewed_search_and_install_capabilities():

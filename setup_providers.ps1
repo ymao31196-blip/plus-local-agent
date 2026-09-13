@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$Recreate
+    [switch]$Recreate,
+    [string[]]$Provider
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,6 +33,68 @@ if ($specFiles.Count -eq 0 -and $nodeSpecFiles.Count -eq 0) {
     throw "No provider specs found in: $specDir"
 }
 
+$requestedProviders = @()
+if ($null -ne $Provider -and $Provider.Count -gt 0) {
+    foreach ($name in $Provider) {
+        $normalized = ([string]$name).Trim().ToLowerInvariant()
+        if ($normalized -notmatch '^[a-z0-9][a-z0-9_-]*$') {
+            throw "Invalid requested provider id: $name"
+        }
+        if ($normalized -notin $requestedProviders) {
+            $requestedProviders += $normalized
+        }
+    }
+
+    $availableProviders = @()
+    foreach ($spec in $specFiles) {
+        $availableProviders += [System.IO.Path]::GetFileNameWithoutExtension($spec.Name)
+    }
+    foreach ($spec in $nodeSpecFiles) {
+        $suffix = ".npm.txt"
+        $availableProviders += $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
+    }
+    $availableProviders = @($availableProviders | Sort-Object -Unique)
+
+    $unknownProviders = @(
+        $requestedProviders | Where-Object { $_ -notin $availableProviders }
+    )
+    if ($unknownProviders.Count -gt 0) {
+        throw "No reviewed dependency spec for provider(s): $($unknownProviders -join ', ')"
+    }
+
+    $specFiles = @(
+        $specFiles | Where-Object {
+            [System.IO.Path]::GetFileNameWithoutExtension($_.Name) -in $requestedProviders
+        }
+    )
+    $nodeSpecFiles = @(
+        $nodeSpecFiles | Where-Object {
+            $suffix = ".npm.txt"
+            $_.Name.Substring(0, $_.Name.Length - $suffix.Length) -in $requestedProviders
+        }
+    )
+}
+
+$selectedProviders = @()
+foreach ($spec in $specFiles) {
+    $selectedProviders += [System.IO.Path]::GetFileNameWithoutExtension($spec.Name)
+}
+foreach ($spec in $nodeSpecFiles) {
+    $suffix = ".npm.txt"
+    $selectedProviders += $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
+}
+$selectedProviders = @($selectedProviders | Sort-Object -Unique)
+
+if ($Recreate) {
+    foreach ($providerId in $selectedProviders) {
+        $envDir = Join-Path $projectRoot ".provider_envs\$providerId"
+        if (Test-Path -LiteralPath $envDir) {
+            Write-Host "Recreating provider environment: $providerId"
+            Remove-Item -LiteralPath $envDir -Recurse -Force
+        }
+    }
+}
+
 foreach ($spec in $specFiles) {
     $provider = [System.IO.Path]::GetFileNameWithoutExtension($spec.Name)
     if ($provider -notmatch '^[a-z0-9][a-z0-9_-]*$') {
@@ -41,11 +104,6 @@ foreach ($spec in $specFiles) {
     $envDir = Join-Path $projectRoot ".provider_envs\$provider"
     $providerPython = Join-Path $envDir "Scripts\python.exe"
     $requirements = $spec.FullName
-
-    if ($Recreate -and (Test-Path -LiteralPath $envDir)) {
-        Write-Host "Recreating provider environment: $provider"
-        Remove-Item -LiteralPath $envDir -Recurse -Force
-    }
 
     if (-not (Test-Path -LiteralPath $providerPython -PathType Leaf)) {
         Write-Host "Creating provider environment: $provider"
@@ -79,10 +137,6 @@ if ($nodeSpecFiles.Count -gt 0) {
         }
 
         $envDir = Join-Path $projectRoot ".provider_envs\$provider"
-        if ($Recreate -and (Test-Path -LiteralPath $envDir)) {
-            Write-Host "Recreating Node provider environment: $provider"
-            Remove-Item -LiteralPath $envDir -Recurse -Force
-        }
         if (-not (Test-Path -LiteralPath $envDir -PathType Container)) {
             New-Item -ItemType Directory -Path $envDir -Force | Out-Null
         }

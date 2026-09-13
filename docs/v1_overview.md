@@ -44,14 +44,18 @@ not a second transaction implementation.
 Provider installation and runtime declaration are separate:
 
 - `provider_specs/<id>.txt`: exact dependency pins for isolated Python providers.
+- `provider_specs/<id>.npm.txt`: exact dependency pins for provider-scoped Node packages.
 - `provider_manifests/<id>.json`: runtime declaration plus capability policy.
-- `.provider_envs/<id>/`: ignored isolated Python environments.
+- `.provider_envs/<id>/`: ignored provider-scoped Python and/or Node environments.
 - `isolated_python_stdio`: Python provider inside its dedicated environment.
 - `executable_stdio`: reviewed native executable provider without a Python wrapper.
+- `streamable_http`: reviewed loopback-only HTTP provider transport.
 
-The current mainline includes reviewed MarkItDown, DOCX, PDF, Microsoft WinGet,
-Windows Management, and Software Migration providers. Provider Doctor checks lifecycle health,
-runtime availability, and pinned-version drift.
+The current mainline includes reviewed Browser, Computer, MarkItDown, DOCX, PDF, Microsoft
+WinGet, Windows Management, and Software Migration providers. Browser uses semantic web
+accessibility/ref interaction. Computer uses semantic-first Windows UI Automation with restricted
+selector-targeted input fallback. Provider Doctor checks lifecycle health, runtime availability,
+and pinned-version drift.
 
 Tool discovery is dynamic but filtered through manifest allowlists and per-tool overrides.
 A downstream tool that appears but is not allowlisted stays hidden.
@@ -63,6 +67,7 @@ stable Capability Broker surface:
 
 ```text
 runtime.provider_status
+runtime.provider_setup
 runtime.provider_rescan
 runtime.provider_reload
 runtime.provider_enable
@@ -76,9 +81,11 @@ from both the manager and Capability Registry. A changed provider is hidden befo
 configuration is rediscovered, so stale capabilities are not left available.
 
 Temporary enable/disable overrides live only in process memory. Persistent configuration remains
-`provider_manifests/*.json` plus `PLA_EXTERNAL_PROVIDERS`. Mutating hot-plug operations require
-explicit `INVOKE` confirmation and cannot install dependencies, discover arbitrary executables,
-or bypass manifest allowlists and capability policy.
+`provider_manifests/*.json` plus `PLA_EXTERNAL_PROVIDERS`. Mutating provider operations require
+explicit `INVOKE` confirmation. `runtime.provider_setup` may install only already-reviewed pinned
+specs through the fixed repository-owned setup entrypoint; it cannot choose arbitrary commands,
+scripts, or executable discovery. Provider lifecycle operations cannot bypass manifest allowlists
+or capability policy.
 
 A live E2E added a temporary read-only WinGet-backed provider, disabled and re-enabled it,
 changed its manifest and reloaded it, then deleted its manifest and rescanned it away while the

@@ -2,6 +2,30 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.4.0 - 2026-09-13
+
+### Added
+
+- Reviewed Windows Computer Provider backed by provider-scoped Microsoft winapp CLI `0.5.0`.
+- 17 controlled desktop capabilities covering UIA observation, semantic interaction, target-window screenshots, and restricted selector-targeted input fallbacks.
+- `runtime.provider_setup` for confirmation-gated installation of already-reviewed pinned Provider dependencies through the fixed repository setup entrypoint.
+- Computer screenshot integration with the Artifact Plane; caller-selected filesystem paths are not accepted.
+
+### Changed
+
+- `setup_providers.ps1` supports targeted `-Provider` installation and providers with both Python and Node dependency specs.
+- Computer interaction is semantic-first and requires post-action observation; selector-targeted `send-input` is used internally only where application behavior requires real input.
+- Literal text fallback is capped at 4096 characters and chunked; arbitrary coordinates, caller-selected input transports, system shortcuts, touch/pen, recording, and full-screen capture remain outside the public surface.
+- Desktop UI observations are treated as `untrusted-ui-content` and Computer capability calls enter the existing Event Plane.
+
+### Verified
+
+- Real Windows Search UIA inspection found the stable `SearchTextBox` AutomationId and demonstrated why successful UIA value changes do not guarantee application business behavior.
+- Controlled desktop Coding-Agent E2E passed: the GUI began `BROKEN`, PLA changed local source, post-action verification detected an ineffective UIA InvokePattern, the selector-targeted click fallback reached `VERIFIED`, and the final screenshot was captured as an Artifact.
+- Event Plane records bounded Computer invocation metadata/hashes and screenshot Artifact IDs rather than raw UI content.
+- Provider Doctor live probe: **8/8 healthy**.
+- Final v1.4.0 regression: **513 passed in 106.80 s**; after a controlled PLA HTTP restart, Computer auto-recovered on the pinned `0.5.0` backend and Provider Doctor remained **8/8 healthy**.
+
 ## 1.3.0 - 2026-09-13
 
 ### Added

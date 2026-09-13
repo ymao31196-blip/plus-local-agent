@@ -1,0 +1,3 @@
+# Reviewed Python provider dependencies for PLA Computer Provider
+fastmcp==4.0.3
+mcp==2.2.0

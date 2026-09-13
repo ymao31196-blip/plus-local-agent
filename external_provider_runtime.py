@@ -20,6 +20,7 @@ from provider_manifest import (
     STREAMABLE_HTTP,
     load_provider_manifests,
 )
+from provider_setup_runtime import setup_provider_dependencies
 
 
 def _selected_provider_ids(
@@ -139,6 +140,10 @@ class ExternalProviderRuntime:
         self._forced_enabled: set[str] = set()
         self._forced_disabled: set[str] = set()
         self._lock = asyncio.Lock()
+
+    def setup_dependencies(self, provider_id: str) -> dict[str, Any]:
+        """Install one provider's reviewed pinned dependency specs."""
+        return setup_provider_dependencies(self._project_root, provider_id)
 
     def _load_manifests(self) -> dict[str, ProviderManifest]:
         return load_provider_manifests(

@@ -1,0 +1,2 @@
+# Reviewed Node backend for PLA Computer Provider
+@microsoft/winappcli@0.5.0

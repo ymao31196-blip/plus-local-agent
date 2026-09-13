@@ -81,6 +81,19 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
             tags=("provider", "runtime", "hotplug", "status"),
         ),
         _descriptor(
+            "runtime.provider_setup",
+            "provider_setup",
+            "Install Reviewed Provider Dependencies",
+            (
+                "Install one manifest/provider's pinned reviewed dependency specs "
+                "through the fixed PLA setup_providers.ps1 entrypoint."
+            ),
+            provider_id_schema,
+            risk_level="privileged",
+            requires_confirmation=True,
+            tags=("provider", "runtime", "setup", "install"),
+        ),
+        _descriptor(
             "runtime.provider_rescan",
             "provider_rescan",
             "Rescan Provider Manifests",
@@ -158,6 +171,10 @@ def register_provider_runtime_capabilities(
     broker.register_internal_handler(
         "runtime.provider_status",
         lambda _args: runtime.status(),
+    )
+    broker.register_internal_handler(
+        "runtime.provider_setup",
+        lambda args: runtime.setup_dependencies(args["provider_id"]),
     )
     broker.register_internal_handler(
         "runtime.provider_rescan",
