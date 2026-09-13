@@ -21,6 +21,7 @@ from artifact_runtime import ArtifactInvocation
 from capability_registry import CapabilityRegistry
 from event_runtime import EventStore
 from observer_hook_runtime import ObserverHookRuntime
+from gate_hook_runtime import GateHookRuntime
 from mcp_client_manager import MCPClientManager
 
 
@@ -94,11 +95,13 @@ class CapabilityBroker:
         mcp_clients: MCPClientManager,
         event_store: EventStore | None = None,
         observer_hooks: ObserverHookRuntime | None = None,
+        gate_hooks: GateHookRuntime | None = None,
     ) -> None:
         self._registry = registry
         self._mcp_clients = mcp_clients
         self._event_store = event_store
         self._observer_hooks = observer_hooks
+        self._gate_hooks = gate_hooks
         self._internal_handlers: dict[str, Callable[[dict[str, Any]], Any]] = {}
 
     def register_internal_handler(
@@ -208,7 +211,7 @@ class CapabilityBroker:
     ) -> dict[str, Any] | None:
         if self._event_store is None:
             return None
-        control_tags = {"event-control", "hook-control"}
+        control_tags = {"event-control", "hook-control", "gate-control"}
         if control_tags.intersection(set(descriptor.get("tags") or [])):
             return None
         try:
@@ -253,6 +256,62 @@ class CapabilityBroker:
         )
         correlation_id = uuid4().hex
         arguments_sha256 = _stable_sha256(provider_arguments)
+        control_tags = {"event-control", "hook-control", "gate-control"}
+        if (
+            self._gate_hooks is not None
+            and not control_tags.intersection(set(descriptor.get("tags") or []))
+        ):
+            gate_context = {
+                "correlation_id": correlation_id,
+                "capability_id": capability_id,
+                "provider_id": descriptor.get("provider_id"),
+                "risk_level": descriptor.get("risk_level"),
+                "tags": list(descriptor.get("tags") or []),
+                "requires_confirmation": bool(descriptor.get("requires_confirmation")),
+                "confirmation_supplied": confirmation == "INVOKE",
+                "requires_transaction": bool(descriptor.get("requires_transaction")),
+                "transaction_context": bool(transaction_context),
+                "arguments_sha256": arguments_sha256,
+                "argument_keys": sorted(provider_arguments),
+                "arguments": deepcopy(provider_arguments),
+            }
+            try:
+                gate_result = self._gate_hooks.evaluate(gate_context)
+            except Exception:
+                gate_result = {
+                    "decision": "deny",
+                    "deny_hook_ids": ["__gate_runtime__"],
+                    "persistence_failed": True,
+                    "records": [],
+                }
+
+            if gate_result.get("decision") == "deny":
+                reason_codes = [
+                    item.get("reason_code")
+                    for item in gate_result.get("records", [])
+                    if isinstance(item, dict)
+                    and item.get("decision") == "deny"
+                    and item.get("reason_code")
+                ]
+                if gate_result.get("persistence_failed"):
+                    reason_codes.append("gate_decision_persistence_failed")
+                self._emit_runtime_event(
+                    "capability.gate_denied",
+                    descriptor,
+                    capability_id,
+                    correlation_id=correlation_id,
+                    causation_id=None,
+                    payload={
+                        "arguments_sha256": arguments_sha256,
+                        "deny_hook_ids": list(gate_result.get("deny_hook_ids") or []),
+                        "reason_codes": reason_codes,
+                        "persistence_failed": bool(gate_result.get("persistence_failed")),
+                    },
+                )
+                raise PermissionError(
+                    f"Capability {capability_id} denied by Gate Hook policy"
+                )
+
         before = self._emit_runtime_event(
             "capability.before_invoke",
             descriptor,

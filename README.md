@@ -102,6 +102,7 @@ control flow. The global event database lives under ignored runtime state at
 Capability Broker invocations emit:
 
 ```text
+capability.gate_denied
 capability.before_invoke
 capability.succeeded
 capability.failed
@@ -129,7 +130,8 @@ unchanged and continue to be their own state/recovery sources of truth.
 
 Phase 2 adds fail-open Observer Hooks on top of already-persisted EventEnvelope facts. The
 production runtime currently registers one built-in `audit-observer` for
-`capability.before_invoke`, `capability.succeeded`, and `capability.failed`.
+`capability.gate_denied`, `capability.before_invoke`, `capability.succeeded`,
+and `capability.failed`.
 
 Observer execution records are stored separately in `state/hooks.sqlite3`; raw Hook results and
 raw exception text are not persisted. Hook failures never change the selected Capability's
@@ -145,8 +147,30 @@ core.hook_invocation_query
 These capabilities carry the `hook-control` tag and therefore create neither EventStore entries
 nor Audit Hook records when inspected.
 
-Phase 2 remains observer-only: it does not implement ALLOW/DENY gates, argument transformation,
-Hook manifests, Hook hot-plug, or Hook-triggered Capability execution.
+### Gate Hooks
+
+Phase 3 adds reviewed in-process Gate Hooks after existing availability, confirmation,
+transaction, artifact-contract, and JSON-schema checks but before Capability execution.
+Gates return explicit `allow` or `deny` decisions under a deny-overrides rule.
+
+Gate handlers receive a deep copy of validated arguments, so they may inspect policy-relevant
+values but cannot transform the real provider invocation. Gate decisions are persisted under
+`state/gates.sqlite3` using bounded metadata and hashes rather than raw arguments.
+
+Gate failures are fail-closed. A Gate exception, malformed result, or decision-persistence
+failure denies the Capability instead of silently bypassing active policy. A denial emits
+`capability.gate_denied`; `capability.before_invoke` is emitted only after Gate approval.
+
+Read-only inspection is available through:
+
+```text
+core.gate_status
+core.gate_decision_query
+```
+
+These capabilities carry the `gate-control` tag and bypass Event, Observer, and Gate recursion.
+Phase 3 intentionally registers no default production policy Gate, so the runtime upgrade alone
+does not change existing Capability behavior.
 
 ## Interactive Elevation Broker
 

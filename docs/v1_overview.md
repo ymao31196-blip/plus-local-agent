@@ -112,6 +112,8 @@ flow or existing durable stores.
 ```text
 Capability Broker
     -> schema/policy validation
+    -> Gate Hook evaluation
+    -> capability.gate_denied | continue
     -> capability.before_invoke
     -> explicit invocation path
     -> capability.succeeded | capability.failed
@@ -148,7 +150,7 @@ EventStore.append
     -> HookInvocationStore
 ```
 
-The built-in `audit-observer` subscribes to Capability before/succeeded/failed events. Hook
+The built-in `audit-observer` subscribes to Capability gate-denied/before/succeeded/failed events. Hook
 dispatch order is deterministic by `hook_id`. Hook execution records are stored separately in
 `state/hooks.sqlite3` with event identity, correlation, duration, status, result hash, and
 hashed exception metadata.
@@ -167,8 +169,44 @@ core.hook_invocation_query
 Both are tagged `hook-control`; like `event-control`, they are excluded from EventStore
 instrumentation and therefore cannot recursively create audit records.
 
-Phase 2 intentionally stops before Gate Hooks, external Hook manifests, Hook hot-plug,
-subprocess/plugin Hook execution, retries, or asynchronous delivery.
+## Gate Hook Plane (v1.2 Phase 3)
+
+Gate Hooks run after the existing Capability policy and schema checks and before
+`capability.before_invoke`:
+
+```text
+validated invocation
+    -> GateHookRuntime.evaluate
+    -> ALLOW -> capability.before_invoke -> provider
+    -> DENY  -> capability.gate_denied
+```
+
+Reviewed in-process Gates receive a deep copy of the validated arguments and bounded invocation
+metadata. They cannot mutate the real provider arguments, replace confirmation, replace
+transaction policy, or select a different Capability.
+
+The combining rule is deny-overrides. Gate failures are fail-closed, unlike Observer Hooks:
+an exception, malformed Gate result, or decision-persistence failure prevents the Capability
+from crossing the execution boundary. Decision records are append-only in
+`state/gates.sqlite3`; raw arguments and raw exception text are not persisted.
+
+Stable read-only inspection is provided by:
+
+```text
+core.gate_status
+core.gate_decision_query
+```
+
+`event-control`, `hook-control`, and `gate-control` capabilities are excluded from Gate
+evaluation and Event instrumentation so runtime diagnostics remain available during policy
+incidents.
+
+Phase 3 intentionally registers no default production policy Gate. The infrastructure therefore
+does not alter existing Capability behavior until a reviewed Gate is explicitly registered.
+
+External Hook/Gate manifests, Hook hot-plug, subprocess/plugin Hook execution, retries,
+asynchronous delivery, argument/result transformation, and Hook-triggered Capability execution
+remain outside Phase 3.
 
 ## Interactive elevation plane
 

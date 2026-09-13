@@ -11,6 +11,7 @@ from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
 from event_runtime import EventStore
 from observer_hook_runtime import ObserverHookRuntime
+from gate_hook_runtime import GateHookRuntime
 from local_tools import git_push as controlled_git_push, git_tag as controlled_git_tag
 from transaction_action_envelope import invoke_capability_in_transaction
 from transaction_runtime import ActionTransactionStore
@@ -316,6 +317,50 @@ def core_hook_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_gate_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    return (
+        _descriptor(
+            "core.gate_status",
+            "gate_status",
+            "Gate Hook Status",
+            "Read registered pre-invocation Gate Hooks without entering Gate recursion.",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            risk_level="read",
+            tags=("hook", "gate", "runtime", "gate-control"),
+        ),
+        _descriptor(
+            "core.gate_decision_query",
+            "gate_decision_query",
+            "Query Gate Hook Decisions",
+            "Read durable Gate Hook ALLOW/DENY records by cursor and optional filters.",
+            {
+                "type": "object",
+                "properties": {
+                    "after_sequence": {"type": "integer", "minimum": 0, "default": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
+                    "hook_id": {"type": ["string", "null"], "default": None},
+                    "correlation_id": {"type": ["string", "null"], "default": None},
+                    "capability_id": {"type": ["string", "null"], "default": None},
+                    "provider_id": {"type": ["string", "null"], "default": None},
+                    "status": {
+                        "type": ["string", "null"],
+                        "enum": ["completed", "failed", None],
+                        "default": None,
+                    },
+                    "decision": {
+                        "type": ["string", "null"],
+                        "enum": ["allow", "deny", None],
+                        "default": None,
+                    },
+                },
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("hook", "gate", "runtime", "audit", "gate-control"),
+        ),
+    )
+
+
 def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
     root_schema = {
         "type": "string",
@@ -386,6 +431,7 @@ def register_core_transaction_capabilities(
     transaction_store: ActionTransactionStore,
     event_store: EventStore | None = None,
     observer_hooks: ObserverHookRuntime | None = None,
+    gate_hooks: GateHookRuntime | None = None,
 ) -> None:
     """Register stable core governance capabilities and in-process handlers."""
 
@@ -397,6 +443,8 @@ def register_core_transaction_capabilities(
         descriptors.extend(core_event_descriptors())
     if observer_hooks is not None:
         descriptors.extend(core_hook_descriptors())
+    if gate_hooks is not None:
+        descriptors.extend(core_gate_descriptors())
 
     registry.register_provider(
         "core",
@@ -501,5 +549,23 @@ def register_core_transaction_capabilities(
                 event_type=args.get("event_type"),
                 correlation_id=args.get("correlation_id"),
                 status=args.get("status"),
+            ),
+        )
+    if gate_hooks is not None:
+        broker.register_internal_handler(
+            "core.gate_status",
+            lambda _args: gate_hooks.status(),
+        )
+        broker.register_internal_handler(
+            "core.gate_decision_query",
+            lambda args: gate_hooks.query_decisions(
+                after_sequence=args.get("after_sequence", 0),
+                limit=args.get("limit", 100),
+                hook_id=args.get("hook_id"),
+                correlation_id=args.get("correlation_id"),
+                capability_id=args.get("capability_id"),
+                provider_id=args.get("provider_id"),
+                status=args.get("status"),
+                decision=args.get("decision"),
             ),
         )
