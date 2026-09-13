@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "id": "browser",
+  "autostart": true,
+  "mode": "auto",
+  "runtime": {
+    "kind": "streamable_http",
+    "url": "http://localhost:8931/mcp",
+    "discovery_timeout_seconds": 30,
+    "invoke_timeout_seconds": 90,
+    "persistent_session": true
+  },
+  "tool_allowlist": [
+    "browser_navigate",
+    "browser_snapshot",
+    "browser_find",
+    "browser_click",
+    "browser_type",
+    "browser_file_upload",
+    "browser_fill_form",
+    "browser_press_key",
+    "browser_wait_for",
+    "browser_tabs",
+    "browser_take_screenshot",
+    "browser_console_messages",
+    "browser_network_requests",
+    "browser_close"
+  ],
+  "tool_overrides": {
+    "browser_navigate": {
+      "public_name": "navigate",
+      "title": "Navigate Browser",
+      "description": "Navigate the PLA-managed browser session to a URL.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "navigation", "untrusted-web-content"]
+    },
+    "browser_snapshot": {
+      "public_name": "inspect",
+      "title": "Inspect Browser",
+      "description": "Return a semantic accessibility snapshot of the current page. Prefer this over screenshots for interaction decisions.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "observation", "accessibility", "untrusted-web-content"]
+    },
+    "browser_find": {
+      "public_name": "find",
+      "title": "Find In Browser",
+      "description": "Search the current accessibility snapshot for text or a regular expression and return compact matching context.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "observation", "accessibility", "compact", "untrusted-web-content"]
+    },
+    "browser_click": {
+      "public_name": "click",
+      "title": "Click Browser Element",
+      "description": "Click one semantic element reference from a browser inspection. Browser downloads are imported into the PLA Artifact Plane instead of exposing filesystem paths.",
+      "artifact_contract": {
+        "transport": "local_path",
+        "inputs": [],
+        "input_arrays": [],
+        "outputs": [],
+        "output_paths": {},
+        "result_paths": [
+          {
+            "pattern": "Downloaded file .*? to \"(?P<path>state\\\\browser\\\\.+?)\"",
+            "group": "path",
+            "root": "state/browser",
+            "remove_source": true
+          }
+        ],
+        "policy": {
+          "max_output_bytes": 67108864,
+          "max_total_output_bytes": 268435456,
+          "max_output_artifacts": 4,
+          "output_ttl_seconds": 600,
+          "allowed_output_mime_types": []
+        }
+      },
+      "risk_level": "write_external",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "interaction", "download", "artifact"]
+    },
+    "browser_type": {
+      "public_name": "type",
+      "title": "Type Into Browser Element",
+      "description": "Type text into one semantic element reference from a browser inspection.",
+      "risk_level": "write_external",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "interaction"]
+    },
+    "browser_file_upload": {
+      "public_name": "upload",
+      "title": "Upload Browser Artifacts",
+      "description": "Handle an active browser file chooser using PLA Artifact references. The paths array contains Artifact IDs, never caller-supplied filesystem paths.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+            "maxItems": 8
+          }
+        },
+        "required": ["paths"],
+        "additionalProperties": false
+      },
+      "artifact_contract": {
+        "transport": "local_path",
+        "inputs": [],
+        "input_arrays": ["paths"],
+        "outputs": [],
+        "output_paths": {},
+        "result_paths": [],
+        "policy": {
+          "max_input_bytes": 67108864,
+          "allowed_input_mime_types": []
+        }
+      },
+      "risk_level": "write_external",
+      "requires_confirmation": true,
+      "tags": ["browser", "playwright", "interaction", "upload", "artifact", "untrusted-web-content"]
+    },
+    "browser_fill_form": {
+      "public_name": "fill",
+      "title": "Fill Browser Form",
+      "description": "Fill multiple semantic form fields in one deterministic browser action.",
+      "risk_level": "write_external",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "interaction", "form"]
+    },
+    "browser_press_key": {
+      "public_name": "press",
+      "title": "Press Browser Key",
+      "description": "Press a keyboard key in the current browser page.",
+      "risk_level": "write_external",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "interaction"]
+    },
+    "browser_wait_for": {
+      "public_name": "wait",
+      "title": "Wait For Browser State",
+      "description": "Wait for text, disappearance, or a bounded delay in the current page.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "observation"]
+    },
+    "browser_tabs": {
+      "public_name": "tabs",
+      "title": "Manage Browser Tabs",
+      "description": "List, create, select, or close tabs in the PLA-managed browser session.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "session", "tabs"]
+    },
+    "browser_take_screenshot": {
+      "public_name": "screenshot",
+      "title": "Capture Browser Screenshot",
+      "description": "Capture a PNG visual screenshot for layout and rendering verification. PLA manages the output path and returns an Artifact; semantic interaction should still prefer browser.inspect.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target": {"type": "string"},
+          "element": {"type": "string"},
+          "fullPage": {"type": "boolean"},
+          "scale": {"type": "string", "enum": ["css", "device"], "default": "css"}
+        },
+        "required": ["scale"],
+        "additionalProperties": false
+      },
+      "artifact_contract": {
+        "transport": "local_path",
+        "inputs": [],
+        "outputs": [],
+        "output_paths": {
+          "filename": {
+            "filename": "screenshot.png",
+            "mime_type": "image/png"
+          }
+        },
+        "policy": {
+          "max_output_bytes": 10485760,
+          "max_total_output_bytes": 10485760,
+          "max_output_artifacts": 1,
+          "output_ttl_seconds": 600,
+          "allowed_output_mime_types": ["image/png"]
+        }
+      },
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "observation", "visual", "artifact", "untrusted-web-content"]
+    },
+    "browser_console_messages": {
+      "public_name": "console",
+      "title": "Read Browser Console",
+      "description": "Read bounded browser console messages for debugging and verification.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "observation", "debug", "console", "untrusted-web-content"]
+    },
+    "browser_network_requests": {
+      "public_name": "network",
+      "title": "Read Browser Network Requests",
+      "description": "Read bounded network request metadata observed in the current browser page.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "observation", "debug", "network", "untrusted-web-content"]
+    },
+    "browser_close": {
+      "public_name": "close",
+      "title": "Close Browser Session",
+      "description": "Close the current PLA-managed browser page/session while preserving the managed profile on disk.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["browser", "playwright", "session", "lifecycle"]
+    }
+  }
+}

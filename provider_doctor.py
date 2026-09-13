@@ -11,6 +11,7 @@ from typing import Any
 from mcp_client_manager import MCPClientManager
 from provider_manifest import (
     ISOLATED_PYTHON_STDIO,
+    STREAMABLE_HTTP,
     ProviderManifest,
     load_provider_manifests,
 )
@@ -92,8 +93,17 @@ def _manifest_static_checks(
         "manifest": str(manifest.path),
         "manifest_exists": manifest.path.is_file(),
         "runtime_kind": manifest.runtime_kind,
-        "command": str(manifest.command_path),
-        "command_exists": manifest.command_path.is_file(),
+        "command": (
+            str(manifest.command_path)
+            if manifest.command_path is not None
+            else None
+        ),
+        "command_exists": (
+            manifest.command_path.is_file()
+            if manifest.command_path is not None
+            else None
+        ),
+        "url": manifest.endpoint_url,
         "cwd": str(manifest.cwd),
         "cwd_exists": manifest.cwd.is_dir(),
         "mode": manifest.mode,
@@ -106,9 +116,17 @@ def _manifest_static_checks(
     }
 
     if manifest.runtime_kind != ISOLATED_PYTHON_STDIO:
+        runtime_ready = (
+            manifest.endpoint_url is not None
+            if manifest.runtime_kind == STREAMABLE_HTTP
+            else (
+                manifest.command_path is not None
+                and manifest.command_path.is_file()
+            )
+        )
         return {
             **common,
-            "runtime_ready": manifest.command_path.is_file(),
+            "runtime_ready": runtime_ready,
             "spec": None,
             "spec_exists": None,
             "python": None,
@@ -214,17 +232,18 @@ async def provider_doctor(
                 })
 
         state = manager.provider_status(current_id)
-        static_ok = all(
-            bool(static.get(key))
-            for key in (
-                "manifest_exists",
-                "runtime_ready",
-                "command_exists",
-                "cwd_exists",
-            )
-        ) and not bool(static.get("version_drift_detected")) and not static.get(
-            "version_probe_error"
-        )
+        required_checks = [
+            bool(static.get("manifest_exists")),
+            bool(static.get("runtime_ready")),
+            bool(static.get("cwd_exists")),
+        ]
+        if static.get("runtime_kind") == STREAMABLE_HTTP:
+            required_checks.append(bool(static.get("url")))
+        else:
+            required_checks.append(bool(static.get("command_exists")))
+        static_ok = all(required_checks) and not bool(
+            static.get("version_drift_detected")
+        ) and not static.get("version_probe_error")
         if not state["enabled"]:
             status = "disabled"
         else:

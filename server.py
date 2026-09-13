@@ -134,12 +134,15 @@ register_provider_runtime_capabilities(
 @asynccontextmanager
 async def _runtime_lifespan(_server):
     await MCP_CLIENT_MANAGER.discover_all()
-    yield
+    try:
+        yield
+    finally:
+        await MCP_CLIENT_MANAGER.close_all_persistent_sessions()
 
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="1.2.0",
+    version="1.3.0",
     lifespan=_runtime_lifespan,
 )
 

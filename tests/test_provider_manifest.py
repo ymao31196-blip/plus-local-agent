@@ -213,3 +213,113 @@ def test_load_provider_manifests_rejects_duplicate_ids(tmp_path):
 
 def test_missing_manifest_directory_is_empty(tmp_path):
     assert load_provider_manifests(tmp_path) == {}
+
+
+def test_manifest_accepts_bounded_runtime_timeouts(tmp_path):
+    path = write_manifest(
+        tmp_path,
+        runtime={
+            "kind": "isolated_python_stdio",
+            "python": ".provider_envs/demo/Scripts/python.exe",
+            "args": ["-m", "demo_server"],
+            "cwd": ".",
+            "discovery_timeout_seconds": 45,
+            "invoke_timeout_seconds": 90,
+        },
+    )
+
+    manifest = load_provider_manifest(path, tmp_path)
+
+    assert manifest.discovery_timeout_seconds == 45.0
+    assert manifest.invoke_timeout_seconds == 90.0
+    assert manifest.summary()["discovery_timeout_seconds"] == 45.0
+
+
+@pytest.mark.parametrize("value", [0, -1, 301, True, "slow"])
+def test_manifest_rejects_invalid_runtime_timeout(tmp_path, value):
+    path = write_manifest(
+        tmp_path,
+        runtime={
+            "kind": "isolated_python_stdio",
+            "python": ".provider_envs/demo/Scripts/python.exe",
+            "args": ["-m", "demo_server"],
+            "cwd": ".",
+            "discovery_timeout_seconds": value,
+        },
+    )
+
+    with pytest.raises(ValueError, match="discovery_timeout_seconds"):
+        load_provider_manifest(path, tmp_path)
+
+
+def test_manifest_accepts_loopback_streamable_http_runtime(tmp_path):
+    path = write_manifest(
+        tmp_path,
+        runtime={
+            "kind": "streamable_http",
+            "url": "http://127.0.0.1:8931/mcp",
+            "discovery_timeout_seconds": 30,
+            "invoke_timeout_seconds": 60,
+        },
+    )
+
+    manifest = load_provider_manifest(path, tmp_path)
+
+    assert manifest.runtime_kind == "streamable_http"
+    assert manifest.endpoint_url == "http://127.0.0.1:8931/mcp"
+    assert manifest.command_path is None
+    assert manifest.python_path is None
+    assert manifest.args == ()
+    assert manifest.summary()["url"] == "http://127.0.0.1:8931/mcp"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://127.0.0.1:8931/mcp",
+        "http://example.com:8931/mcp",
+        "http://user:pass@127.0.0.1:8931/mcp",
+    ],
+)
+def test_manifest_rejects_non_loopback_streamable_http_runtime(tmp_path, url):
+    path = write_manifest(
+        tmp_path,
+        runtime={
+            "kind": "streamable_http",
+            "url": url,
+        },
+    )
+
+    with pytest.raises(ValueError, match="loopback HTTP endpoint"):
+        load_provider_manifest(path, tmp_path)
+
+
+def test_manifest_accepts_persistent_session_only_for_streamable_http(tmp_path):
+    http_path = write_manifest(
+        tmp_path,
+        runtime={
+            "kind": "streamable_http",
+            "url": "http://localhost:8931/mcp",
+            "persistent_session": True,
+        },
+    )
+
+    manifest = load_provider_manifest(http_path, tmp_path)
+
+    assert manifest.persistent_session is True
+    assert manifest.summary()["persistent_session"] is True
+
+    stdio_path = write_manifest(
+        tmp_path,
+        provider_id="stdio",
+        runtime={
+            "kind": "isolated_python_stdio",
+            "python": ".provider_envs/stdio/Scripts/python.exe",
+            "args": ["-m", "demo_server"],
+            "cwd": ".",
+            "persistent_session": True,
+        },
+    )
+
+    with pytest.raises(ValueError, match="only valid for streamable_http"):
+        load_provider_manifest(stdio_path, tmp_path)

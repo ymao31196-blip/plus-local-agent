@@ -1,0 +1,1 @@
+# Reviewed Node provider dependencies for PLA Browser Runtime\n@playwright/mcp@0.0.80\n

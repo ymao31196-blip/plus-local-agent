@@ -11,6 +11,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from capability_models import PROVIDER_ID_RE
 
@@ -18,7 +19,10 @@ from capability_models import PROVIDER_ID_RE
 SCHEMA_VERSION = 1
 ISOLATED_PYTHON_STDIO = "isolated_python_stdio"
 EXECUTABLE_STDIO = "executable_stdio"
-RUNTIME_KINDS = frozenset({ISOLATED_PYTHON_STDIO, EXECUTABLE_STDIO})
+STREAMABLE_HTTP = "streamable_http"
+RUNTIME_KINDS = frozenset(
+    {ISOLATED_PYTHON_STDIO, EXECUTABLE_STDIO, STREAMABLE_HTTP}
+)
 
 
 @dataclass(frozen=True)
@@ -28,10 +32,14 @@ class ProviderManifest:
     autostart: bool
     mode: str
     runtime_kind: str
-    command_path: Path
+    command_path: Path | None
+    endpoint_url: str | None
     python_path: Path | None
     args: tuple[str, ...]
     cwd: Path
+    discovery_timeout_seconds: float | None
+    invoke_timeout_seconds: float | None
+    persistent_session: bool
     tool_allowlist: tuple[str, ...] | None
     tool_overrides: dict[str, dict[str, Any]]
 
@@ -42,15 +50,21 @@ class ProviderManifest:
             "autostart": self.autostart,
             "mode": self.mode,
             "runtime_kind": self.runtime_kind,
-            "command": str(self.command_path),
-            "command_exists": self.command_path.is_file(),
             "cwd": str(self.cwd),
+            "discovery_timeout_seconds": self.discovery_timeout_seconds,
+            "invoke_timeout_seconds": self.invoke_timeout_seconds,
+            "persistent_session": self.persistent_session,
             "tool_allowlist": (
                 list(self.tool_allowlist)
                 if self.tool_allowlist is not None
                 else None
             ),
         }
+        if self.command_path is not None:
+            value["command"] = str(self.command_path)
+            value["command_exists"] = self.command_path.is_file()
+        if self.endpoint_url is not None:
+            value["url"] = self.endpoint_url
         if self.python_path is not None:
             value["python"] = str(self.python_path)
             value["python_exists"] = self.python_path.is_file()
@@ -136,7 +150,17 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         raise ValueError(f"{path.name}.mode must be 'auto' or 'legacy'")
 
     runtime = _require_object(payload.get("runtime"), f"{path.name}.runtime")
-    runtime_unknown = set(runtime) - {"kind", "python", "command", "args", "cwd"}
+    runtime_unknown = set(runtime) - {
+        "kind",
+        "python",
+        "command",
+        "url",
+        "args",
+        "cwd",
+        "discovery_timeout_seconds",
+        "invoke_timeout_seconds",
+        "persistent_session",
+    }
     if runtime_unknown:
         raise ValueError(
             f"Unknown runtime fields in {path.name}: "
@@ -150,10 +174,18 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         )
 
     python_path: Path | None = None
+    command_path: Path | None = None
+    endpoint_url: str | None = None
+
     if runtime_kind == ISOLATED_PYTHON_STDIO:
         if "command" in runtime:
             raise ValueError(
                 f"{path.name}.runtime.command is not valid for "
+                "isolated_python_stdio"
+            )
+        if "url" in runtime:
+            raise ValueError(
+                f"{path.name}.runtime.url is not valid for "
                 "isolated_python_stdio"
             )
         python_relative = _require_string(
@@ -177,10 +209,14 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
                 f"{path.name}.runtime.python must point to a Python interpreter"
             )
         command_path = python_path
-    else:
+    elif runtime_kind == EXECUTABLE_STDIO:
         if "python" in runtime:
             raise ValueError(
                 f"{path.name}.runtime.python is not valid for executable_stdio"
+            )
+        if "url" in runtime:
+            raise ValueError(
+                f"{path.name}.runtime.url is not valid for executable_stdio"
             )
         command_value = _require_string(
             runtime.get("command"), f"{path.name}.runtime.command"
@@ -188,16 +224,65 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         command_path = _resolve_command(
             project_root, command_value, f"{path.name}.runtime.command"
         )
+    else:
+        if "python" in runtime or "command" in runtime:
+            raise ValueError(
+                f"{path.name}.runtime python/command is not valid for streamable_http"
+            )
+        endpoint_url = _require_string(
+            runtime.get("url"), f"{path.name}.runtime.url"
+        )
+        parsed = urlparse(endpoint_url)
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError(
+                f"{path.name}.runtime.url must be a loopback HTTP endpoint"
+            )
 
     raw_args = runtime.get("args", [])
     if not isinstance(raw_args, list) or not all(
         isinstance(item, str) for item in raw_args
     ):
         raise ValueError(f"{path.name}.runtime.args must be an array of strings")
+    if runtime_kind == STREAMABLE_HTTP and raw_args:
+        raise ValueError(
+            f"{path.name}.runtime.args is not valid for streamable_http"
+        )
 
     cwd_relative = runtime.get("cwd", ".")
     cwd_relative = _require_string(cwd_relative, f"{path.name}.runtime.cwd")
     cwd = _resolve_inside(project_root, cwd_relative, f"{path.name}.runtime.cwd")
+
+    def optional_timeout(field: str) -> float | None:
+        raw = runtime.get(field)
+        if raw is None:
+            return None
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"{path.name}.runtime.{field} must be numeric")
+        value = float(raw)
+        if value <= 0 or value > 300:
+            raise ValueError(
+                f"{path.name}.runtime.{field} must be > 0 and <= 300 seconds"
+            )
+        return value
+
+    discovery_timeout_seconds = optional_timeout("discovery_timeout_seconds")
+    invoke_timeout_seconds = optional_timeout("invoke_timeout_seconds")
+
+    persistent_session = runtime.get("persistent_session", False)
+    if not isinstance(persistent_session, bool):
+        raise ValueError(
+            f"{path.name}.runtime.persistent_session must be boolean"
+        )
+    if persistent_session and runtime_kind != STREAMABLE_HTTP:
+        raise ValueError(
+            f"{path.name}.runtime.persistent_session is only valid for "
+            "streamable_http"
+        )
 
     raw_allowlist = payload.get("tool_allowlist")
     tool_allowlist: tuple[str, ...] | None
@@ -242,9 +327,13 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         mode=mode,
         runtime_kind=runtime_kind,
         command_path=command_path,
+        endpoint_url=endpoint_url,
         python_path=python_path,
         args=tuple(raw_args),
         cwd=cwd,
+        discovery_timeout_seconds=discovery_timeout_seconds,
+        invoke_timeout_seconds=invoke_timeout_seconds,
+        persistent_session=persistent_session,
         tool_allowlist=tool_allowlist,
         tool_overrides=dict(tool_overrides),
     )

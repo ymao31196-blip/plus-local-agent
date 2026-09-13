@@ -221,6 +221,54 @@ class ArtifactInvocation:
         self._register_path_replacements(path, metadata["artifact_id"])
         return metadata
 
+    def import_discovered_output(
+        self,
+        source_path: Path,
+        allowed_root: Path,
+        *,
+        raw_alias: str | None = None,
+        name: str | None = None,
+        mime_type: str | None = None,
+        remove_source: bool = False,
+    ) -> dict[str, Any]:
+        """Import a provider-created file from one explicitly approved root."""
+        source = source_path.resolve()
+        root = allowed_root.resolve()
+        try:
+            source.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                "Discovered provider output escapes approved output root"
+            ) from exc
+        if not source.is_file():
+            raise ValueError(
+                f"Discovered provider output file does not exist: {source.name}"
+            )
+
+        public_name = Path(name or source.name).name
+        destination = (
+            self.root
+            / "outputs"
+            / "discovered"
+            / f"{self._output_count + 1}_{public_name}"
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+        metadata = self.import_output(
+            str(destination),
+            name=public_name,
+            mime_type=mime_type,
+        )
+        artifact_id = metadata["artifact_id"]
+        self._register_path_replacements(source, artifact_id)
+        if raw_alias:
+            self._register_replacement_variants(raw_alias, artifact_id)
+
+        if remove_source:
+            source.unlink(missing_ok=True)
+        return metadata
+
     def sanitize(self, value: Any) -> Any:
         if isinstance(value, str):
             sanitized = value

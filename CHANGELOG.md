@@ -2,6 +2,34 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.3.0 - 2026-09-13
+
+### Added
+
+- Browser Provider backed by reviewed Playwright MCP `0.0.80` with semantic accessibility inspection and ref-based interaction.
+- Independent Browser Runtime on loopback HTTP with persistent MCP session keeping browser state alive across PLA HTTP restarts.
+- Browser screenshot/download/upload integration with the Artifact Plane.
+- Browser runtime lifecycle/diagnostics capabilities and provider-scoped timeout/session controls.
+- Provider-scoped Node installation for Playwright MCP with runtime package-version validation and no release-path npx fallback.
+- Compact browser observation through `find`, plus console and bounded network metadata inspection.
+
+### Changed
+
+- Provider manifests support loopback-only `streamable_http`, provider-specific timeouts, public capability names, and optional persistent sessions.
+- Browser uses a dedicated PLA-managed profile and treats web observations as `untrusted-web-content`.
+- Raw network request detail is not exposed in v1.3 to avoid leaking Cookie/Authorization/body secrets.
+- Artifact upload requires explicit confirmation.
+
+### Verified
+
+- Phase 0 semantic `navigate -> inspect -> type -> find -> click` E2E passed.
+- Browser tab/page/ref state survived PLA HTTP restart while the independent Browser Runtime remained alive.
+- Screenshot, download-to-Artifact, and Artifact-to-upload bridges passed real E2E checks.
+- Coding Agent E2E passed: local frontend bug observed through Browser, source fixed, page refreshed, console returned zero errors, interaction reached `VERIFIED`, and final screenshot was captured as an Artifact.
+- Final cold stop/start E2E rebuilt Elevation Broker, Lifecycle Broker, Browser Runtime, PLA HTTP, and Secure MCP Tunnel; Browser resumed from `.provider_envs/browser` with `launch_source=provider_env`.
+- Provider Doctor live probe: **7/7 healthy**.
+- Final v1.3.0 regression: **493 passed in 106.56 s**.
+
 ## 1.2.0 - 2026-09-13
 
 ### Added

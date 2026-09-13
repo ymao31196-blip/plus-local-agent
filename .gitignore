@@ -20,6 +20,7 @@ env/
 ENV/
 .provider_envs/
 .observer_envs/
+.browser_profiles/
 observer_manifests/*.local.json
 
 # Local secrets and credentials

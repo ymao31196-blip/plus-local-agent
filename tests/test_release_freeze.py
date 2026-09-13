@@ -8,9 +8,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.2.0"
+    assert server.mcp.version == "1.3.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
+        "browser",
         "docx",
         "markitdown",
         "pdf",
@@ -29,7 +30,7 @@ def test_release_version_and_provider_catalog():
         limit=20,
     )
     runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
-    assert runtime_caps["match_count"] == 13
+    assert runtime_caps["match_count"] == 17
     assert runtime_ids == {
         "runtime.provider_status",
         "runtime.provider_rescan",
@@ -44,6 +45,10 @@ def test_release_version_and_provider_catalog():
         "runtime.lifecycle_status",
         "runtime.restart_http",
         "runtime.restart_status",
+        "runtime.browser_status",
+        "runtime.browser_diagnostics",
+        "runtime.browser_start",
+        "runtime.browser_stop",
     }
 
     core_caps = server.CAPABILITY_REGISTRY.search(
@@ -90,6 +95,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.1.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.2.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v1.3.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()

@@ -10,12 +10,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_production_provider_catalog_matches_specs():
     manifests = load_provider_manifests(PROJECT_ROOT)
     manifest_ids = set(manifests)
-    spec_ids = {
-        path.stem
-        for path in (PROJECT_ROOT / "provider_specs").glob("*.txt")
-    }
+    spec_ids = set()
+    for path in (PROJECT_ROOT / "provider_specs").glob("*.txt"):
+        name = path.name
+        if name.endswith(".npm.txt"):
+            spec_ids.add(name[: -len(".npm.txt")])
+        else:
+            spec_ids.add(path.stem)
 
     assert manifest_ids == {
+        "browser",
         "docx",
         "markitdown",
         "pdf",
@@ -24,6 +28,7 @@ def test_production_provider_catalog_matches_specs():
         "windows-management",
     }
     assert spec_ids == {
+        "browser",
         "docx",
         "markitdown",
         "pdf",

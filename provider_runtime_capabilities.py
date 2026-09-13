@@ -15,6 +15,10 @@ from runtime_lifecycle_capabilities import (
     register_runtime_lifecycle_handlers,
     runtime_lifecycle_descriptors,
 )
+from browser_runtime_capabilities import (
+    browser_runtime_descriptors,
+    register_browser_runtime_handlers,
+)
 
 
 _OBJECT_OUTPUT = {"type": "object"}
@@ -145,6 +149,7 @@ def register_provider_runtime_capabilities(
     if observer_runtime is not None:
         descriptors.extend(external_observer_runtime_descriptors())
     descriptors.extend(runtime_lifecycle_descriptors())
+    descriptors.extend(browser_runtime_descriptors())
     registry.register_provider(
         "runtime",
         descriptors,
@@ -176,3 +181,4 @@ def register_provider_runtime_capabilities(
             observer_runtime,
         )
     register_runtime_lifecycle_handlers(broker)
+    register_browser_runtime_handlers(broker)

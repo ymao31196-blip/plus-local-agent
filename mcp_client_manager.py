@@ -94,10 +94,95 @@ class MCPClientManager:
         self._modes: dict[str, str] = {}
         self._tool_overrides: dict[str, dict[str, dict[str, Any]]] = {}
         self._tool_allowlists: dict[str, set[str] | None] = {}
+        self._discovery_timeouts: dict[str, float] = {}
+        self._invoke_timeouts: dict[str, float] = {}
+        self._persistent_session_enabled: dict[str, bool] = {}
+        self._persistent_clients: dict[str, Client] = {}
+        self._persistent_locks: dict[str, asyncio.Lock] = {}
+        self._capability_extensions: dict[str, dict[str, CapabilityDescriptor]] = {}
         self._states: dict[str, MCPProviderState] = {}
 
     def has_provider(self, provider_id: str) -> bool:
         return provider_id in self._sources
+
+    async def _drop_persistent_client(self, provider_id: str) -> None:
+        client = self._persistent_clients.pop(provider_id, None)
+        if client is None:
+            return
+        try:
+            await client.close()
+        except Exception:
+            # Cleanup must not mask the original transport/discovery failure.
+            pass
+
+    async def close_provider_session(self, provider_id: str) -> None:
+        lock = self._persistent_locks.get(provider_id)
+        if lock is None:
+            await self._drop_persistent_client(provider_id)
+            return
+        async with lock:
+            await self._drop_persistent_client(provider_id)
+
+    async def close_all_persistent_sessions(self) -> None:
+        for provider_id in sorted(list(self._persistent_clients)):
+            await self.close_provider_session(provider_id)
+
+    async def _ensure_persistent_client(self, provider_id: str) -> Client:
+        client = self._persistent_clients.get(provider_id)
+        if client is not None:
+            return client
+        client = Client(
+            self._sources[provider_id],
+            mode=self._modes[provider_id],
+        )
+        await client.__aenter__()
+        self._persistent_clients[provider_id] = client
+        return client
+
+    async def _list_tools_for_provider(self, provider_id: str) -> list[Any]:
+        if not self._persistent_session_enabled.get(provider_id, False):
+            return await self._list_tools(
+                self._sources[provider_id],
+                self._modes[provider_id],
+            )
+        async with self._persistent_locks[provider_id]:
+            client = await self._ensure_persistent_client(provider_id)
+            return list(await client.list_tools())
+
+    async def _call_tool_for_provider(
+        self,
+        provider_id: str,
+        remote_name: str,
+        arguments: dict[str, Any],
+    ) -> Any:
+        if not self._persistent_session_enabled.get(provider_id, False):
+            return await self._call_tool(
+                self._sources[provider_id],
+                remote_name,
+                arguments,
+                self._modes[provider_id],
+            )
+        async with self._persistent_locks[provider_id]:
+            client = await self._ensure_persistent_client(provider_id)
+            return await client.call_tool(remote_name, arguments)
+
+    def add_capability_extension(
+        self,
+        provider_id: str,
+        descriptor: CapabilityDescriptor,
+    ) -> None:
+        """Attach one PLA-local capability to an external provider lifecycle."""
+        if not isinstance(provider_id, str) or not PROVIDER_ID_RE.fullmatch(provider_id):
+            raise ValueError(f"Invalid provider id: {provider_id!r}")
+        if not isinstance(descriptor, CapabilityDescriptor):
+            raise TypeError("descriptor must be a CapabilityDescriptor")
+        if descriptor.provider_id != provider_id:
+            raise ValueError("Capability extension provider_id does not match")
+        bucket = self._capability_extensions.setdefault(provider_id, {})
+        existing = bucket.get(descriptor.id)
+        if existing is not None and existing != descriptor:
+            raise ValueError(f"Capability extension already registered: {descriptor.id}")
+        bucket[descriptor.id] = descriptor
 
     def add_provider(
         self,
@@ -108,6 +193,9 @@ class MCPClientManager:
         mode: str = "auto",
         tool_overrides: dict[str, dict[str, Any]] | None = None,
         tool_allowlist: list[str] | tuple[str, ...] | set[str] | None = None,
+        discovery_timeout: float | None = None,
+        invoke_timeout: float | None = None,
+        persistent_session: bool = False,
     ) -> None:
         if not isinstance(provider_id, str) or not PROVIDER_ID_RE.fullmatch(provider_id):
             raise ValueError(f"Invalid provider id: {provider_id!r}")
@@ -117,6 +205,16 @@ class MCPClientManager:
             raise ValueError("mode must be 'auto' or 'legacy'")
         if tool_overrides is not None and not isinstance(tool_overrides, dict):
             raise TypeError("tool_overrides must be an object")
+        if discovery_timeout is not None and discovery_timeout <= 0:
+            raise ValueError("provider discovery_timeout must be positive")
+        if invoke_timeout is not None and invoke_timeout <= 0:
+            raise ValueError("provider invoke_timeout must be positive")
+        if not isinstance(persistent_session, bool):
+            raise TypeError("persistent_session must be boolean")
+        if provider_id in self._persistent_clients:
+            raise RuntimeError(
+                f"Close persistent provider session before reconfiguration: {provider_id}"
+            )
         if provider_id in self._sources:
             self._set_registry_available(provider_id, False)
         if tool_allowlist is not None:
@@ -132,6 +230,16 @@ class MCPClientManager:
         self._modes[provider_id] = mode
         self._tool_overrides[provider_id] = dict(tool_overrides or {})
         self._tool_allowlists[provider_id] = normalized_allowlist
+        self._discovery_timeouts[provider_id] = float(
+            discovery_timeout
+            if discovery_timeout is not None
+            else self._discovery_timeout
+        )
+        self._invoke_timeouts[provider_id] = float(
+            invoke_timeout if invoke_timeout is not None else self._invoke_timeout
+        )
+        self._persistent_session_enabled[provider_id] = persistent_session
+        self._persistent_locks[provider_id] = asyncio.Lock()
         self._states[provider_id] = MCPProviderState(
             provider_id=provider_id,
             state="configured",
@@ -149,6 +257,10 @@ class MCPClientManager:
     def remove_provider(self, provider_id: str) -> None:
         if provider_id not in self._sources:
             raise ValueError(f"Unknown MCP provider: {provider_id}")
+        if provider_id in self._persistent_clients:
+            raise RuntimeError(
+                f"Close persistent provider session before removal: {provider_id}"
+            )
         self._set_registry_available(provider_id, False)
         try:
             self._registry.remove_provider(provider_id)
@@ -159,6 +271,10 @@ class MCPClientManager:
         self._modes.pop(provider_id, None)
         self._tool_overrides.pop(provider_id, None)
         self._tool_allowlists.pop(provider_id, None)
+        self._discovery_timeouts.pop(provider_id, None)
+        self._invoke_timeouts.pop(provider_id, None)
+        self._persistent_session_enabled.pop(provider_id, None)
+        self._persistent_locks.pop(provider_id, None)
         self._states.pop(provider_id, None)
 
     def _next_retry_after(self, failure_count: int) -> str:
@@ -222,11 +338,8 @@ class MCPClientManager:
         started = time.perf_counter()
         try:
             tools = await asyncio.wait_for(
-                self._list_tools(
-                    self._sources[provider_id],
-                    self._modes[provider_id],
-                ),
-                timeout=self._discovery_timeout,
+                self._list_tools_for_provider(provider_id),
+                timeout=self._discovery_timeouts[provider_id],
             )
             allowlist = self._tool_allowlists.get(provider_id)
             if allowlist is not None:
@@ -242,6 +355,23 @@ class MCPClientManager:
                 provider_id,
                 tools,
                 self._tool_overrides.get(provider_id, {}),
+            )
+            extensions = list(
+                self._capability_extensions.get(provider_id, {}).values()
+            )
+            remote_ids = {descriptor.id for descriptor in descriptors}
+            conflicts = sorted(
+                descriptor.id
+                for descriptor in extensions
+                if descriptor.id in remote_ids
+            )
+            if conflicts:
+                raise ValueError(
+                    "Capability extension conflicts with discovered MCP tools: "
+                    + ", ".join(conflicts)
+                )
+            descriptors.extend(
+                sorted(extensions, key=lambda descriptor: descriptor.id)
             )
             self._registry.register_provider(
                 provider_id,
@@ -267,6 +397,8 @@ class MCPClientManager:
             self._states[provider_id] = state
             return state.as_dict()
         except Exception as exc:
+            if self._persistent_session_enabled.get(provider_id, False):
+                await self._drop_persistent_client(provider_id)
             now = _utcnow_iso()
             failure_count = previous.consecutive_failures + 1
             state = MCPProviderState(
@@ -340,18 +472,19 @@ class MCPClientManager:
         started = time.perf_counter()
         try:
             result = await asyncio.wait_for(
-                self._call_tool(
-                    self._sources[provider_id],
+                self._call_tool_for_provider(
+                    provider_id,
                     remote_name,
                     arguments,
-                    self._modes[provider_id],
                 ),
-                timeout=self._invoke_timeout,
+                timeout=self._invoke_timeouts[provider_id],
             )
         except ToolError:
             # Remote tool/business errors do not imply provider transport failure.
             raise
         except Exception as exc:
+            if self._persistent_session_enabled.get(provider_id, False):
+                await self._drop_persistent_client(provider_id)
             previous = self._states[provider_id]
             now = _utcnow_iso()
             failure_count = previous.consecutive_failures + 1
@@ -419,7 +552,13 @@ class MCPClientManager:
         seen_ids: dict[str, str] = {}
         for tool in tools:
             remote_name = tool.name
-            capability_id = f"{provider_id}.{_capability_suffix(remote_name)}"
+            override = (tool_overrides or {}).get(remote_name, {})
+            if not isinstance(override, dict):
+                raise ValueError(f"Invalid tool override for {remote_name}")
+            public_name = override.get("public_name", remote_name)
+            if not isinstance(public_name, str) or not public_name.strip():
+                raise ValueError(f"Invalid public_name override for {remote_name}")
+            capability_id = f"{provider_id}.{_capability_suffix(public_name)}"
             previous = seen_ids.get(capability_id)
             if previous is not None and previous != remote_name:
                 raise ValueError(
@@ -443,9 +582,6 @@ class MCPClientManager:
                 "outputs": list(raw_outputs),
             } if raw_inputs or raw_outputs else {}
 
-            override = (tool_overrides or {}).get(remote_name, {})
-            if not isinstance(override, dict):
-                raise ValueError(f"Invalid tool override for {remote_name}")
             if "artifact_contract" in override:
                 candidate = override["artifact_contract"]
                 if not isinstance(candidate, dict):
@@ -454,15 +590,29 @@ class MCPClientManager:
                 if transport not in {"local_path", "file_uri"}:
                     raise ValueError(f"Unsupported artifact transport for {remote_name}: {transport!r}")
                 inputs = candidate.get("inputs", [])
+                input_arrays = candidate.get("input_arrays", [])
                 outputs = candidate.get("outputs", [])
                 output_paths = candidate.get("output_paths", {})
+                result_paths = candidate.get("result_paths", [])
                 policy = normalize_artifact_policy(candidate.get("policy"))
                 if not isinstance(inputs, list) or not all(isinstance(item, str) and item for item in inputs):
                     raise ValueError(f"Invalid artifact contract inputs for {remote_name}")
+                if not isinstance(input_arrays, list) or not all(
+                    isinstance(item, str) and item for item in input_arrays
+                ):
+                    raise ValueError(
+                        f"Invalid artifact contract input_arrays for {remote_name}"
+                    )
+                if set(inputs).intersection(input_arrays):
+                    raise ValueError(
+                        f"Artifact contract input field cannot be scalar and array for {remote_name}"
+                    )
                 if not isinstance(outputs, list) or not all(isinstance(item, str) and item for item in outputs):
                     raise ValueError(f"Invalid artifact contract outputs for {remote_name}")
                 if not isinstance(output_paths, dict):
                     raise ValueError(f"Invalid artifact contract output_paths for {remote_name}")
+                if not isinstance(result_paths, list):
+                    raise ValueError(f"Invalid artifact contract result_paths for {remote_name}")
                 normalized_output_paths: dict[str, dict[str, str]] = {}
                 for argument_name, specification in output_paths.items():
                     if not isinstance(argument_name, str) or not argument_name:
@@ -487,14 +637,87 @@ class MCPClientManager:
                     if mime_type is not None:
                         normalized["mime_type"] = normalize_mime_type(mime_type)
                     normalized_output_paths[argument_name] = normalized
+
+                normalized_result_paths: list[dict[str, Any]] = []
+                for index, specification in enumerate(result_paths):
+                    if not isinstance(specification, dict):
+                        raise ValueError(
+                            f"Invalid result path specification for {remote_name}[{index}]"
+                        )
+                    unknown_fields = set(specification) - {
+                        "pattern",
+                        "group",
+                        "root",
+                        "remove_source",
+                        "mime_type",
+                    }
+                    if unknown_fields:
+                        raise ValueError(
+                            f"Unknown result path fields for {remote_name}: "
+                            + ", ".join(sorted(unknown_fields))
+                        )
+                    pattern = specification.get("pattern")
+                    group = specification.get("group", "path")
+                    root = specification.get("root")
+                    remove_source = specification.get("remove_source", False)
+                    mime_type = specification.get("mime_type")
+                    if (
+                        not isinstance(pattern, str)
+                        or not pattern
+                        or len(pattern) > 1024
+                    ):
+                        raise ValueError(
+                            f"Invalid result path pattern for {remote_name}"
+                        )
+                    try:
+                        compiled = re.compile(pattern)
+                    except re.error as exc:
+                        raise ValueError(
+                            f"Invalid result path regex for {remote_name}"
+                        ) from exc
+                    if (
+                        not isinstance(group, str)
+                        or not group
+                        or group not in compiled.groupindex
+                    ):
+                        raise ValueError(
+                            f"Invalid result path group for {remote_name}"
+                        )
+                    if not isinstance(root, str) or not root:
+                        raise ValueError(
+                            f"Invalid result path root for {remote_name}"
+                        )
+                    root_path = Path(root)
+                    if root_path.is_absolute() or ".." in root_path.parts:
+                        raise ValueError(
+                            f"Result path root must stay inside PLA root for {remote_name}"
+                        )
+                    if not isinstance(remove_source, bool):
+                        raise ValueError(
+                            f"Invalid result path remove_source for {remote_name}"
+                        )
+                    normalized_result = {
+                        "pattern": pattern,
+                        "group": group,
+                        "root": root_path.as_posix(),
+                        "remove_source": remove_source,
+                    }
+                    if mime_type is not None:
+                        normalized_result["mime_type"] = normalize_mime_type(
+                            mime_type
+                        )
+                    normalized_result_paths.append(normalized_result)
+
                 artifact_contract = {
                     "transport": transport,
                     "inputs": list(inputs),
+                    "input_arrays": list(input_arrays),
                     "outputs": list(outputs),
                     "output_paths": normalized_output_paths,
+                    "result_paths": normalized_result_paths,
                     "policy": policy,
                 }
-                raw_inputs = list(inputs)
+                raw_inputs = list(inputs) + list(input_arrays)
                 raw_outputs = list(outputs)
 
             raw_tags = fastmcp_meta.get("tags", [])
@@ -549,7 +772,9 @@ class MCPClientManager:
                 ),
                 artifact_inputs=tuple(raw_inputs),
                 artifact_outputs=bool(
-                    raw_outputs or artifact_contract.get("output_paths")
+                    raw_outputs
+                    or artifact_contract.get("output_paths")
+                    or artifact_contract.get("result_paths")
                 ),
                 artifact_contract=artifact_contract,
                 risk_level=risk_level,

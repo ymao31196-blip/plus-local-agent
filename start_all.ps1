@@ -9,6 +9,7 @@ $brokerScript = Join-Path $projectRoot "start_elevation_broker.ps1"
 $brokerStatusPath = Join-Path $projectRoot "state\elevation\broker_status.json"
 $lifecycleScript = Join-Path $projectRoot "start_lifecycle_broker.ps1"
 $lifecycleStatusPath = Join-Path $projectRoot "state\lifecycle\broker_status.json"
+$browserScript = Join-Path $projectRoot "start_browser_runtime.ps1"
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
 
 function Get-ListenerPid([int]$Port) {
@@ -105,7 +106,7 @@ function Wait-LifecycleBrokerReady([int]$TimeoutSeconds = 10) {
     throw "Timed out waiting for Runtime Lifecycle Broker."
 }
 
-foreach ($required in @($httpScript, $tunnelScript, $brokerScript, $lifecycleScript)) {
+foreach ($required in @($httpScript, $tunnelScript, $brokerScript, $lifecycleScript, $browserScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing startup script: $required"
     }
@@ -132,6 +133,18 @@ $lifecycleStartArgs = @{
 Start-Process @lifecycleStartArgs | Out-Null
 $lifecyclePid = Wait-LifecycleBrokerReady 10
 Write-Host "Runtime Lifecycle Broker ready (PID $lifecyclePid)."
+
+Write-Host "Ensuring Browser Runtime..."
+$browserStartArgs = @{
+    FilePath = $powershell
+    ArgumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $browserScript)
+    WorkingDirectory = $projectRoot
+    WindowStyle = "Hidden"
+}
+Start-Process @browserStartArgs | Out-Null
+$browserPid = Wait-Listener 8931 30
+$browserPid = Assert-OwnedListener 8931 @($projectRoot, "cli.js") "PLA Browser Runtime"
+Write-Host "PLA Browser Runtime ready on 127.0.0.1:8931 (PID $browserPid)."
 
 $httpPid = Assert-OwnedListener 8766 @($projectRoot, "server.py") "PLA HTTP"
 if ($null -eq $httpPid) {

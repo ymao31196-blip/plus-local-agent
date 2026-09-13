@@ -12,10 +12,14 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastmcp.client.transports import StdioTransport
+from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
 from mcp_client_manager import MCPClientManager
-from provider_manifest import ProviderManifest, load_provider_manifests
+from provider_manifest import (
+    ProviderManifest,
+    STREAMABLE_HTTP,
+    load_provider_manifests,
+)
 
 
 def _selected_provider_ids(
@@ -52,11 +56,22 @@ def _register_manifest(
     *,
     enabled: bool = True,
 ) -> dict[str, Any]:
-    transport = StdioTransport(
-        command=str(manifest.command_path),
-        args=list(manifest.args),
-        cwd=str(manifest.cwd),
-    )
+    if manifest.runtime_kind == STREAMABLE_HTTP:
+        if manifest.endpoint_url is None:
+            raise ValueError(
+                f"HTTP provider {manifest.provider_id} is missing endpoint_url"
+            )
+        transport = StreamableHttpTransport(manifest.endpoint_url)
+    else:
+        if manifest.command_path is None:
+            raise ValueError(
+                f"stdio provider {manifest.provider_id} is missing command_path"
+            )
+        transport = StdioTransport(
+            command=str(manifest.command_path),
+            args=list(manifest.args),
+            cwd=str(manifest.cwd),
+        )
     manager.add_provider(
         manifest.provider_id,
         transport,
@@ -68,6 +83,9 @@ def _register_manifest(
             else None
         ),
         tool_overrides=manifest.tool_overrides,
+        discovery_timeout=manifest.discovery_timeout_seconds,
+        invoke_timeout=manifest.invoke_timeout_seconds,
+        persistent_session=manifest.persistent_session,
     )
     value = manifest.summary()
     value["enabled"] = bool(enabled)
@@ -187,6 +205,7 @@ class ExternalProviderRuntime:
 
             for provider_id in removed:
                 if self._manager.has_provider(provider_id):
+                    await self._manager.close_provider_session(provider_id)
                     self._manager.remove_provider(provider_id)
                 self._active.pop(provider_id, None)
 
@@ -196,6 +215,8 @@ class ExternalProviderRuntime:
             for provider_id in sorted(set(added) | set(changed)):
                 manifest = manifests[provider_id]
                 enabled = provider_id not in self._forced_disabled
+                if self._manager.has_provider(provider_id):
+                    await self._manager.close_provider_session(provider_id)
                 _register_manifest(
                     self._manager,
                     manifest,
@@ -227,6 +248,8 @@ class ExternalProviderRuntime:
                 enabled = provider_id not in self._forced_disabled
                 state = self._manager.provider_status(provider_id)
                 if state["enabled"] != enabled:
+                    if not enabled:
+                        await self._manager.close_provider_session(provider_id)
                     self._manager.set_provider_enabled(
                         provider_id,
                         enabled,
@@ -281,6 +304,8 @@ class ExternalProviderRuntime:
 
             manifest = manifests[provider_id]
             enabled = provider_id not in self._forced_disabled
+            if self._manager.has_provider(provider_id):
+                await self._manager.close_provider_session(provider_id)
             _register_manifest(
                 self._manager,
                 manifest,
@@ -320,6 +345,8 @@ class ExternalProviderRuntime:
                 or self._active[provider_id] != manifest
                 or not self._manager.has_provider(provider_id)
             ):
+                if self._manager.has_provider(provider_id):
+                    await self._manager.close_provider_session(provider_id)
                 _register_manifest(
                     self._manager,
                     manifest,
@@ -351,6 +378,7 @@ class ExternalProviderRuntime:
                 )
             self._forced_enabled.discard(provider_id)
             self._forced_disabled.add(provider_id)
+            await self._manager.close_provider_session(provider_id)
             self._manager.set_provider_enabled(provider_id, False)
             return {
                 "status": "completed",

@@ -8,9 +8,12 @@ plans follow-up calls.
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass, field
 import hashlib
 import inspect
 import json
+from pathlib import Path
+import re
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -463,12 +466,16 @@ class CapabilityBroker:
             )
 
         input_fields = contract.get("inputs", [])
+        input_array_fields = contract.get("input_arrays", [])
         output_fields = contract.get("outputs", [])
         output_paths = contract.get("output_paths", {})
+        result_path_specs = contract.get("result_paths", [])
         if (
             not isinstance(input_fields, list)
+            or not isinstance(input_array_fields, list)
             or not isinstance(output_fields, list)
             or not isinstance(output_paths, dict)
+            or not isinstance(result_path_specs, list)
         ):
             raise ValueError(f"Invalid artifact contract for {capability_id}")
 
@@ -488,6 +495,26 @@ class CapabilityBroker:
                     field,
                     transport=transport,
                 )
+
+            for field in input_array_fields:
+                references = provider_arguments.get(field)
+                if (
+                    not isinstance(references, list)
+                    or not references
+                    or not all(isinstance(item, str) and item for item in references)
+                ):
+                    raise ValueError(
+                        f"Artifact array argument {field} for {capability_id} "
+                        "must be a non-empty array of string references"
+                    )
+                provider_arguments[field] = [
+                    invocation.stage_input(
+                        reference,
+                        f"{field}_{index}",
+                        transport=transport,
+                    )
+                    for index, reference in enumerate(references)
+                ]
 
             managed_output_locations: dict[str, tuple[str, dict[str, str]]] = {}
             for argument_name, specification in output_paths.items():
@@ -518,6 +545,12 @@ class CapabilityBroker:
             if raw_data is None:
                 raw_data = result.structured_content
             json_data = _jsonable(raw_data)
+            raw_content = [
+                item.model_dump(mode="json", by_alias=True)
+                if hasattr(item, "model_dump")
+                else _jsonable(item)
+                for item in result.content
+            ]
 
             artifacts: list[dict[str, Any]] = []
             artifact_outputs: dict[str, str] = {}
@@ -553,19 +586,75 @@ class CapabilityBroker:
                     artifacts.append(public)
                     artifact_outputs[argument_name] = public["artifact_id"]
 
+            if not result.is_error and result_path_specs:
+                text_fragments = [
+                    item.get("text", "")
+                    for item in raw_content
+                    if isinstance(item, dict) and isinstance(item.get("text"), str)
+                ]
+                result_text = "\n".join(text_fragments)
+                project_root = Path(__file__).resolve().parent
+                seen_sources: set[Path] = set()
+
+                for specification in result_path_specs:
+                    if not isinstance(specification, dict):
+                        raise ValueError(
+                            f"Invalid result path specification for {capability_id}"
+                        )
+                    pattern = specification.get("pattern")
+                    group = specification.get("group")
+                    root = specification.get("root")
+                    if (
+                        not isinstance(pattern, str)
+                        or not isinstance(group, str)
+                        or not isinstance(root, str)
+                    ):
+                        raise ValueError(
+                            f"Invalid result path contract for {capability_id}"
+                        )
+
+                    approved_root = (project_root / root).resolve()
+                    try:
+                        approved_root.relative_to(project_root)
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"Result path root escapes PLA project for {capability_id}"
+                        ) from exc
+
+                    for match in re.finditer(pattern, result_text):
+                        raw_path = match.group(group)
+                        candidate = Path(raw_path)
+                        source_path = (
+                            candidate.resolve()
+                            if candidate.is_absolute()
+                            else (project_root / candidate).resolve()
+                        )
+                        if source_path in seen_sources:
+                            continue
+                        seen_sources.add(source_path)
+
+                        metadata = invocation.import_discovered_output(
+                            source_path,
+                            approved_root,
+                            raw_alias=raw_path,
+                            mime_type=specification.get("mime_type"),
+                            remove_source=bool(
+                                specification.get("remove_source", False)
+                            ),
+                        )
+                        public = _public_artifact(metadata)
+                        artifacts.append(public)
+                        artifact_outputs[
+                            f"result_{len(artifact_outputs) + 1}"
+                        ] = public["artifact_id"]
+
             normalized_data = invocation.sanitize(json_data)
             for field in output_fields:
                 if isinstance(normalized_data, dict) and field in artifact_outputs:
                     normalized_data[field] = artifact_outputs[field]
 
-            raw_content = [
-                item.model_dump(mode="json", by_alias=True)
-                if hasattr(item, "model_dump")
-                else _jsonable(item)
-                for item in result.content
-            ]
-            produces_artifacts = bool(output_fields or output_paths)
-            if produces_artifacts:
+            produces_managed_artifacts = bool(output_fields or output_paths)
+            if produces_managed_artifacts:
                 normalized_content = []
                 content_omitted = True
             else:

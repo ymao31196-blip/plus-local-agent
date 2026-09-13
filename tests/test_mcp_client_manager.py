@@ -413,3 +413,74 @@ def test_override_can_define_managed_output_path_and_public_schema():
             "mime_type": "application/octet-stream",
         }
     }
+
+
+def test_provider_specific_timeouts_override_manager_defaults():
+    manager = MCPClientManager(
+        CapabilityRegistry(),
+        discovery_timeout=10,
+        invoke_timeout=60,
+    )
+
+    manager.add_provider(
+        "slow",
+        build_external_mcp(),
+        discovery_timeout=45,
+        invoke_timeout=90,
+    )
+    manager.add_provider("default", build_external_mcp())
+
+    assert manager._discovery_timeouts["slow"] == 45.0
+    assert manager._invoke_timeouts["slow"] == 90.0
+    assert manager._discovery_timeouts["default"] == 10.0
+    assert manager._invoke_timeouts["default"] == 60.0
+
+
+def test_tool_override_can_define_public_capability_name():
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    manager.add_provider(
+        "browser",
+        build_external_mcp(),
+        tool_allowlist=["health_check"],
+        tool_overrides={
+            "health_check": {
+                "public_name": "status",
+                "risk_level": "read",
+                "requires_confirmation": False,
+            }
+        },
+    )
+
+    asyncio.run(manager.discover_provider("browser"))
+
+    detail = registry.describe("browser.status")
+    assert detail["remote_name"] == "health_check"
+    with pytest.raises(ValueError, match="Unknown capability"):
+        registry.describe("browser.health_check")
+
+
+def test_persistent_session_reuses_one_client_until_explicit_close():
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    manager.add_provider(
+        "browser",
+        build_external_mcp(),
+        persistent_session=True,
+    )
+
+    async def scenario():
+        await manager.discover_provider("browser")
+        first_client = manager._persistent_clients["browser"]
+
+        first = await manager.call_tool("browser", "health_check", {})
+        second = await manager.call_tool("browser", "health_check", {})
+
+        assert first.is_error is False
+        assert second.is_error is False
+        assert manager._persistent_clients["browser"] is first_client
+
+        await manager.close_provider_session("browser")
+        assert "browser" not in manager._persistent_clients
+
+    asyncio.run(scenario())

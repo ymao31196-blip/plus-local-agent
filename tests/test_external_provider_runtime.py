@@ -135,3 +135,22 @@ def test_executable_stdio_provider_is_registered_without_python_env(tmp_path, mo
     assert configured["system"]["command"] == str(executable.resolve())
     assert configured["system"]["command_exists"] is True
     assert "python" not in configured["system"]
+
+
+def test_loopback_streamable_http_provider_uses_http_transport(tmp_path, monkeypatch):
+    write_manifest(
+        tmp_path,
+        "browser",
+        runtime={
+            "kind": "streamable_http",
+            "url": "http://127.0.0.1:8931/mcp",
+        },
+    )
+    monkeypatch.setenv("PLA_EXTERNAL_PROVIDERS", "browser")
+    manager = MCPClientManager(CapabilityRegistry())
+
+    configured = configure_external_providers(manager, tmp_path)
+
+    assert configured["browser"]["runtime_kind"] == "streamable_http"
+    assert configured["browser"]["url"] == "http://127.0.0.1:8931/mcp"
+    assert type(manager._sources["browser"]).__name__ == "StreamableHttpTransport"
