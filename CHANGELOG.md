@@ -2,7 +2,7 @@
 
 All notable PLA release changes are recorded here.
 
-## Unreleased
+## 1.4.1 - 2026-09-13
 
 ### Added
 
