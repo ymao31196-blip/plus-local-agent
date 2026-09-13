@@ -7,7 +7,7 @@ remain fail-open relative to capability execution.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -376,6 +376,25 @@ class ObserverHookRuntime:
                 enabled=bool(enabled),
             )
             self._hooks[hook_id] = (descriptor, handler)
+
+    def unregister(self, hook_id: str) -> None:
+        hook_id = _bounded_text("hook_id", hook_id)
+        with self._lock:
+            if hook_id not in self._hooks:
+                raise ValueError(f"Unknown observer hook: {hook_id}")
+            self._hooks.pop(hook_id)
+
+    def set_enabled(self, hook_id: str, enabled: bool) -> None:
+        hook_id = _bounded_text("hook_id", hook_id)
+        with self._lock:
+            current = self._hooks.get(hook_id)
+            if current is None:
+                raise ValueError(f"Unknown observer hook: {hook_id}")
+            descriptor, handler = current
+            self._hooks[hook_id] = (
+                replace(descriptor, enabled=bool(enabled)),
+                handler,
+            )
 
     def status(self) -> dict[str, Any]:
         with self._lock:

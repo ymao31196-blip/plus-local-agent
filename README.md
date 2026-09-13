@@ -172,6 +172,29 @@ These capabilities carry the `gate-control` tag and bypass Event, Observer, and 
 Phase 3 intentionally registers no default production policy Gate, so the runtime upgrade alone
 does not change existing Capability behavior.
 
+### External Observer Plugins
+
+Phase 4 adds manifest-backed external Observer plugins without externalizing Gate authority.
+Observer manifests live in `observer_manifests/*.json`; isolated Python runtimes live under
+`.observer_envs/<id>/`. Plugins receive only already-persisted EventEnvelope JSON through a
+bounded `python -m <module>` stdio contract, with `shell=False`, timeout/output limits, and a
+reduced subprocess environment.
+
+External Observer lifecycle is available through:
+
+```text
+runtime.observer_status
+runtime.observer_rescan
+runtime.observer_reload
+runtime.observer_enable
+runtime.observer_disable
+```
+
+Mutation controls require explicit `INVOKE` confirmation and carry `hook-control`, so they do
+not recursively create Event, Observer, or Gate records. External Observer failures remain
+fail-open relative to Capability execution. Third-party external Gate plugins remain deliberately
+out of scope until a stronger trust/sandbox boundary exists.
+
 ## Interactive Elevation Broker
 
 PLA's HTTP runtime normally runs without administrator privileges. UAC-sensitive work is

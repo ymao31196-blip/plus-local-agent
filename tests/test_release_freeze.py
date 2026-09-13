@@ -28,14 +28,16 @@ def test_release_version_and_provider_catalog():
         include_unavailable=True,
         limit=20,
     )
-    assert runtime_caps["match_count"] == 5
-    assert {item["id"] for item in runtime_caps["capabilities"]} == {
+    # v1.1 froze these provider hot-plug controls as a required compatible
+    # subset. Later minor development may add new runtime governance controls.
+    runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
+    assert {
         "runtime.provider_status",
         "runtime.provider_rescan",
         "runtime.provider_reload",
         "runtime.provider_enable",
         "runtime.provider_disable",
-    }
+    }.issubset(runtime_ids)
 
     release_caps = server.CAPABILITY_REGISTRY.search(
         "release",

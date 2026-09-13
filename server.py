@@ -91,6 +91,7 @@ from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
 from core_capabilities import register_core_transaction_capabilities
 from external_provider_runtime import ExternalProviderRuntime
+from external_observer_runtime import ExternalObserverRuntime
 from provider_runtime_capabilities import register_provider_runtime_capabilities
 from provider_doctor import provider_doctor as run_provider_doctor
 
@@ -117,10 +118,16 @@ EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     Path(__file__).resolve().parent,
 )
 EXTERNAL_PROVIDER_CONFIG = EXTERNAL_PROVIDER_RUNTIME.configure_initial()
+EXTERNAL_OBSERVER_RUNTIME = ExternalObserverRuntime(
+    OBSERVER_HOOK_RUNTIME,
+    Path(__file__).resolve().parent,
+)
+EXTERNAL_OBSERVER_CONFIG = EXTERNAL_OBSERVER_RUNTIME.configure_initial()
 register_provider_runtime_capabilities(
     CAPABILITY_REGISTRY,
     CAPABILITY_BROKER,
     EXTERNAL_PROVIDER_RUNTIME,
+    EXTERNAL_OBSERVER_RUNTIME,
 )
 
 

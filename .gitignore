@@ -19,6 +19,8 @@ venv/
 env/
 ENV/
 .provider_envs/
+.observer_envs/
+observer_manifests/*.local.json
 
 # Local secrets and credentials
 .env

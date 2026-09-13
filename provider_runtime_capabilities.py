@@ -6,6 +6,11 @@ from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
 from external_provider_runtime import ExternalProviderRuntime
+from external_observer_runtime import ExternalObserverRuntime
+from observer_runtime_capabilities import (
+    external_observer_runtime_descriptors,
+    register_external_observer_handlers,
+)
 
 
 _OBJECT_OUTPUT = {"type": "object"}
@@ -130,10 +135,14 @@ def register_provider_runtime_capabilities(
     registry: CapabilityRegistry,
     broker: CapabilityBroker,
     runtime: ExternalProviderRuntime,
+    observer_runtime: ExternalObserverRuntime | None = None,
 ) -> None:
+    descriptors = list(provider_runtime_descriptors())
+    if observer_runtime is not None:
+        descriptors.extend(external_observer_runtime_descriptors())
     registry.register_provider(
         "runtime",
-        provider_runtime_descriptors(),
+        descriptors,
         enabled=True,
     )
     broker.register_internal_handler(
@@ -156,3 +165,8 @@ def register_provider_runtime_capabilities(
         "runtime.provider_disable",
         lambda args: runtime.disable(args["provider_id"]),
     )
+    if observer_runtime is not None:
+        register_external_observer_handlers(
+            broker,
+            observer_runtime,
+        )

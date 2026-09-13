@@ -204,9 +204,30 @@ incidents.
 Phase 3 intentionally registers no default production policy Gate. The infrastructure therefore
 does not alter existing Capability behavior until a reviewed Gate is explicitly registered.
 
-External Hook/Gate manifests, Hook hot-plug, subprocess/plugin Hook execution, retries,
-asynchronous delivery, argument/result transformation, and Hook-triggered Capability execution
-remain outside Phase 3.
+## External Observer Plugin Plane (v1.2 Phase 4)
+
+Phase 4 externalizes only the Observer side of the Hook plane. Reviewed manifests under
+`observer_manifests/*.json` select isolated Python modules under
+`.observer_envs/<observer-id>/`. Matching persisted EventEnvelope facts are passed as one JSON
+object on stdin to:
+
+```text
+<observer-python> -m <reviewed-module>
+```
+
+The plugin returns one bounded JSON object on stdout. Invocation uses `shell=False`, a manifest
+timeout capped at five seconds, a 64 KiB stdout bound, and a reduced subprocess environment.
+External Observers still run with host-user authority; this is process/dependency isolation, not
+an OS security sandbox.
+
+Runtime lifecycle is exposed through `runtime.observer_status/rescan/reload/enable/disable`.
+Mutating controls require explicit `INVOKE` and use `hook-control` so lifecycle operations do
+not recursively create Event/Observer/Gate records. Manifest rescan can add, replace, disable,
+re-enable, or remove an Observer without restarting PLA HTTP.
+
+External Gate plugins, arbitrary executables, shell commands, automatic package installation,
+network sandboxing, background delivery/retries, transformation, and plugin-triggered PLA
+Capability calls remain outside Phase 4.
 
 ## Interactive elevation plane
 
