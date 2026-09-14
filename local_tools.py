@@ -26,11 +26,11 @@ from typing_extensions import TypedDict
 from workspace_manager import RootPolicy, build_root_policy
 
 
-WORKSPACE = Path(
-    os.environ.get("AGENT_WORKSPACE", r"D:\AI_Tools\plus-local-agent\workspace")
-).resolve()
 PLA_ROOT = Path(
     os.environ.get("AGENT_PLA_ROOT", Path(__file__).resolve().parent)
+).resolve()
+WORKSPACE = Path(
+    os.environ.get("AGENT_WORKSPACE", str(PLA_ROOT / "workspace"))
 ).resolve()
 RERUN_THESIS_ROOT = Path(
     os.environ.get("AGENT_RERUN_THESIS_ROOT", Path.home() / "Desktop" / "rerun_thesis")

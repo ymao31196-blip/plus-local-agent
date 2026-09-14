@@ -71,3 +71,11 @@ def test_customer_installation_doc_routes_codex_through_installer():
     assert "Never reuse another machine Tunnel ID or credential" in doc
     assert "PARTIAL" in doc
     assert "PASS" in doc
+
+
+def test_default_workspace_is_repository_local_and_portable():
+    local_tools = _read("local_tools.py")
+
+    assert 'str(PLA_ROOT / "workspace")' in local_tools
+    assert r'D:\\AI_Tools\\plus-local-agent\\workspace' not in local_tools
+    assert r'D:\AI_Tools\plus-local-agent\workspace' not in local_tools

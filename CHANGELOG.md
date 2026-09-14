@@ -15,6 +15,7 @@ All notable PLA release changes are recorded here.
 - Tunnel startup now accepts an explicit `PLA_TUNNEL_CONFIG` or Git-ignored `config/tunnel.local.yaml`; it no longer automatically falls back to the tracked Tunnel config.
 - The tracked `config/tunnel.yaml` is now a credential-free customer template rather than a deployment-specific Tunnel identity.
 - Python discovery treats missing or incompatible `py.exe` runtimes as probe misses instead of terminating the installer under strict PowerShell error handling.
+- The default local workspace is now resolved relative to the active PLA repository instead of a developer-machine absolute path, while `AGENT_WORKSPACE` can still override it.
 
 ## 1.4.1 - 2026-09-13
 
