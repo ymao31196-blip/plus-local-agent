@@ -107,3 +107,23 @@ def test_setup_script_supports_provider_filter_and_single_recreate_pass():
     assert "& $providerPython -m pip check" not in script
     assert "& $npmCommand.Source install" not in script
     assert "& $npmCommand.Source ls" not in script
+
+
+def test_node_provider_specs_use_real_line_breaks_and_declare_packages():
+    root = Path(__file__).resolve().parents[1]
+    spec_dir = root / "provider_specs"
+    npm_specs = sorted(spec_dir.glob("*.npm.txt"))
+
+    assert npm_specs
+    for spec in npm_specs:
+        text = spec.read_text(encoding="utf-8")
+        assert "\\n" not in text
+        assert "\\r" not in text
+
+        packages = [
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        assert packages, f"No Node packages declared in {spec.name}"
+

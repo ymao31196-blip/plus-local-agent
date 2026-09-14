@@ -17,6 +17,7 @@ All notable PLA release changes are recorded here.
 - Python discovery treats missing or incompatible `py.exe` runtimes as probe misses instead of terminating the installer under strict PowerShell error handling.
 - The default local workspace is now resolved relative to the active PLA repository instead of a developer-machine absolute path, while `AGENT_WORKSPACE` can still override it.
 - Provider setup and the installer now evaluate nested Python/pip/npm/PowerShell subprocesses by their real exit codes, merging ordinary native stderr into stdout so diagnostic output cannot surface as a fatal `NativeCommandError` under Windows PowerShell strict error handling.
+- Reviewed Node Provider specs are validated as real line-oriented package lists; the Browser Provider spec now uses actual line breaks so `@playwright/mcp` is installed during customer bootstrap.
 
 ## 1.4.1 - 2026-09-13
 
