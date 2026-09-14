@@ -8,6 +8,7 @@ All notable PLA release changes are recorded here.
 
 - Customer-oriented Windows `install.ps1` bootstrap for repository-local Python 3.11, pinned runtime dependencies, reviewed Provider setup, regression validation, and optional Secure MCP Tunnel startup.
 - Customer deployment contract and secret-free Tunnel example configuration.
+- `computer.activate` as a separate top-level window activation primitive that verifies Windows foreground ownership before reporting success.
 
 ### Changed
 

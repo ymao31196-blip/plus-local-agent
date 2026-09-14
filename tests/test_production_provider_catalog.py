@@ -59,6 +59,7 @@ def test_computer_provider_is_semantic_first_and_version_pinned():
         "invoke",
         "set_value",
         "focus",
+        "activate",
         "scroll_into_view",
         "scroll",
         "wait_for",

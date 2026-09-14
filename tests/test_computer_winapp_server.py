@@ -271,3 +271,94 @@ def test_press_key_uses_send_input_without_system_key_opt_in(monkeypatch):
         "--target", "Editor", "-w", "42",
     ]]
     assert "--allow-system-keys" not in calls[0]
+
+
+def test_activation_resolves_unique_app_window(monkeypatch):
+    monkeypatch.setattr(
+        computer,
+        "_run_ui",
+        lambda args: {
+            "status": "completed",
+            "result": [
+                {"hwnd": 42, "title": "Editor", "isForeground": False},
+            ],
+        },
+    )
+
+    assert computer._resolve_activation_hwnd("Editor", None) == 42
+
+
+def test_activation_rejects_ambiguous_app_window(monkeypatch):
+    monkeypatch.setattr(
+        computer,
+        "_run_ui",
+        lambda args: {
+            "status": "completed",
+            "result": [
+                {"hwnd": 41, "title": "Editor A"},
+                {"hwnd": 42, "title": "Editor B"},
+            ],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="ambiguous"):
+        computer._resolve_activation_hwnd("Editor", None)
+
+
+def test_activate_requires_verified_foreground_observation(monkeypatch):
+    monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
+    monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: True)
+    monkeypatch.setattr(
+        computer,
+        "_observe_window",
+        lambda hwnd: {
+            "hwnd": 42,
+            "title": "Terminal",
+            "isForeground": True,
+        },
+    )
+    monkeypatch.setattr(
+        computer,
+        "_resolve_winapp_launch",
+        lambda: ("node", "winapp", "0.5.0"),
+    )
+
+    result = computer.activate(hwnd=42)
+
+    assert result["status"] == "completed"
+    assert result["result"]["hwnd"] == 42
+    assert result["result"]["previousForegroundHwnd"] == 7
+    assert result["result"]["isForeground"] is True
+    assert result["result"]["activationBackend"] == "windows-user32"
+    assert result["result"]["window"]["isForeground"] is True
+
+
+def test_activate_fails_closed_when_windows_does_not_grant_foreground(monkeypatch):
+    monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
+    monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: False)
+
+    with pytest.raises(RuntimeError, match="focus_not_foreground"):
+        computer.activate(hwnd=42)
+
+
+def test_activate_fails_when_post_action_observation_disagrees(monkeypatch):
+    monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
+    monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: True)
+    monkeypatch.setattr(computer, "_observe_window", lambda hwnd: None)
+
+    with pytest.raises(RuntimeError, match="foreground_observation_failed"):
+        computer.activate(hwnd=42)
+
+
+def test_computer_manifest_exposes_separate_window_activation_capability():
+    manifest_path = Path(computer.PROJECT_ROOT) / "provider_manifests" / "computer-winapp.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert "activate" in manifest["tool_allowlist"]
+    override = manifest["tool_overrides"]["activate"]
+    assert override["risk_level"] == "write_local"
+    assert override["requires_confirmation"] is False
+    assert "foreground" in override["description"].lower()

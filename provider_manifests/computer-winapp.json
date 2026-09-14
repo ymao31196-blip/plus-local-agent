@@ -22,6 +22,7 @@
     "invoke",
     "set_value",
     "focus",
+    "activate",
     "scroll_into_view",
     "scroll",
     "wait_for",
@@ -100,10 +101,17 @@
     },
     "focus": {
       "title": "Focus Windows UI Element",
-      "description": "Move keyboard focus to one semantic UI element.",
+      "description": "Move keyboard focus to one semantic UI element. This does not imply that the top-level window became the Windows foreground window.",
       "risk_level": "write_local",
       "requires_confirmation": false,
       "tags": ["computer", "windows", "uia", "interaction", "focus"]
+    },
+    "activate": {
+      "title": "Activate Windows App Window",
+      "description": "Bring one unambiguous top-level application window to the Windows foreground, then verify foreground ownership before returning success.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["computer", "windows", "window", "interaction", "foreground", "activation"]
     },
     "scroll_into_view": {
       "public_name": "reveal",

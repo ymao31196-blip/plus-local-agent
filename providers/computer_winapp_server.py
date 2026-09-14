@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
@@ -221,6 +222,137 @@ def _run_ui(
     }
 
 
+def _window_records(result: Any) -> list[dict[str, Any]]:
+    if isinstance(result, list):
+        values = result
+    elif isinstance(result, dict) and isinstance(result.get("windows"), list):
+        values = result["windows"]
+    else:
+        values = []
+    return [
+        item
+        for item in values
+        if isinstance(item, dict) and not _is_internal_ui_record(item)
+    ]
+
+
+def _resolve_activation_hwnd(
+    app: str | None,
+    hwnd: int | None,
+) -> int:
+    _target_args(app, hwnd)
+    if hwnd is not None:
+        return hwnd
+
+    clean_app = _bounded_text(app, "app", max_length=512)
+    listed = _run_ui(["list-windows", "-a", clean_app])
+    candidates = [
+        item
+        for item in _window_records(listed.get("result"))
+        if isinstance(item.get("hwnd"), int) and item["hwnd"] > 0
+    ]
+    if not candidates:
+        raise RuntimeError(f"No visible top-level window matched app: {clean_app}")
+    if len(candidates) != 1:
+        handles = ", ".join(str(item["hwnd"]) for item in candidates[:8])
+        raise RuntimeError(
+            "Window activation is ambiguous; provide a specific hwnd. "
+            f"Matched HWNDs: {handles}"
+        )
+    return int(candidates[0]["hwnd"])
+
+
+def _user32() -> Any:
+    if os.name != "nt":
+        raise RuntimeError("Computer window activation is supported on Windows only")
+    return ctypes.WinDLL("user32", use_last_error=True)
+
+
+def _kernel32() -> Any:
+    if os.name != "nt":
+        raise RuntimeError("Computer window activation is supported on Windows only")
+    return ctypes.WinDLL("kernel32", use_last_error=True)
+
+
+def _foreground_hwnd() -> int:
+    user32 = _user32()
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = ctypes.c_void_p
+    value = user32.GetForegroundWindow()
+    return int(value or 0)
+
+
+def _activate_hwnd_win32(hwnd: int) -> bool:
+    user32 = _user32()
+    kernel32 = _kernel32()
+
+    user32.IsWindow.argtypes = [ctypes.c_void_p]
+    user32.IsWindow.restype = ctypes.c_int
+    user32.IsIconic.argtypes = [ctypes.c_void_p]
+    user32.IsIconic.restype = ctypes.c_int
+    user32.ShowWindowAsync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    user32.ShowWindowAsync.restype = ctypes.c_int
+    user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.GetWindowThreadProcessId.restype = ctypes.c_ulong
+    user32.AttachThreadInput.argtypes = [ctypes.c_ulong, ctypes.c_ulong, ctypes.c_int]
+    user32.AttachThreadInput.restype = ctypes.c_int
+    user32.BringWindowToTop.argtypes = [ctypes.c_void_p]
+    user32.BringWindowToTop.restype = ctypes.c_int
+    user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+    user32.SetForegroundWindow.restype = ctypes.c_int
+    kernel32.GetCurrentThreadId.argtypes = []
+    kernel32.GetCurrentThreadId.restype = ctypes.c_ulong
+
+    handle = ctypes.c_void_p(hwnd)
+    if not user32.IsWindow(handle):
+        raise ValueError(f"hwnd does not identify a live window: {hwnd}")
+    if _foreground_hwnd() == hwnd:
+        return True
+
+    # Restore minimized windows, but never synthesize mouse/keyboard input or
+    # change arbitrary window geometry.
+    if user32.IsIconic(handle):
+        user32.ShowWindowAsync(handle, 9)  # SW_RESTORE
+
+    current_thread = int(kernel32.GetCurrentThreadId())
+    foreground = _foreground_hwnd()
+    foreground_thread = int(
+        user32.GetWindowThreadProcessId(ctypes.c_void_p(foreground), None)
+    ) if foreground else 0
+    target_thread = int(user32.GetWindowThreadProcessId(handle, None))
+
+    attached: list[int] = []
+    for thread_id in dict.fromkeys((foreground_thread, target_thread)):
+        if thread_id and thread_id != current_thread:
+            if user32.AttachThreadInput(current_thread, thread_id, 1):
+                attached.append(thread_id)
+
+    try:
+        user32.BringWindowToTop(handle)
+        user32.SetForegroundWindow(handle)
+    finally:
+        for thread_id in reversed(attached):
+            user32.AttachThreadInput(current_thread, thread_id, 0)
+
+    for _ in range(10):
+        if _foreground_hwnd() == hwnd:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _observe_window(hwnd: int) -> dict[str, Any] | None:
+    for _ in range(5):
+        listed = _run_ui(["list-windows"])
+        for item in _window_records(listed.get("result")):
+            if item.get("hwnd") == hwnd:
+                if item.get("isForeground") is True:
+                    return item
+                break
+        time.sleep(0.05)
+    return None
+
+
 def _managed_png_path(output_path: str) -> Path:
     raw = _bounded_text(output_path, "output_path", max_length=4096)
     path = Path(raw)
@@ -397,6 +529,43 @@ def focus(
     args = ["focus", _bounded_text(selector, "selector")]
     args.extend(_target_args(app, hwnd))
     return _run_ui(args)
+
+
+@mcp.tool
+def activate(
+    app: str | None = None,
+    hwnd: int | None = None,
+) -> dict[str, Any]:
+    """Bring one top-level window to the Windows foreground and verify it."""
+    target_hwnd = _resolve_activation_hwnd(app, hwnd)
+    before_hwnd = _foreground_hwnd()
+    if not _activate_hwnd_win32(target_hwnd):
+        raise RuntimeError(
+            "focus_not_foreground: Windows did not grant foreground activation "
+            f"for hwnd {target_hwnd}"
+        )
+
+    observation = _observe_window(target_hwnd)
+    if observation is None:
+        raise RuntimeError(
+            "foreground_observation_failed: target reached the Windows foreground "
+            "but winapp did not confirm isForeground=true"
+        )
+
+    _node, _script, version = _resolve_winapp_launch()
+    return {
+        "status": "completed",
+        "returncode": 0,
+        "backend": "microsoft-winapp-cli",
+        "backend_version": version,
+        "result": {
+            "hwnd": target_hwnd,
+            "previousForegroundHwnd": before_hwnd,
+            "isForeground": True,
+            "activationBackend": "windows-user32",
+            "window": observation,
+        },
+    }
 
 
 @mcp.tool
