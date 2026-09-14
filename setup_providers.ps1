@@ -13,6 +13,40 @@ if ([string]::IsNullOrWhiteSpace($env:PLA_PYTHON)) {
 }
 $specDir = Join-Path $projectRoot "provider_specs"
 
+function Invoke-NativeChecked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(Mandatory = $true)]
+        [object[]]$ArgumentList,
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $nativeException = $null
+    $exitCode = 1
+    try {
+        # Windows PowerShell can surface ordinary native stderr as a
+        # NativeCommandError. Keep script errors strict, but judge native
+        # commands by their real exit code instead of stderr text.
+        $ErrorActionPreference = "Continue"
+        & $FilePath @ArgumentList
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $nativeException = $_
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($null -ne $nativeException) {
+        throw ("{0}: {1}" -f $FailureMessage, $nativeException.Exception.Message)
+    }
+    if ($exitCode -ne 0) {
+        throw ("{0} (exit code {1})" -f $FailureMessage, $exitCode)
+    }
+}
+
 if (-not (Test-Path -LiteralPath $basePython -PathType Leaf)) {
     throw "PLA base Python not found: $basePython"
 }
@@ -107,22 +141,22 @@ foreach ($spec in $specFiles) {
 
     if (-not (Test-Path -LiteralPath $providerPython -PathType Leaf)) {
         Write-Host "Creating provider environment: $provider"
-        & $basePython -m venv $envDir
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to create provider environment: $provider"
-        }
+        Invoke-NativeChecked `
+            -FilePath $basePython `
+            -ArgumentList @("-m", "venv", $envDir) `
+            -FailureMessage "Failed to create provider environment: $provider"
     }
 
     Write-Host "Installing provider dependencies: $provider"
-    & $providerPython -m pip install -r $requirements
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install provider dependencies: $provider"
-    }
+    Invoke-NativeChecked `
+        -FilePath $providerPython `
+        -ArgumentList @("-m", "pip", "install", "-r", $requirements) `
+        -FailureMessage "Failed to install provider dependencies: $provider"
 
-    & $providerPython -m pip check
-    if ($LASTEXITCODE -ne 0) {
-        throw "Provider dependency check failed: $provider"
-    }
+    Invoke-NativeChecked `
+        -FilePath $providerPython `
+        -ArgumentList @("-m", "pip", "check") `
+        -FailureMessage "Provider dependency check failed: $provider"
 }
 
 if ($nodeSpecFiles.Count -gt 0) {
@@ -154,18 +188,19 @@ if ($nodeSpecFiles.Count -gt 0) {
         $previousSkipBrowserDownload = $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
         $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
         try {
-            & $npmCommand.Source install --prefix $envDir --no-save --package-lock=false @packages
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to install Node provider dependencies: $provider"
-            }
+            $npmInstallArguments = @("install", "--prefix", $envDir, "--no-save", "--package-lock=false") + $packages
+            Invoke-NativeChecked `
+                -FilePath $npmCommand.Source `
+                -ArgumentList $npmInstallArguments `
+                -FailureMessage "Failed to install Node provider dependencies: $provider"
         } finally {
             $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = $previousSkipBrowserDownload
         }
 
-        & $npmCommand.Source ls --prefix $envDir --depth=0
-        if ($LASTEXITCODE -ne 0) {
-            throw "Node provider dependency check failed: $provider"
-        }
+        Invoke-NativeChecked `
+            -FilePath $npmCommand.Source `
+            -ArgumentList @("ls", "--prefix", $envDir, "--depth=0") `
+            -FailureMessage "Node provider dependency check failed: $provider"
     }
 }
 
