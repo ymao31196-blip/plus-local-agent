@@ -177,9 +177,27 @@ function Assert-Command([string]$Name, [string]$InstallHint) {
 
 function Invoke-Checked([string]$FilePath, [string[]]$Arguments, [string]$Label) {
     Write-Step $Label
-    & $FilePath @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Label failed with exit code $LASTEXITCODE"
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $nativeException = $null
+    $exitCode = 1
+    try {
+        # Native stderr is diagnostic output, not a PowerShell failure signal.
+        # Merge it into stdout and judge success only by process exit code.
+        $ErrorActionPreference = "Continue"
+        & $FilePath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $nativeException = $_
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($null -ne $nativeException) {
+        throw ("{0}: {1}" -f $Label, $nativeException.Exception.Message)
+    }
+    if ($exitCode -ne 0) {
+        throw "$Label failed with exit code $exitCode"
     }
 }
 
@@ -296,12 +314,12 @@ if (-not $SkipTests) {
 Invoke-Checked $venvPython @("-m", "pip", "check") "Checking PLA Python dependencies"
 
 if (-not $SkipProviders) {
-    Write-Step "Installing reviewed Provider environments..."
     $setupProviders = Join-Path $projectRoot "setup_providers.ps1"
-    & $powershell -NoProfile -ExecutionPolicy Bypass -File $setupProviders
-    if ($LASTEXITCODE -ne 0) {
-        throw "setup_providers.ps1 failed."
-    }
+    Invoke-Checked $powershell @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $setupProviders
+    ) "Installing reviewed Provider environments"
 }
 
 $wingetMcp = Resolve-ExecutablePath "WindowsPackageManagerMCPServer.exe"

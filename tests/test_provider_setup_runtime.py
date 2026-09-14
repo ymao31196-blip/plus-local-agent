@@ -102,7 +102,7 @@ def test_setup_script_supports_provider_filter_and_single_recreate_pass():
     assert script.count("Remove-Item -LiteralPath $envDir -Recurse -Force") == 1
     assert "function Invoke-NativeChecked" in script
     assert '$ErrorActionPreference = "Continue"' in script
-    assert "& $FilePath @ArgumentList" in script
+    assert "& $FilePath @ArgumentList 2>&1" in script
     assert "& $providerPython -m pip install" not in script
     assert "& $providerPython -m pip check" not in script
     assert "& $npmCommand.Source install" not in script

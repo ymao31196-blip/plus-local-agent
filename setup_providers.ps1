@@ -31,7 +31,7 @@ function Invoke-NativeChecked {
         # NativeCommandError. Keep script errors strict, but judge native
         # commands by their real exit code instead of stderr text.
         $ErrorActionPreference = "Continue"
-        & $FilePath @ArgumentList
+        & $FilePath @ArgumentList 2>&1
         $exitCode = $LASTEXITCODE
     } catch {
         $nativeException = $_

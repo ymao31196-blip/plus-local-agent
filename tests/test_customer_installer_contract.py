@@ -28,6 +28,15 @@ def test_customer_installer_uses_repo_local_python_and_reviewed_setup():
     assert "$previousErrorActionPreference" in script
 
 
+def test_installer_native_subprocesses_are_exit_code_checked():
+    script = _read("install.ps1")
+
+    assert "function Invoke-Checked" in script
+    assert "& $FilePath @Arguments 2>&1" in script
+    assert 'Invoke-Checked $powershell @(' in script
+    assert "& $powershell -NoProfile -ExecutionPolicy Bypass -File $setupProviders" not in script
+
+
 def test_customer_tunnel_is_machine_local_and_secret_free():
     script = _read("install.ps1")
     example = _read("config/tunnel.example.yaml")
