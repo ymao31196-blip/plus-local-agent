@@ -307,6 +307,11 @@ def test_activation_rejects_ambiguous_app_window(monkeypatch):
 
 def test_activate_requires_verified_foreground_observation(monkeypatch):
     monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(
+        computer,
+        "_window_record_by_hwnd",
+        lambda hwnd: ({"hwnd": 42, "processId": 5, "title": "Terminal"}, []),
+    )
     monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
     monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: True)
     monkeypatch.setattr(
@@ -334,10 +339,56 @@ def test_activate_requires_verified_foreground_observation(monkeypatch):
     assert result["result"]["window"]["isForeground"] is True
 
 
-def test_activate_fails_closed_when_windows_does_not_grant_foreground(monkeypatch):
+def test_activate_uses_verified_taskbar_fallback_when_win32_is_blocked(monkeypatch):
+    target = {
+        "hwnd": 42,
+        "processId": 5,
+        "processName": "WindowsTerminal",
+        "title": "Anaconda PowerShell Prompt",
+    }
     monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(computer, "_window_record_by_hwnd", lambda hwnd: (target, [target]))
     monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
     monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: False)
+    monkeypatch.setattr(
+        computer,
+        "_activate_via_taskbar",
+        lambda hwnd, window, windows: {
+            "activationBackend": "windows-taskbar-uia-click",
+            "taskbarSelector": "btn-terminal",
+            "taskbarName": "Terminal - 1 running window",
+        },
+    )
+    monkeypatch.setattr(
+        computer,
+        "_observe_window",
+        lambda hwnd: {
+            "hwnd": 42,
+            "title": "Anaconda PowerShell Prompt",
+            "isForeground": True,
+        },
+    )
+    monkeypatch.setattr(
+        computer,
+        "_resolve_winapp_launch",
+        lambda: ("node", "winapp", "0.5.0"),
+    )
+
+    result = computer.activate(hwnd=42)
+
+    assert result["status"] == "completed"
+    assert result["result"]["activationBackend"] == "windows-taskbar-uia-click"
+    assert result["result"]["taskbarSelector"] == "btn-terminal"
+    assert result["result"]["window"]["isForeground"] is True
+
+
+def test_activate_fails_closed_when_all_foreground_paths_fail(monkeypatch):
+    target = {"hwnd": 42, "processId": 5, "title": "Terminal"}
+    monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(computer, "_window_record_by_hwnd", lambda hwnd: (target, [target]))
+    monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
+    monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: False)
+    monkeypatch.setattr(computer, "_activate_via_taskbar", lambda *args: None)
 
     with pytest.raises(RuntimeError, match="focus_not_foreground"):
         computer.activate(hwnd=42)
@@ -345,12 +396,97 @@ def test_activate_fails_closed_when_windows_does_not_grant_foreground(monkeypatc
 
 def test_activate_fails_when_post_action_observation_disagrees(monkeypatch):
     monkeypatch.setattr(computer, "_resolve_activation_hwnd", lambda app, hwnd: 42)
+    monkeypatch.setattr(
+        computer,
+        "_window_record_by_hwnd",
+        lambda hwnd: ({"hwnd": 42, "processId": 5, "title": "Terminal"}, []),
+    )
     monkeypatch.setattr(computer, "_foreground_hwnd", lambda: 7)
     monkeypatch.setattr(computer, "_activate_hwnd_win32", lambda hwnd: True)
     monkeypatch.setattr(computer, "_observe_window", lambda hwnd: None)
 
     with pytest.raises(RuntimeError, match="foreground_observation_failed"):
         computer.activate(hwnd=42)
+
+
+def test_taskbar_button_matching_supports_title_and_appid(monkeypatch):
+    windows = [
+        {
+            "hwnd": 42,
+            "processId": 5,
+            "processName": "wps",
+            "title": "deck.pptx - WPS Office",
+            "ownerHwnd": 0,
+        }
+    ]
+    buttons = [
+        {
+            "name": "WPS Office - 1 running window",
+            "automationId": "Appid: Kingsoft.Office.KPrometheus",
+            "selector": "btn-wps",
+            "className": "Taskbar.TaskListButtonAutomationPeer",
+            "isEnabled": True,
+            "isOffscreen": False,
+            "x": 10,
+            "y": 20,
+            "width": 40,
+            "height": 40,
+        },
+        {
+            "name": "Terminal - 1 running window",
+            "automationId": "Appid: Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+            "selector": "btn-terminal",
+            "className": "Taskbar.TaskListButtonAutomationPeer",
+            "isEnabled": True,
+            "isOffscreen": False,
+            "x": 50,
+            "y": 20,
+            "width": 40,
+            "height": 40,
+        },
+    ]
+    monkeypatch.setattr(computer, "_taskbar_buttons", lambda: buttons)
+
+    assert computer._select_taskbar_button(windows[0], windows)["selector"] == "btn-wps"
+
+    terminal = {
+        "hwnd": 43,
+        "processId": 6,
+        "processName": "WindowsTerminal",
+        "title": "Anaconda PowerShell Prompt",
+        "ownerHwnd": 0,
+    }
+    assert computer._select_taskbar_button(terminal, [terminal])["selector"] == "btn-terminal"
+
+
+def test_taskbar_fallback_rejects_grouped_multiwindow_button(monkeypatch):
+    target = {
+        "hwnd": 42,
+        "processId": 5,
+        "processName": "demo",
+        "title": "Demo",
+        "ownerHwnd": 0,
+    }
+    monkeypatch.setattr(
+        computer,
+        "_taskbar_buttons",
+        lambda: [
+            {
+                "name": "Demo - 2 running windows",
+                "automationId": "Appid: Demo",
+                "selector": "btn-demo",
+                "className": "Taskbar.TaskListButtonAutomationPeer",
+                "isEnabled": True,
+                "isOffscreen": False,
+                "x": 10,
+                "y": 20,
+                "width": 40,
+                "height": 40,
+            }
+        ],
+    )
+
+    assert computer._select_taskbar_button(target, [target]) is None
 
 
 def test_computer_manifest_exposes_separate_window_activation_capability():

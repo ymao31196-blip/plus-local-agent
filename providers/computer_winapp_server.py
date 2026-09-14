@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -341,6 +342,234 @@ def _activate_hwnd_win32(hwnd: int) -> bool:
     return False
 
 
+def _walk_ui_records(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for item in value.values():
+            yield from _walk_ui_records(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_ui_records(item)
+
+
+def _normalize_match_text(value: Any) -> str:
+    text = str(value or "").casefold()
+    return "".join(char for char in text if char.isalnum())
+
+
+def _taskbar_running_count(name: str) -> int | None:
+    match = re.search(r"\s-\s(\d+)\s", name)
+    if match is None:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _taskbar_base_name(name: str) -> str:
+    match = re.search(r"\s-\s\d+\s", name)
+    if match is None:
+        return name.strip()
+    return name[:match.start()].strip()
+
+
+def _taskbar_buttons() -> list[dict[str, Any]]:
+    inspected = _run_ui([
+        "inspect",
+        "-a",
+        "explorer",
+        "--depth",
+        "8",
+        "--interactive",
+    ])
+    buttons: list[dict[str, Any]] = []
+    for item in _walk_ui_records(inspected.get("result")):
+        if item.get("className") != "Taskbar.TaskListButtonAutomationPeer":
+            continue
+        if item.get("isOffscreen") is True or item.get("isEnabled") is False:
+            continue
+        if _taskbar_running_count(str(item.get("name") or "")) != 1:
+            continue
+        if not isinstance(item.get("selector"), str):
+            continue
+        geometry = tuple(item.get(field) for field in ("x", "y", "width", "height"))
+        if not all(isinstance(value, int) and not isinstance(value, bool) for value in geometry):
+            continue
+        x, y, width, height = geometry
+        if width <= 0 or height <= 0:
+            continue
+        buttons.append(item)
+    return buttons
+
+
+def _window_record_by_hwnd(hwnd: int) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    listed = _run_ui(["list-windows"])
+    windows = _window_records(listed.get("result"))
+    for item in windows:
+        if item.get("hwnd") == hwnd:
+            return item, windows
+    return None, windows
+
+
+def _taskbar_button_score(
+    window: dict[str, Any],
+    button: dict[str, Any],
+) -> int:
+    title = str(window.get("title") or "").strip()
+    process_name = str(window.get("processName") or "").strip()
+    button_name = str(button.get("name") or "").strip()
+    automation_id = str(button.get("automationId") or "").strip()
+
+    base_name = _taskbar_base_name(button_name)
+    base_norm = _normalize_match_text(base_name)
+    title_norm = _normalize_match_text(title)
+    process_norm = _normalize_match_text(process_name)
+    automation_norm = _normalize_match_text(automation_id)
+
+    score = 0
+    if process_norm and len(process_norm) >= 3:
+        if process_norm in automation_norm or automation_norm in process_norm:
+            score = max(score, 120)
+
+    title_segments = [
+        segment.strip()
+        for segment in re.split(r"\s[-–—]\s", title)
+        if segment.strip()
+    ]
+    if title:
+        title_segments.append(title)
+
+    for segment in title_segments:
+        segment_norm = _normalize_match_text(segment)
+        if not segment_norm:
+            continue
+        if base_norm == segment_norm and len(segment_norm) >= 2:
+            score = max(score, 180)
+        elif len(segment_norm) >= 4 and (
+            base_norm in segment_norm or segment_norm in base_norm
+        ):
+            score = max(score, 100)
+
+    if (
+        base_norm
+        and title_norm
+        and len(base_norm) >= 4
+        and (base_norm in title_norm or title_norm in base_norm)
+    ):
+        score = max(score, 90)
+
+    return score
+
+
+def _select_taskbar_button(
+    target_window: dict[str, Any],
+    windows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    target_pid = target_window.get("processId")
+    if isinstance(target_pid, int):
+        same_process = [
+            item
+            for item in windows
+            if item.get("processId") == target_pid
+            and item.get("ownerHwnd") in {0, None}
+        ]
+        if len(same_process) != 1:
+            return None
+
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    scores: dict[tuple[str, str], int] = {}
+    for button in _taskbar_buttons():
+        if _taskbar_running_count(str(button.get("name") or "")) != 1:
+            continue
+        key = (
+            str(button.get("automationId") or ""),
+            str(button.get("name") or ""),
+        )
+        score = _taskbar_button_score(target_window, button)
+        if score <= 0:
+            continue
+        previous = scores.get(key, -1)
+        if score > previous:
+            grouped[key] = button
+            scores[key] = score
+
+    if not scores:
+        return None
+
+    best_score = max(scores.values())
+    best_keys = [key for key, score in scores.items() if score == best_score]
+    if len(best_keys) != 1:
+        return None
+    return grouped[best_keys[0]]
+
+
+def _semantic_taskbar_click(button: dict[str, Any]) -> None:
+    user32 = _user32()
+
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+    user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    user32.GetCursorPos.argtypes = [ctypes.POINTER(POINT)]
+    user32.GetCursorPos.restype = ctypes.c_int
+    user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+    user32.SetCursorPos.restype = ctypes.c_int
+    user32.mouse_event.argtypes = [
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+    ]
+    user32.mouse_event.restype = None
+
+    x = int(button["x"]) + int(button["width"]) // 2
+    y = int(button["y"]) + int(button["height"]) // 2
+
+    old_cursor = POINT()
+    if not user32.GetCursorPos(ctypes.byref(old_cursor)):
+        raise RuntimeError("Could not read the current pointer position")
+
+    # UIA bounding rectangles are reliable for multi-monitor taskbars only when
+    # the calling thread opts out of DPI coordinate virtualization.
+    dpi_context = ctypes.c_void_p(-4 & ((1 << (ctypes.sizeof(ctypes.c_void_p) * 8)) - 1))
+    previous_context = user32.SetThreadDpiAwarenessContext(dpi_context)
+    try:
+        if not user32.SetCursorPos(x, y):
+            raise RuntimeError("Could not move the pointer to the semantic taskbar button")
+        time.sleep(0.03)
+        user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+        user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+        time.sleep(0.05)
+    finally:
+        user32.SetCursorPos(old_cursor.x, old_cursor.y)
+        if previous_context:
+            user32.SetThreadDpiAwarenessContext(previous_context)
+
+
+def _activate_via_taskbar(
+    hwnd: int,
+    target_window: dict[str, Any],
+    windows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    button = _select_taskbar_button(target_window, windows)
+    if button is None:
+        return None
+
+    _semantic_taskbar_click(button)
+    for _ in range(12):
+        if _foreground_hwnd() == hwnd:
+            return {
+                "activationBackend": "windows-taskbar-uia-click",
+                "taskbarSelector": str(button.get("selector") or ""),
+                "taskbarName": str(button.get("name") or ""),
+            }
+        time.sleep(0.05)
+    return None
+
+
 def _observe_window(hwnd: int) -> dict[str, Any] | None:
     for _ in range(5):
         listed = _run_ui(["list-windows"])
@@ -538,12 +767,24 @@ def activate(
 ) -> dict[str, Any]:
     """Bring one top-level window to the Windows foreground and verify it."""
     target_hwnd = _resolve_activation_hwnd(app, hwnd)
+    target_window, visible_windows = _window_record_by_hwnd(target_hwnd)
     before_hwnd = _foreground_hwnd()
+
+    activation_meta: dict[str, Any] = {
+        "activationBackend": "windows-user32",
+    }
     if not _activate_hwnd_win32(target_hwnd):
-        raise RuntimeError(
-            "focus_not_foreground: Windows did not grant foreground activation "
-            f"for hwnd {target_hwnd}"
+        fallback = (
+            _activate_via_taskbar(target_hwnd, target_window, visible_windows)
+            if target_window is not None
+            else None
         )
+        if fallback is None:
+            raise RuntimeError(
+                "focus_not_foreground: Windows did not grant foreground activation "
+                f"for hwnd {target_hwnd}"
+            )
+        activation_meta = fallback
 
     observation = _observe_window(target_hwnd)
     if observation is None:
@@ -562,7 +803,7 @@ def activate(
             "hwnd": target_hwnd,
             "previousForegroundHwnd": before_hwnd,
             "isForeground": True,
-            "activationBackend": "windows-user32",
+            **activation_meta,
             "window": observation,
         },
     }
