@@ -300,29 +300,51 @@ The same operations are exposed through the stable Capability Broker as `core.gi
 
 ## Installation
 
-Use Python 3.11 for the main runtime.
+PLA customer deployments use the repository installer on Windows. The installer requires
+Git, Python 3.11, current Node.js/npm, and Microsoft Edge. It creates a repository-local
+`.venv`, installs the pinned PLA requirements, installs reviewed Provider environments,
+checks the WinGet MCP runtime, and can validate/start a customer-specific Secure MCP Tunnel.
+
+```powershell
+.\install.ps1
+```
+
+A first run without Tunnel credentials intentionally finishes as `PARTIAL` after completing
+the local runtime installation. Finish the customer Tunnel with that customer-specific Tunnel ID,
+tunnel-client, and credential file:
+
+```powershell
+.\install.ps1 `
+  -TunnelId "tunnel_CUSTOMER_ID" `
+  -TunnelClient "C:\path\to\tunnel-client.exe" `
+  -TunnelCredential "C:\path\to\control-plane-api-key.txt" `
+  -PersistEnvironment `
+  -Start
+```
+
+The installer writes only `config/tunnel.local.yaml`, which is ignored by Git. It never needs
+another user Tunnel ID or credential. `PLA_TUNNEL_CONFIG`, `PLA_TUNNEL_CLIENT`, and
+`PLA_TUNNEL_CREDENTIAL` remain supported as explicit overrides. Startup scripts automatically
+prefer `config/tunnel.local.yaml` when it exists.
+
+For a non-mutating prerequisite audit:
+
+```powershell
+.\install.ps1 -ValidateOnly
+```
+
+Manual installation remains available for development:
 
 ```powershell
 python -m pip install -r requirements-core.txt
 python -m pip install -r requirements-documents.txt
-```
-
-For development and testing:
-
-```powershell
 python -m pip install -r requirements-dev.txt
-```
-
-Set `PLA_PYTHON` when the PLA interpreter is not at the default Windows Miniconda location.
-
-Install isolated Python provider environments:
-
-```powershell
 .\setup_providers.ps1
 ```
 
-Native `executable_stdio` providers are installed separately and referenced by their reviewed
-executable path in the provider manifest.
+Set `PLA_PYTHON` when the desired Python 3.11 interpreter is outside the repository-local
+`.venv` or the legacy default Windows Miniconda location. See
+`docs/customer_installation.md` for the customer/Codex deployment contract.
 
 ## Start and stop
 

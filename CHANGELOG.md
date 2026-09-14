@@ -2,6 +2,17 @@
 
 All notable PLA release changes are recorded here.
 
+## Unreleased
+
+### Added
+
+- Customer-oriented Windows `install.ps1` bootstrap for repository-local Python 3.11, pinned runtime dependencies, reviewed Provider setup, regression validation, and optional Secure MCP Tunnel startup.
+- Customer deployment contract and secret-free Tunnel example configuration.
+
+### Changed
+
+- Tunnel startup now accepts an explicit `PLA_TUNNEL_CONFIG` or Git-ignored `config/tunnel.local.yaml`; it no longer automatically falls back to the tracked Tunnel config.
+
 ## 1.4.1 - 2026-09-13
 
 ### Added

@@ -1,0 +1,15 @@
+config_version: 1
+control_plane:
+  base_url: "https://api.openai.com"
+  tunnel_id: "REPLACE_WITH_CUSTOMER_TUNNEL_ID"
+health:
+  listen_addr: "127.0.0.1:18081"
+admin_ui:
+  open_browser: false
+log:
+  level: info
+  format: json
+mcp:
+  server_urls:
+    - channel: main
+      url: "http://127.0.0.1:8766/mcp"

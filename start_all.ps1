@@ -163,7 +163,25 @@ if ($null -eq $httpPid) {
     Write-Host "PLA HTTP already running on 127.0.0.1:8766 (PID $httpPid)."
 }
 
-$tunnelConfig = Join-Path $projectRoot "config\tunnel.yaml"
+$defaultLocalTunnelConfig = Join-Path $projectRoot "config\tunnel.local.yaml"
+$tunnelConfig = if ([string]::IsNullOrWhiteSpace($env:PLA_TUNNEL_CONFIG)) {
+    if (Test-Path -LiteralPath $defaultLocalTunnelConfig -PathType Leaf) {
+        $defaultLocalTunnelConfig
+    } else {
+        throw "Customer Tunnel config is missing. Run install.ps1 with customer Tunnel settings or set PLA_TUNNEL_CONFIG explicitly."
+    }
+} else {
+    $candidate = $env:PLA_TUNNEL_CONFIG
+    if ([System.IO.Path]::IsPathRooted($candidate)) {
+        $candidate
+    } else {
+        Join-Path $projectRoot $candidate
+    }
+}
+if (-not (Test-Path -LiteralPath $tunnelConfig -PathType Leaf)) {
+    throw "Tunnel config not found: $tunnelConfig"
+}
+$tunnelConfig = (Resolve-Path -LiteralPath $tunnelConfig).Path
 $tunnelPid = Assert-OwnedListener 18081 @("tunnel-client", $tunnelConfig) "PLA tunnel"
 if ($null -eq $tunnelPid) {
     Write-Host "Starting PLA tunnel..."

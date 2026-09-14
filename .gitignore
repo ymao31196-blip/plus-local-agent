@@ -22,6 +22,7 @@ ENV/
 .observer_envs/
 .browser_profiles/
 observer_manifests/*.local.json
+config/tunnel.local.yaml
 
 # Local secrets and credentials
 .env
