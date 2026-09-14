@@ -71,5 +71,6 @@ def test_tunnel_config_targets_dedicated_loopback_http_endpoint():
     assert 'listen_addr: "127.0.0.1:18081"' in config
     assert 'url: "http://127.0.0.1:8766/mcp"' in config
     assert "engineering-bridge" not in config.lower()
-    assert 'tunnel_id: "' in config
-    assert "api_key: \"file:" in config
+    assert 'tunnel_id: "REPLACE_WITH_CUSTOMER_TUNNEL_ID"' in config
+    assert "api_key:" not in config
+    assert "credential" not in config.lower()
