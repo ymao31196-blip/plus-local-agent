@@ -24,6 +24,8 @@ def test_customer_installer_uses_repo_local_python_and_reviewed_setup():
     assert "setup_providers.ps1" in script
     assert "Microsoft Edge" in script
     assert "WindowsPackageManagerMCPServer.exe" in script
+    assert '$ErrorActionPreference = "Continue"' in script
+    assert "$previousErrorActionPreference" in script
 
 
 def test_customer_tunnel_is_machine_local_and_secret_free():

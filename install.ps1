@@ -58,8 +58,20 @@ function Get-PythonVersionInfo([string]$Interpreter) {
     if ($null -eq $resolved) {
         return $null
     }
-    $json = & $resolved -c "import json,sys; print(json.dumps({'executable':sys.executable,'major':sys.version_info.major,'minor':sys.version_info.minor,'micro':sys.version_info.micro}))" 2>$null
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+    $json = $null
+    $exitCode = 1
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $json = (& $resolved -c "import json,sys; print(json.dumps({'executable':sys.executable,'major':sys.version_info.major,'minor':sys.version_info.minor,'micro':sys.version_info.micro}))" 2>$null | Out-String).Trim()
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $json = $null
+        $exitCode = 1
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
         return $null
     }
     try {
@@ -89,9 +101,21 @@ function Resolve-Python311([string]$Requested) {
 
     $pyLauncher = Resolve-ExecutablePath "py.exe"
     if ($null -ne $pyLauncher) {
-        $pyResolved = & $pyLauncher -3.11 -c "import sys; print(sys.executable)" 2>$null
-        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($pyResolved)) {
-            $candidates += $pyResolved.Trim()
+        $pyResolved = $null
+        $pyExitCode = 1
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $pyResolved = (& $pyLauncher -3.11 -c "import sys; print(sys.executable)" 2>$null | Out-String).Trim()
+            $pyExitCode = $LASTEXITCODE
+        } catch {
+            $pyResolved = $null
+            $pyExitCode = 1
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($pyExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($pyResolved)) {
+            $candidates += $pyResolved
         }
     }
 
