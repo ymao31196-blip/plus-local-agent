@@ -10,6 +10,8 @@ management, artifacts, and other MCP providers.
 The ChatGPT client does not need to run on the same computer as PLA. With the Secure MCP Tunnel
 running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes on the target PC.
 
+**Installation:** [English](#quick-start) | [中文](#中文安装指南)
+
 ## Quick start
 
 ### Requirements
@@ -66,36 +68,94 @@ For a non-mutating prerequisite check:
 More deployment details are available in
 [docs/customer_installation.md](docs/customer_installation.md).
 
-## 中文说明
+## 中文安装指南
 
-PLA可以理解为**ChatGPT在你自己电脑上的受控执行层**。
+如果你只想尽快把PLA装起来，可以直接按下面的顺序操作。
 
-你仍然直接和ChatGPT交流，不需要再打开另一套Agent聊天界面。ChatGPT负责理解任务、规划步骤、
-选择工具和判断结果；PLA负责在Windows电脑上执行被允许的本地操作，并提供文件边界、确认机制、
-事务、Provider隔离和Git保护等安全约束。
+### 1. 准备环境
 
-一个典型使用方式是：
+目标电脑需要：
 
-~~~text
-手机 / 网页 / 桌面端 ChatGPT
-            |
-            | Secure MCP Tunnel
-            v
-      你的 Windows 电脑
-            |
-            +-- 本地文件与进程
-            +-- Git / Python / 受控 PowerShell
-            +-- Browser / Computer Use
-            +-- Word / PDF / 文档处理
-            +-- Windows 软件管理
-            +-- 其他经过审查的 MCP Provider
+- Windows 10/11 x64
+- Git for Windows
+- Python 3.11
+- 当前版本的Node.js与npm
+- Microsoft Edge
+- 目标电脑自己的Secure MCP Tunnel配置
+- 如需完整Windows软件管理能力，还需要WinGet MCP runtime
+
+### 2. 下载PLA
+
+在PowerShell中执行：
+
+~~~powershell
+git clone https://github.com/ymao31196-blip/plus-local-agent.git
+cd plus-local-agent
 ~~~
 
-因此，PLA不需要自己做第二套聊天界面或远程桌面。只要目标电脑保持开机、联网，并运行PLA与
-Secure MCP Tunnel，你就可以从其他设备上的ChatGPT发起任务，由这台电脑完成本地执行。
+如果你希望使用稳定版本，可以在安装前切换到对应的release tag。
 
-适合的场景包括：远程检查Git仓库、运行测试或Python任务、处理本地文件、操作浏览器和Windows
-界面、生成或转换文档、管理经过审查的软件流程，以及把第三方MCP能力统一接入ChatGPT。
+### 3. 安装本地运行环境
+
+执行：
+
+~~~powershell
+.\install.ps1
+~~~
+
+安装器会自动创建本地Python环境、安装经过审查的Provider依赖、检查运行条件并进行验证。
+
+如果此时还没有配置这台电脑自己的Secure MCP Tunnel，安装结果可能显示为**PARTIAL**。
+这通常表示本地PLA已经安装完成，只差Tunnel等外部连接条件，并不等于安装失败。
+
+### 4. 配置Secure MCP Tunnel并启动
+
+准备好这台电脑自己的Tunnel ID、tunnel-client和credential后执行：
+
+~~~powershell
+.\install.ps1 `
+  -TunnelId "tunnel_CUSTOMER_ID" `
+  -TunnelClient "C:\path\to\tunnel-client.exe" `
+  -TunnelCredential "C:\path\to\control-plane-api-key.txt" `
+  -PersistEnvironment `
+  -Start
+~~~
+
+PLA会把本机Tunnel配置写入config/tunnel.local.yaml。这个文件不会进入Git。
+不要复制或复用其他电脑、其他用户的Tunnel ID或credential。
+
+### 5. 只检查环境，不执行安装
+
+如果想先确认电脑是否满足要求：
+
+~~~powershell
+.\install.ps1 -ValidateOnly
+~~~
+
+### 6. 安装完成后的常用命令
+
+启动PLA：
+
+~~~powershell
+.\start_all.ps1
+~~~
+
+停止PLA：
+
+~~~powershell
+.\stop_all.ps1
+~~~
+
+仅在修改源码后重启PLA HTTP：
+
+~~~powershell
+.\restart_pla.ps1
+~~~
+
+PLA运行并连接Secure MCP Tunnel后，你可以继续直接使用ChatGPT作为界面。
+ChatGPT可以来自同一台电脑，也可以来自手机、网页端或另一台设备；真正的本地执行仍发生在运行PLA的Windows电脑上。
+
+更完整的部署说明见[docs/customer_installation.md](docs/customer_installation.md)。
 
 ## Core capabilities
 
