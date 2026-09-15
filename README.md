@@ -6,6 +6,32 @@ ChatGPT remains the decision maker: it reasons, selects capabilities, evaluates 
 and decides what happens next. PLA provides local execution, durable transactions, artifacts,
 provider isolation, policy enforcement, and user-mediated Windows elevation.
 
+**ChatGPT is the interface; PLA is the runtime.** The ChatGPT client does not need to run on
+the same Windows machine as PLA.
+
+## Use ChatGPT anywhere
+
+When the target Windows PC is online and PLA HTTP plus the Secure MCP Tunnel are running,
+ChatGPT can invoke that machine's reviewed local capabilities from another device, including
+ChatGPT on mobile, web, or desktop.
+
+```text
+ChatGPT on phone / web / desktop
+              |
+              | MCP through Secure MCP Tunnel
+              v
+      Windows PC running PLA
+              |
+              +-- local files and processes
+              +-- Git / Python / PowerShell
+              +-- Browser / Computer providers
+              +-- document and application providers
+```
+
+PLA does not ship a second chat interface or a remote-desktop UI. ChatGPT remains the
+interaction and reasoning layer; PLA acts as the controlled execution node on the target PC.
+The PC must remain powered on, connected, and running the required PLA services.
+
 ## Architecture
 
 ```text
