@@ -2,6 +2,34 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.5.2 - 2026-09-15
+
+### Added
+
+- Automatic physical-user takeover detection for Windows Browser/Computer automation.
+- Stable read-only `core.human_input_monitor_status` capability for live detector health.
+- GitHub CLI `gh` / `gh.exe` added to the reviewed local process allowlist.
+
+### Changed
+
+- Interactive provider lifecycle events now arm a short local-input detection window through the Event/Observer plane.
+- Real keyboard presses, mouse buttons, wheel input, and thresholded mouse movement can automatically transition the existing Human Takeover state machine to `human`.
+- Windows low-level input events marked as injected are ignored so PLA automation does not pause itself.
+- Automatic detection scopes both Browser and Computer providers; an existing partial takeover is expanded to both, and physical input during `resync_required` returns ownership to `human`. Returning control to AI remains explicit and still requires `INVOKE` plus trusted resynchronization.
+
+### Security
+
+- The detector records only bounded trigger metadata; it does not persist key codes, typed text, or pointer coordinates.
+- Automatic takeover never bypasses the existing durable Human Takeover Gate/Observer enforcement.
+- `PLA_AUTO_HUMAN_TAKEOVER=0` can explicitly disable the automatic detector before startup.
+
+### Verified
+
+- Unit coverage includes provider arming, injected-input rejection, mouse jitter filtering, takeover race handling, shutdown behavior, and status descriptor policy.
+- Real Windows low-level keyboard/mouse hooks install and uninstall successfully while unarmed.
+- GitHub CLI allowlist E2E verified `gh 2.96.0` through controlled `run_process`.
+- Full v1.5.2 regression: **574 passed in 92.40 s**.
+
 ## 1.5.1 - 2026-09-15
 
 ### Added

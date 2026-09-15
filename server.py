@@ -92,6 +92,7 @@ from computer_use_indicator import (
 )
 from gate_hook_runtime import GATE_HOOK_RUNTIME
 from human_takeover import HumanTakeoverController
+from human_input_monitor import HumanInputMonitor
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
 from core_capabilities import register_core_transaction_capabilities
@@ -105,6 +106,7 @@ HUMAN_TAKEOVER = HumanTakeoverController(
     event_store=EVENT_STORE,
     on_state_change=ensure_computer_use_indicator_process,
 )
+HUMAN_INPUT_MONITOR = HumanInputMonitor(HUMAN_TAKEOVER)
 GATE_HOOK_RUNTIME.register(
     "human-takeover-control",
     HUMAN_TAKEOVER.gate,
@@ -122,6 +124,15 @@ OBSERVER_HOOK_RUNTIME.register(
         "capability.failed",
     ),
     computer_use_indicator_observer,
+)
+OBSERVER_HOOK_RUNTIME.register(
+    "human-input-auto-takeover",
+    (
+        "capability.before_invoke",
+        "capability.succeeded",
+        "capability.failed",
+    ),
+    HUMAN_INPUT_MONITOR.observer,
 )
 HUMAN_TAKEOVER.restore_visibility()
 CAPABILITY_REGISTRY = CapabilityRegistry()
@@ -141,6 +152,7 @@ register_core_transaction_capabilities(
     OBSERVER_HOOK_RUNTIME,
     GATE_HOOK_RUNTIME,
     HUMAN_TAKEOVER,
+    HUMAN_INPUT_MONITOR,
 )
 EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,
@@ -163,15 +175,17 @@ register_provider_runtime_capabilities(
 @asynccontextmanager
 async def _runtime_lifespan(_server):
     await MCP_CLIENT_MANAGER.discover_all()
+    HUMAN_INPUT_MONITOR.start()
     try:
         yield
     finally:
+        HUMAN_INPUT_MONITOR.stop()
         await MCP_CLIENT_MANAGER.close_all_persistent_sessions()
 
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="1.5.1",
+    version="1.5.2",
     lifespan=_runtime_lifespan,
 )
 

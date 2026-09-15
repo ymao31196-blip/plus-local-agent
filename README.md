@@ -76,6 +76,28 @@ then auto-hides while the underlying takeover lock remains active; corrupt-state
 Both `core.human_takeover_resume` and the top-level compatibility resume tool require
 explicit `INVOKE` confirmation. Top-level `human_takeover_*` tools remain available for compatibility.
 
+PLA v1.5.2 also supports automatic physical-user takeover on Windows. While Browser/Computer
+automation is active (and for a short handoff window immediately afterward), a low-level local
+input monitor watches only for the presence of real keyboard/mouse activity. Windows input events
+marked as injected are ignored, so PLA's own SendInput-style automation does not pause itself.
+Keyboard presses, mouse buttons, and wheel input trigger immediately; mouse movement must exceed
+a small threshold to filter device jitter. The detector does not persist key codes, typed text,
+or pointer coordinates. A detected intervention transitions the existing durable state machine to
+`human` for both interactive providers. If a partial Browser-only or Computer-only takeover is
+already active, physical intervention expands it to both providers; if intervention happens during
+`resync_required`, ownership returns to `human` and the pending resynchronization is cancelled.
+Returning control to AI is still never automatic: `INVOKE` plus trusted re-observation is required
+exactly as with explicit Human Takeover.
+
+Read detector health through:
+
+```text
+core.human_input_monitor_status
+```
+
+Set `PLA_AUTO_HUMAN_TAKEOVER=0` before starting PLA only when automatic local-input takeover is
+intentionally disabled.
+
 ### Provider hot-plug
 
 Manifest-backed providers can be changed without restarting PLA HTTP through the built-in

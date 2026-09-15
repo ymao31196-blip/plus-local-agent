@@ -459,6 +459,10 @@ def test_run_process_default_workdir(workspace):
     assert result["cwd"] == "."
 
 
+def test_run_process_allowlist_includes_github_cli():
+    assert {"gh", "gh.exe"}.issubset(local_tools.ALLOWED_PROGRAMS)
+
+
 def test_run_process_custom_workdir(workspace):
     child = workspace / "child"
     child.mkdir()

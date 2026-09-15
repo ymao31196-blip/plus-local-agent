@@ -167,16 +167,24 @@ class HumanTakeoverController:
                 "automation_blocked": state["state"] in {"human", "resync_required"},
             }
 
+
+    @staticmethod
+    def _validate_reason(reason: str) -> str:
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("reason must be a non-empty string")
+        reason = reason.strip()
+        if len(reason) > 1000 or "\x00" in reason:
+            raise ValueError(
+                "reason must be at most 1000 characters and contain no NUL"
+            )
+        return reason
+
     def begin(
         self,
         reason: str,
         provider_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError("reason must be a non-empty string")
-        reason = reason.strip()
-        if len(reason) > 1000 or "\x00" in reason:
-            raise ValueError("reason must be at most 1000 characters and contain no NUL")
+        reason = self._validate_reason(reason)
         providers = self._normalize_providers(provider_ids)
 
         with self._lock:
@@ -205,6 +213,72 @@ class HumanTakeoverController:
                 {
                     "revision": state["revision"],
                     "provider_ids": providers,
+                    **_reason_digest(reason),
+                },
+            )
+            return self.status()
+
+    def intervene(
+        self,
+        reason: str,
+        provider_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Enter or strengthen human ownership after detected physical input.
+
+        This internal path is idempotent across an existing human handoff. It can
+        expand a partial takeover to additional interactive providers, and physical
+        input during resynchronization returns ownership to the human immediately.
+        """
+
+        reason = self._validate_reason(reason)
+        providers = self._normalize_providers(provider_ids)
+
+        with self._lock:
+            current = self._read_state()
+            if current["state"] == "agent":
+                state = {
+                    "schema_version": SCHEMA_VERSION,
+                    "state": "human",
+                    "revision": current["revision"] + 1,
+                    "takeover_id": uuid4().hex,
+                    "provider_ids": providers,
+                    "pending_resync_provider_ids": [],
+                    "reason": reason,
+                    "started_at": _now(),
+                    "resume_requested_at": None,
+                    "completed_at": None,
+                }
+                event_type = "human_takeover.started"
+                added = list(providers)
+            else:
+                combined = sorted(set(current["provider_ids"]) | set(providers))
+                added = sorted(set(combined) - set(current["provider_ids"]))
+                if current["state"] == "human" and not added:
+                    return self.status()
+                state = {
+                    **current,
+                    "state": "human",
+                    "revision": current["revision"] + 1,
+                    "provider_ids": combined,
+                    "pending_resync_provider_ids": [],
+                    "resume_requested_at": None,
+                    "completed_at": None,
+                }
+                event_type = (
+                    "human_takeover.reintervened"
+                    if current["state"] == "resync_required"
+                    else "human_takeover.expanded"
+                )
+
+            self._write_state(state)
+            self._notify_state_change()
+            self._emit(
+                event_type,
+                state,
+                {
+                    "revision": state["revision"],
+                    "provider_ids": list(state["provider_ids"]),
+                    "added_provider_ids": added,
                     **_reason_digest(reason),
                 },
             )

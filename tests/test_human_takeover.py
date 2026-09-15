@@ -193,6 +193,80 @@ def test_corrupt_state_fails_closed_for_browser_and_computer(tmp_path):
         controller.status()
 
 
+def test_detected_intervention_expands_partial_human_takeover(tmp_path):
+    controller = HumanTakeoverController(tmp_path / "takeover.json")
+    started = controller.begin("Browser login", ["browser"])
+
+    expanded = controller.intervene(
+        "Physical user input detected during interactive automation",
+        ["browser", "computer"],
+    )
+
+    assert expanded["state"] == "human"
+    assert expanded["provider_ids"] == ["browser", "computer"]
+    assert expanded["revision"] == started["revision"] + 1
+    assert expanded["reason"] == "Browser login"
+    assert controller.gate(
+        _context("computer.click", "computer", "write_external", {"interaction"})
+    )["decision"] == "deny"
+
+
+def test_detected_intervention_from_worker_thread_emits_audit_event(tmp_path):
+    from threading import Thread
+
+    event_store = EventStore(tmp_path / "events.sqlite3")
+    controller = HumanTakeoverController(
+        tmp_path / "takeover.json",
+        event_store=event_store,
+    )
+    controller.begin("Browser login", ["browser"])
+
+    outcome = {}
+
+    def worker():
+        outcome["status"] = controller.intervene(
+            "Physical user input detected during interactive automation",
+            ["browser", "computer"],
+        )
+
+    thread = Thread(target=worker)
+    thread.start()
+    thread.join(timeout=2.0)
+    assert thread.is_alive() is False
+    assert outcome["status"]["provider_ids"] == ["browser", "computer"]
+
+    events = event_store.query(
+        event_types=["human_takeover.expanded"],
+        limit=20,
+    )["events"]
+    assert len(events) == 1
+    assert events[0]["payload"]["added_provider_ids"] == ["computer"]
+    assert events[0]["payload"]["provider_ids"] == ["browser", "computer"]
+    event_store.close()
+
+
+def test_detected_intervention_during_resync_returns_control_to_human(tmp_path):
+    controller = HumanTakeoverController(tmp_path / "takeover.json")
+    started = controller.begin("Manual login", ["browser"])
+    resumed = controller.resume(
+        started["takeover_id"],
+        started["revision"],
+        "RESUME",
+    )
+    assert resumed["state"] == "resync_required"
+
+    intervened = controller.intervene(
+        "Physical user input detected during interactive automation",
+        ["browser", "computer"],
+    )
+
+    assert intervened["state"] == "human"
+    assert intervened["provider_ids"] == ["browser", "computer"]
+    assert intervened["pending_resync_provider_ids"] == []
+    assert intervened["resume_requested_at"] is None
+    assert intervened["revision"] == resumed["revision"] + 1
+
+
 def test_validation_rejects_unknown_provider_and_nested_takeover(tmp_path):
     controller = HumanTakeoverController(tmp_path / "takeover.json")
     with pytest.raises(ValueError, match="only supports"):

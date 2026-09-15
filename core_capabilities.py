@@ -580,6 +580,29 @@ def core_human_takeover_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_human_input_monitor_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Read-only status for automatic physical-user takeover detection."""
+
+    return (
+        _descriptor(
+            "core.human_input_monitor_status",
+            "human_input_monitor_status",
+            "Human Input Monitor Status",
+            (
+                "Read whether automatic physical keyboard/mouse takeover detection "
+                "is enabled, armed, and successfully hooked on this machine."
+            ),
+            {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("human-takeover", "governance", "input-monitor", "read"),
+        ),
+    )
+
+
 def register_core_transaction_capabilities(
     registry: CapabilityRegistry,
     broker: CapabilityBroker,
@@ -588,6 +611,7 @@ def register_core_transaction_capabilities(
     observer_hooks: ObserverHookRuntime | None = None,
     gate_hooks: GateHookRuntime | None = None,
     human_takeover=None,
+    human_input_monitor=None,
 ) -> None:
     """Register stable core governance capabilities and in-process handlers."""
 
@@ -604,6 +628,8 @@ def register_core_transaction_capabilities(
         descriptors.extend(core_gate_descriptors())
     if human_takeover is not None:
         descriptors.extend(core_human_takeover_descriptors())
+    if human_input_monitor is not None:
+        descriptors.extend(core_human_input_monitor_descriptors())
 
     registry.register_provider(
         "core",
@@ -630,6 +656,12 @@ def register_core_transaction_capabilities(
                 args["expected_revision"],
                 "RESUME",
             ),
+        )
+
+    if human_input_monitor is not None:
+        broker.register_internal_handler(
+            "core.human_input_monitor_status",
+            lambda _args: human_input_monitor.status(),
         )
 
     broker.register_internal_handler(
