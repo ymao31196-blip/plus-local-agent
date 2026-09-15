@@ -86,8 +86,12 @@ from artifact_bridge import (
 from capability_registry import CapabilityRegistry
 from event_runtime import EVENT_STORE
 from observer_hook_runtime import OBSERVER_HOOK_RUNTIME
-from computer_use_indicator import computer_use_indicator_observer
+from computer_use_indicator import (
+    computer_use_indicator_observer,
+    ensure_computer_use_indicator_process,
+)
 from gate_hook_runtime import GATE_HOOK_RUNTIME
+from human_takeover import HumanTakeoverController
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
 from core_capabilities import register_core_transaction_capabilities
@@ -97,6 +101,19 @@ from provider_runtime_capabilities import register_provider_runtime_capabilities
 from provider_doctor import provider_doctor as run_provider_doctor
 
 
+HUMAN_TAKEOVER = HumanTakeoverController(
+    event_store=EVENT_STORE,
+    on_state_change=ensure_computer_use_indicator_process,
+)
+GATE_HOOK_RUNTIME.register(
+    "human-takeover-control",
+    HUMAN_TAKEOVER.gate,
+)
+OBSERVER_HOOK_RUNTIME.register(
+    "human-takeover-resync",
+    ("capability.succeeded",),
+    HUMAN_TAKEOVER.observer,
+)
 OBSERVER_HOOK_RUNTIME.register(
     "computer-use-indicator",
     (
@@ -106,6 +123,7 @@ OBSERVER_HOOK_RUNTIME.register(
     ),
     computer_use_indicator_observer,
 )
+HUMAN_TAKEOVER.restore_visibility()
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
 CAPABILITY_BROKER = CapabilityBroker(
@@ -122,6 +140,7 @@ register_core_transaction_capabilities(
     EVENT_STORE,
     OBSERVER_HOOK_RUNTIME,
     GATE_HOOK_RUNTIME,
+    HUMAN_TAKEOVER,
 )
 EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,
@@ -152,7 +171,7 @@ async def _runtime_lifespan(_server):
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="1.4.2",
+    version="1.5.0",
     lifespan=_runtime_lifespan,
 )
 
@@ -190,6 +209,39 @@ async def capability_invoke(
         capability_id,
         arguments,
         confirmation=confirmation,
+    )
+
+
+@mcp.tool
+def human_takeover_begin(
+    reason: str,
+    provider_ids: list[Literal["browser", "computer"]] | None = None,
+) -> dict:
+    """Pause AI access to selected interactive providers while a human takes control."""
+    return HUMAN_TAKEOVER.begin(reason, provider_ids)
+
+
+@mcp.tool
+def human_takeover_status() -> dict:
+    """Return the durable Human Takeover ownership/resynchronization state."""
+    return HUMAN_TAKEOVER.status()
+
+
+@mcp.tool
+def human_takeover_resume(
+    takeover_id: str,
+    expected_revision: Annotated[int, Field(ge=1)],
+    confirmation: Literal["INVOKE"],
+) -> dict:
+    """Resume only with explicit INVOKE; AI control stays blocked until re-observation succeeds."""
+    if confirmation != "INVOKE":
+        raise PermissionError(
+            "Human takeover resume requires explicit confirmation='INVOKE'"
+        )
+    return HUMAN_TAKEOVER.resume(
+        takeover_id,
+        expected_revision,
+        "RESUME",
     )
 
 

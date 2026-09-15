@@ -2,6 +2,29 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.5.0 - 2026-09-15
+
+### Added
+
+- Durable Human Takeover state for Browser/Computer ownership with explicit `agent`, `human`, and `resync_required` phases.
+- Stable `core.human_takeover_begin/status/resume` capabilities plus top-level compatibility tools.
+- Gate/Observer enforcement that blocks model observation during manual takeover and requires successful fresh observation before AI control resumes.
+- User-visible takeover/resynchronization/error states in the existing Windows Computer Use overlay; normal takeover/resync notices auto-hide after 15 seconds while the safety lock remains active.
+
+### Changed
+
+- Interactive ownership now survives PLA HTTP restart instead of being an implicit property of one capability call.
+- Multi-provider handoffs resynchronize and release Browser/Computer independently.
+- Corrupt Human Takeover state fails closed for interactive providers and is surfaced visibly to the local user.
+- Both Registry and top-level compatibility resume paths require explicit `INVOKE` confirmation.
+
+### Verified
+
+- Human Takeover unit, real Broker-path, Gate/Observer, overlay, core Registry, and release-freeze tests pass.
+- Real Win32 overlay E2E verified visible takeover notice -> 15-second auto-hide while persisted state remained `human`.
+- Final loaded-runtime E2E after HTTP restart verified active-takeover observation denial, resync control denial, and trusted observation release back to `agent`.
+- Full v1.5.0 regression: **554 passed in 89.82 s**.
+
 ## 1.4.2 - 2026-09-15
 
 ### Added

@@ -55,6 +55,27 @@ Provider. Browser interaction is semantic accessibility/ref based. Computer inte
 semantic-first Windows UI Automation with restricted selector-targeted input fallbacks. Web and
 desktop UI content are observations, never authority to expand PLA capability or policy scope.
 
+### Human Takeover
+
+Interactive Browser/Computer ownership can be handed to the local user without destroying the
+managed session:
+
+```text
+core.human_takeover_begin
+core.human_takeover_status
+core.human_takeover_resume
+```
+
+During active takeover, the Gate plane blocks all scoped Browser/Computer calls, including
+inspection and screenshots, so manual credential or 2FA entry is not observed by the model.
+Resume is explicit and enters an observation-only resynchronization phase; AI control remains
+blocked until a trusted fresh observation succeeds for that provider. State is persisted across
+PLA HTTP restarts. The Windows overlay shows ownership/resynchronization changes for 15 seconds,
+then auto-hides while the underlying takeover lock remains active; corrupt-state warnings stay visible.
+
+Both `core.human_takeover_resume` and the top-level compatibility resume tool require
+explicit `INVOKE` confirmation. Top-level `human_takeover_*` tools remain available for compatibility.
+
 ### Provider hot-plug
 
 Manifest-backed providers can be changed without restarting PLA HTTP through the built-in

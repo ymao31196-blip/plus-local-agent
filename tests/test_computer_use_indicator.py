@@ -90,3 +90,44 @@ def test_control_mode_wins_when_calls_overlap(tmp_path, monkeypatch):
 
     assert result["mode"] == "control"
     assert result["active_count"] == 2
+
+
+def test_takeover_overlay_text_distinguishes_human_and_resync():
+    assert indicator._takeover_overlay_text({"state": "human"}) == (
+        "PLA Human Takeover · 人工接管中，AI已暂停"
+    )
+    assert indicator._takeover_overlay_text({"state": "resync_required"}) == (
+        "PLA Human Takeover · 正在重新同步，AI控制仍暂停"
+    )
+    assert indicator._takeover_overlay_text({"state": "error"}) == (
+        "PLA Human Takeover · 状态异常，AI交互已锁定"
+    )
+    assert indicator._takeover_overlay_text({"state": "agent"}) is None
+
+
+def test_takeover_notice_expires_without_changing_security_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(indicator, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(indicator, "TAKEOVER_NOTICE_PATH", tmp_path / "notice.json")
+
+    indicator._write_takeover_notice(now=100.0)
+    assert indicator._takeover_notice_fresh(now=100.0) is True
+    assert indicator._takeover_notice_fresh(
+        now=100.0 + indicator._TAKEOVER_NOTICE_SECONDS - 0.1
+    ) is True
+    assert indicator._takeover_notice_fresh(
+        now=100.0 + indicator._TAKEOVER_NOTICE_SECONDS + 0.1
+    ) is False
+
+
+def test_public_indicator_refreshes_takeover_notice(tmp_path, monkeypatch):
+    monkeypatch.setattr(indicator, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(indicator, "TAKEOVER_NOTICE_PATH", tmp_path / "notice.json")
+    monkeypatch.setattr(indicator, "_ensure_indicator_process", lambda: None)
+
+    indicator.ensure_computer_use_indicator_process()
+
+    notice = json.loads(
+        indicator.TAKEOVER_NOTICE_PATH.read_text(encoding="utf-8")
+    )
+    assert notice["schema_version"] == 1
+    assert notice["updated_at"] > 0
