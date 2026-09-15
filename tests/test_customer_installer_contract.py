@@ -11,6 +11,7 @@ def _read(relative: str) -> str:
 def test_customer_installer_contract_files_exist():
     assert (PROJECT_ROOT / "install.ps1").is_file()
     assert (PROJECT_ROOT / "config" / "tunnel.example.yaml").is_file()
+    assert (PROJECT_ROOT / "config" / "workspaces.example.yaml").is_file()
     assert (PROJECT_ROOT / "docs" / "customer_installation.md").is_file()
 
 
@@ -49,6 +50,19 @@ def test_customer_tunnel_is_machine_local_and_secret_free():
     assert "api_key:" not in example
     assert "D:/AI_Tools" not in example
     assert "D:\\AI_Tools" not in example
+
+
+def test_customer_workspace_registry_is_machine_local():
+    gitignore = _read(".gitignore")
+    local_tools = _read("local_tools.py")
+    example = _read("config/workspaces.example.yaml")
+
+    assert "config/workspaces.local.yaml" in gitignore
+    assert "WORKSPACES_CONFIG_ENV" in local_tools
+    assert "workspaces.local.yaml" in local_tools
+    assert "DESKTOP_ROOT" not in local_tools
+    assert "RERUN_THESIS_ROOT" not in local_tools
+    assert "project_example" in example
 
 
 def test_tunnel_startup_prefers_local_or_explicit_config():

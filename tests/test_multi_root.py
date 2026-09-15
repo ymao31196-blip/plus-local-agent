@@ -6,11 +6,27 @@ import time
 import pytest
 
 import local_tools
-from internal_tool_executor import execute_actions_request, execute_local_tool
+from internal_tool_executor import INTERNAL_TOOL_SCHEMAS, execute_actions_request, execute_local_tool
 from task_store import TERMINAL, TaskStore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _write_workspace_config(pla: Path, roots: dict[str, Path]) -> None:
+    config = pla / "config" / "workspaces.local.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["version: 1", "roots:"]
+    for name, path in roots.items():
+        escaped = str(path.resolve()).replace("\\", "\\\\")
+        lines.extend([
+            f"  {name}:",
+            f'    path: "{escaped}"',
+            "    read: true",
+            "    write: true",
+            "    execute: true",
+        ])
+    config.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 @pytest.fixture
@@ -20,6 +36,7 @@ def roots(tmp_path, monkeypatch):
     workspace.mkdir(parents=True)
     monkeypatch.setattr(local_tools, "WORKSPACE", workspace.resolve())
     monkeypatch.setattr(local_tools, "PLA_ROOT", pla.resolve())
+    monkeypatch.delenv(local_tools.WORKSPACES_CONFIG_ENV, raising=False)
     return workspace, pla
 
 
@@ -30,18 +47,79 @@ def test_default_root_remains_workspace(roots):
     assert "workspace" in local_tools.read_text("same.txt")["content"]
 
 
-def test_rerun_thesis_is_an_independent_named_root(roots, tmp_path, monkeypatch):
-    workspace, _ = roots
+def test_machine_local_roots_are_loaded_dynamically(roots, tmp_path):
+    workspace, pla = roots
+    desktop = tmp_path / "Desktop"
     rerun_thesis = tmp_path / "rerun_thesis"
+    desktop.mkdir()
     rerun_thesis.mkdir()
-    monkeypatch.setattr(local_tools, "RERUN_THESIS_ROOT", rerun_thesis.resolve())
+    _write_workspace_config(pla, {"desktop": desktop})
+
     (workspace / "same.txt").write_text("workspace", encoding="utf-8")
+    (desktop / "same.txt").write_text("desktop", encoding="utf-8")
     (rerun_thesis / "same.txt").write_text("rerun", encoding="utf-8")
-    assert "workspace" in local_tools.read_text("same.txt")["content"]
-    assert "rerun" in local_tools.read_text("same.txt", root="rerun_thesis")["content"]
+    assert "desktop" in local_tools.read_text("same.txt", root="desktop")["content"]
+
+    # Re-read on every call: adding a local root does not require a source edit or restart.
+    _write_workspace_config(
+        pla,
+        {"desktop": desktop, "rerun_thesis": rerun_thesis},
+    )
+    assert "rerun" in local_tools.read_text(
+        "same.txt", root="rerun_thesis"
+    )["content"]
+    assert local_tools.available_roots()["desktop"] == {
+        "read": True, "write": True, "execute": True,
+    }
     assert local_tools.available_roots()["rerun_thesis"] == {
         "read": True, "write": True, "execute": True,
     }
+
+
+def test_configured_root_cannot_overlap_pla_source_tree(roots, tmp_path):
+    _, pla = roots
+    _write_workspace_config(pla, {"dangerous": pla.parent})
+    with pytest.raises(ValueError, match="must not overlap the PLA source tree"):
+        local_tools.available_roots()
+
+
+def test_workspace_registry_mutations_use_config_sha_cas(roots, tmp_path):
+    _, pla = roots
+    external = tmp_path / "external"
+    external.mkdir()
+
+    initial = local_tools.workspace_roots_get()
+    assert initial["config_exists"] is False
+    assert initial["config_sha256"] is None
+
+    created = local_tools.workspace_root_upsert(
+        "external",
+        str(external),
+        True,
+        True,
+        False,
+        initial["config_sha256"],
+    )
+    assert created["updated_root"] == "external"
+    assert created["roots"]["external"]["write"] is True
+    assert "external" in local_tools.available_roots()
+
+    with pytest.raises(ValueError, match="changed since inspection"):
+        local_tools.workspace_root_upsert(
+            "stale",
+            str(tmp_path / "stale"),
+            True,
+            False,
+            False,
+            initial["config_sha256"],
+        )
+
+    removed = local_tools.workspace_root_remove(
+        "external",
+        created["config_sha256"],
+    )
+    assert removed["removed_root"] == "external"
+    assert "external" not in local_tools.available_roots()
 
 
 def test_explicit_pla_root_is_unambiguous_when_it_contains_workspace(roots):
@@ -53,7 +131,7 @@ def test_explicit_pla_root_is_unambiguous_when_it_contains_workspace(roots):
 
 def test_unknown_root_is_rejected(roots):
     with pytest.raises(ValueError, match="Unknown root"):
-        local_tools.read_text("x", root="desktop")
+        local_tools.read_text("x", root="unknown")
 
 
 @pytest.mark.parametrize("path", ["../outside", "absolute"])
@@ -142,7 +220,7 @@ def test_pla_apply_changeset(roots):
 @pytest.mark.parametrize("path", [
     ".git/config", "state/tasks.sqlite3", "cache/item", "tmp/item",
     "__pycache__/source.pyc", "auth/credential.json", "auth/token.secret",
-    "runtime.sqlite3",
+    "runtime.sqlite3", "config/workspaces.local.yaml",
 ])
 def test_pla_protected_paths_cannot_be_written(roots, path):
     _, pla = roots
@@ -153,6 +231,7 @@ def test_pla_protected_paths_cannot_be_written(roots, path):
 
 @pytest.mark.parametrize("path", [
     ".git/config", "state/tasks.sqlite3", "auth/credential.json",
+    "config/workspaces.local.yaml",
 ])
 def test_pla_private_paths_cannot_be_read(roots, path):
     _, pla = roots
@@ -266,5 +345,15 @@ def test_available_roots_exposes_capabilities_without_paths(roots):
     assert local_tools.available_roots() == {
         "workspace": {"read": True, "write": True, "execute": True},
         "pla": {"read": True, "write": True, "execute": True},
-        "rerun_thesis": {"read": True, "write": True, "execute": True},
     }
+
+
+def test_internal_tool_root_schema_is_dynamic_not_hardcoded(roots):
+    root_schemas = []
+    for tool in INTERNAL_TOOL_SCHEMAS:
+        properties = tool["input_schema"].get("properties", {})
+        if "root" in properties:
+            root_schemas.append(properties["root"])
+    assert root_schemas
+    assert all(schema["type"] == "string" for schema in root_schemas)
+    assert all("enum" not in schema for schema in root_schemas)

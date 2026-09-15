@@ -1,0 +1,19 @@
+# Machine-local workspace registry example.
+# Copy to config/workspaces.local.yaml and edit paths for this machine.
+# The local file is gitignored and is never part of a PLA release.
+
+version: 1
+roots:
+  desktop:
+    path: "%USERPROFILE%\\Desktop"
+    read: true
+    write: true
+    execute: true
+
+  # A narrower project root can coexist with a broader root when both are
+  # outside the PLA source tree.
+  project_example:
+    path: "D:\\Projects\\example"
+    read: true
+    write: true
+    execute: true

@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import mcp_types
 import pytest
+
+import local_tools
 from fastmcp import Client
 from fastmcp.client.transports import PythonStdioTransport
 
@@ -112,6 +114,8 @@ def test_diagnose_client_reports_capability_without_assuming_mrtr_ready():
             return result.structured_content
 
     result = asyncio.run(inspect())
+    available = result.pop("available_roots")
+    assert available == local_tools.available_roots()
     assert result == {
         "fastmcp_version": "4.0.3",
         "mcp_version": "2.2.0",
@@ -121,11 +125,6 @@ def test_diagnose_client_reports_capability_without_assuming_mrtr_ready():
         "run_agent_task_available": True,
         "run_agent_task_experimental": True,
         "mainline": "chatgpt_native_agent_loop",
-        "available_roots": {
-            "workspace": {"read": True, "write": True, "execute": True},
-            "pla": {"read": True, "write": True, "execute": True},
-            "rerun_thesis": {"read": True, "write": True, "execute": True},
-        },
     }
 
 

@@ -367,6 +367,38 @@ Set `PLA_PYTHON` when the desired Python 3.11 interpreter is outside the reposit
 `.venv` or the legacy default Windows Miniconda location. See
 `docs/customer_installation.md` for the customer/Codex deployment contract.
 
+
+## Runtime Workspace Registry
+
+PLA keeps product source and customer workspace authorization separate.
+
+Two built-in roots always exist:
+
+- `pla`: the PLA source/development root. PLA release capabilities are permanently bound to this root.
+- `workspace`: the repository-local default runtime workspace.
+
+Additional customer roots are stored only in `config/workspaces.local.yaml`, which is ignored by
+Git. Copy `config/workspaces.example.yaml` as a starting point when configuring a machine manually.
+The registry is re-read on use, so adding or removing a customer root does not require a source edit
+or PLA restart.
+
+The stable Broker surface is:
+
+```text
+core.workspace_roots_get
+core.workspace_root_upsert
+core.workspace_root_remove
+```
+
+Registry mutations require explicit `INVOKE` confirmation and optimistic config SHA matching.
+Configured user roots may not overlap or contain the PLA source tree, preventing an alternate root
+name from bypassing the special PLA private-path policy. The local registry file itself is hidden
+from ordinary `pla` root file operations.
+
+User-project Git operations may still run inside an authorized customer root. PLA release
+`core.git_tag` and `core.git_push` are a separate control plane and can operate only on the
+`pla` source root.
+
 ## Start and stop
 
 Start PLA HTTP, Secure MCP Tunnel, and the Interactive Elevation Broker:

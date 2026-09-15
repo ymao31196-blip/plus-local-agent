@@ -2,6 +2,34 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.5.1 - 2026-09-15
+
+### Added
+
+- Machine-local Workspace Registry backed by Git-ignored `config/workspaces.local.yaml`, with tracked `config/workspaces.example.yaml`.
+- Stable `core.workspace_roots_get`, `core.workspace_root_upsert`, and `core.workspace_root_remove` capabilities.
+- Optimistic config SHA matching and atomic validated writes for workspace authorization changes.
+
+### Changed
+
+- Customer workspace roots are now runtime deployment configuration instead of hard-coded source constants.
+- Internal local-tool root schemas accept dynamic root names and defer authorization to `RootPolicy`.
+- Built-in `pla` and `workspace` roots remain available even when the local workspace registry is malformed, preserving recovery access.
+- Configured customer roots may not overlap or contain the PLA source tree.
+- `core.git_tag` and `core.git_push` are now permanently bound to the `pla` source root; user-project Git remains available through ordinary Git tools inside authorized roots.
+
+### Security
+
+- `config/workspaces.local.yaml` is protected from ordinary `pla` root file access.
+- Workspace registry mutations require explicit `INVOKE` confirmation and CAS-style config SHA preconditions.
+- Runtime workspace changes no longer dirty the PLA source repository.
+
+### Verified
+
+- Workspace Registry dynamic loading, CAS mutation, source-tree overlap rejection, dynamic schema, Broker confirmation gates, and release-root isolation are covered by automated tests.
+- Full v1.5.1 regression: **561 passed in 92.66 s**.
+- Loaded-runtime E2E after HTTP restart verified live Registry availability, hot add/use/remove of a temporary customer root without another restart, unchanged PLA source Git status, and clean test-directory removal.
+
 ## 1.5.0 - 2026-09-15
 
 ### Added

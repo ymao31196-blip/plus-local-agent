@@ -38,6 +38,31 @@ Complete the customer Tunnel and start the runtime with:
 `config/tunnel.local.yaml` is generated locally and ignored by Git. Do not copy another
 deployment Tunnel ID or credential. The tracked example file is documentation only.
 
+
+## Local workspace authorization
+
+Customer workspace roots are deployment-local configuration, not PLA source code.
+
+Use `config/workspaces.example.yaml` as a template and store the machine-specific registry in:
+
+```text
+config/workspaces.local.yaml
+```
+
+That file is ignored by Git. The built-in `pla` and `workspace` roots are not configurable.
+Additional roots can be reviewed and changed through the stable Broker capabilities:
+
+```text
+core.workspace_roots_get
+core.workspace_root_upsert
+core.workspace_root_remove
+```
+
+Adding, changing, or removing a root requires explicit `INVOKE` confirmation. Mutations use the
+current config SHA as an optimistic concurrency precondition. Customer roots are forbidden from
+overlapping the PLA source tree. The runtime re-reads the registry when resolving customer roots,
+so workspace changes do not require editing PLA source files or restarting the runtime.
+
 ## Installer states
 
 - `PASS`: full local installation, reviewed Providers, regression tests, WinGet MCP runtime, and

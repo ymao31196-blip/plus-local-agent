@@ -12,7 +12,13 @@ from capability_registry import CapabilityRegistry
 from event_runtime import EventStore
 from observer_hook_runtime import ObserverHookRuntime
 from gate_hook_runtime import GateHookRuntime
-from local_tools import git_push as controlled_git_push, git_tag as controlled_git_tag
+from local_tools import (
+    git_push as controlled_git_push,
+    git_tag as controlled_git_tag,
+    workspace_root_remove as controlled_workspace_root_remove,
+    workspace_root_upsert as controlled_workspace_root_upsert,
+    workspace_roots_get as controlled_workspace_roots_get,
+)
 from transaction_action_envelope import invoke_capability_in_transaction
 from transaction_runtime import ActionTransactionStore
 
@@ -366,11 +372,6 @@ def core_gate_descriptors() -> tuple[CapabilityDescriptor, ...]:
 
 
 def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
-    root_schema = {
-        "type": "string",
-        "enum": ["workspace", "pla"],
-        "default": "pla",
-    }
     return (
         _descriptor(
             "core.git_tag",
@@ -386,7 +387,6 @@ def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
                     "tag": {"type": "string"},
                     "expected_head": {"type": "string"},
                     "cwd": {"type": "string", "default": "."},
-                    "root": root_schema,
                 },
                 "required": ["tag", "expected_head"],
                 "additionalProperties": False,
@@ -417,13 +417,90 @@ def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
                         "default": [],
                     },
                     "cwd": {"type": "string", "default": "."},
-                    "root": root_schema,
                 },
                 "required": ["remote", "branch", "expected_head"],
                 "additionalProperties": False,
             },
             risk_level="write_external",
             tags=("git", "release", "push"),
+            requires_confirmation=True,
+        ),
+    )
+
+
+def core_workspace_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Machine-local workspace authorization controls."""
+
+    sha_schema = {
+        "anyOf": [
+            {"type": "string", "minLength": 64, "maxLength": 64},
+            {"type": "null"},
+        ]
+    }
+    return (
+        _descriptor(
+            "core.workspace_roots_get",
+            "workspace_roots_get",
+            "Workspace Registry Status",
+            "Read machine-local workspace roots and their access permissions.",
+            {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("workspace-registry", "governance", "local-access", "read"),
+        ),
+        _descriptor(
+            "core.workspace_root_upsert",
+            "workspace_root_upsert",
+            "Add or Update Workspace Root",
+            (
+                "Add or update one machine-local workspace root using optimistic "
+                "config SHA matching. This changes the local filesystem access boundary."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                    },
+                    "path": {"type": "string", "minLength": 1},
+                    "read": {"type": "boolean", "default": True},
+                    "write": {"type": "boolean", "default": False},
+                    "execute": {"type": "boolean", "default": False},
+                    "expected_sha256": sha_schema,
+                },
+                "required": ["name", "path", "expected_sha256"],
+                "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("workspace-registry", "governance", "local-access", "write"),
+            requires_confirmation=True,
+        ),
+        _descriptor(
+            "core.workspace_root_remove",
+            "workspace_root_remove",
+            "Remove Workspace Root",
+            (
+                "Remove one machine-local workspace root using optimistic config "
+                "SHA matching. Built-in workspace and pla roots are not configurable."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                    },
+                    "expected_sha256": sha_schema,
+                },
+                "required": ["name", "expected_sha256"],
+                "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("workspace-registry", "governance", "local-access", "write"),
             requires_confirmation=True,
         ),
     )
@@ -517,6 +594,7 @@ def register_core_transaction_capabilities(
     descriptors = [
         *core_transaction_descriptors(),
         *core_release_descriptors(),
+        *core_workspace_descriptors(),
     ]
     if event_store is not None:
         descriptors.extend(core_event_descriptors())
@@ -609,7 +687,7 @@ def register_core_transaction_capabilities(
             args["tag"],
             args["expected_head"],
             args.get("cwd", "."),
-            args.get("root", "pla"),
+            "pla",
         ),
     )
     broker.register_internal_handler(
@@ -621,7 +699,29 @@ def register_core_transaction_capabilities(
             args.get("tags", []),
             "PUSH",
             args.get("cwd", "."),
-            args.get("root", "pla"),
+            "pla",
+        ),
+    )
+    broker.register_internal_handler(
+        "core.workspace_roots_get",
+        lambda _args: controlled_workspace_roots_get(),
+    )
+    broker.register_internal_handler(
+        "core.workspace_root_upsert",
+        lambda args: controlled_workspace_root_upsert(
+            args["name"],
+            args["path"],
+            args.get("read", True),
+            args.get("write", False),
+            args.get("execute", False),
+            args["expected_sha256"],
+        ),
+    )
+    broker.register_internal_handler(
+        "core.workspace_root_remove",
+        lambda args: controlled_workspace_root_remove(
+            args["name"],
+            args["expected_sha256"],
         ),
     )
     if event_store is not None:

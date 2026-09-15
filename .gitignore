@@ -23,6 +23,7 @@ ENV/
 .browser_profiles/
 observer_manifests/*.local.json
 config/tunnel.local.yaml
+config/workspaces.local.yaml
 
 # Local secrets and credentials
 .env

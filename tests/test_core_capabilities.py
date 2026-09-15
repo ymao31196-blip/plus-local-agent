@@ -262,6 +262,12 @@ def test_core_transaction_invoke_forwards_target_confirmation():
 
 
 def test_core_release_capabilities_are_confirmation_gated(monkeypatch):
+    descriptors = {
+        item.id: item for item in core_capabilities.core_release_descriptors()
+    }
+    assert "root" not in descriptors["core.git_tag"].input_schema["properties"]
+    assert "root" not in descriptors["core.git_push"].input_schema["properties"]
+
     registry, broker, store = _runtime()
     calls = {}
 
@@ -331,6 +337,108 @@ def test_core_release_capabilities_are_confirmation_gated(monkeypatch):
     finally:
         store.close()
 
+
+
+def test_core_workspace_registry_controls_are_confirmation_gated(monkeypatch):
+    registry, broker, store = _runtime()
+    calls = {}
+
+    def fake_get():
+        calls["get"] = True
+        return {"config_exists": True, "config_sha256": "a" * 64, "roots": {}}
+
+    def fake_upsert(name, path, read, write, execute, expected_sha256):
+        calls["upsert"] = (
+            name, path, read, write, execute, expected_sha256
+        )
+        return {
+            "updated_root": name,
+            "config_sha256": "b" * 64,
+            "roots": {name: {"path": path}},
+        }
+
+    def fake_remove(name, expected_sha256):
+        calls["remove"] = (name, expected_sha256)
+        return {"removed_root": name, "config_sha256": "c" * 64, "roots": {}}
+
+    monkeypatch.setattr(
+        core_capabilities, "controlled_workspace_roots_get", fake_get
+    )
+    monkeypatch.setattr(
+        core_capabilities, "controlled_workspace_root_upsert", fake_upsert
+    )
+    monkeypatch.setattr(
+        core_capabilities, "controlled_workspace_root_remove", fake_remove
+    )
+
+    try:
+        descriptors = {
+            item.id: item for item in core_capabilities.core_workspace_descriptors()
+        }
+        assert set(descriptors) == {
+            "core.workspace_roots_get",
+            "core.workspace_root_upsert",
+            "core.workspace_root_remove",
+        }
+        assert descriptors["core.workspace_roots_get"].requires_confirmation is False
+        assert descriptors["core.workspace_root_upsert"].requires_confirmation is True
+        assert descriptors["core.workspace_root_remove"].requires_confirmation is True
+
+        status = asyncio.run(
+            broker.invoke("core.workspace_roots_get", {})
+        )
+        assert status["data"]["config_sha256"] == "a" * 64
+
+        with pytest.raises(PermissionError, match="requires confirmation"):
+            asyncio.run(
+                broker.invoke(
+                    "core.workspace_root_upsert",
+                    {
+                        "name": "desktop",
+                        "path": r"C:\\Users\\example\\Desktop",
+                        "expected_sha256": "a" * 64,
+                    },
+                )
+            )
+
+        updated = asyncio.run(
+            broker.invoke(
+                "core.workspace_root_upsert",
+                {
+                    "name": "desktop",
+                    "path": r"C:\\Users\\example\\Desktop",
+                    "read": True,
+                    "write": True,
+                    "execute": False,
+                    "expected_sha256": "a" * 64,
+                },
+                confirmation="INVOKE",
+            )
+        )
+        assert updated["data"]["updated_root"] == "desktop"
+        assert calls["upsert"] == (
+            "desktop",
+            r"C:\\Users\\example\\Desktop",
+            True,
+            True,
+            False,
+            "a" * 64,
+        )
+
+        removed = asyncio.run(
+            broker.invoke(
+                "core.workspace_root_remove",
+                {
+                    "name": "desktop",
+                    "expected_sha256": "b" * 64,
+                },
+                confirmation="INVOKE",
+            )
+        )
+        assert removed["data"]["removed_root"] == "desktop"
+        assert calls["remove"] == ("desktop", "b" * 64)
+    finally:
+        store.close()
 
 
 def test_core_event_query_reads_events_without_self_recording(tmp_path):

@@ -23,7 +23,14 @@ from runtime_context import CURRENT, checkpoint
 from process_controller import controlled_run
 from typing import Any, Callable, Literal
 from typing_extensions import TypedDict
-from workspace_manager import RootPolicy, build_root_policy
+from workspace_manager import (
+    RootPolicy,
+    build_root_policy,
+    load_workspace_roots,
+    workspace_registry_remove,
+    workspace_registry_status,
+    workspace_registry_upsert,
+)
 
 
 PLA_ROOT = Path(
@@ -32,9 +39,14 @@ PLA_ROOT = Path(
 WORKSPACE = Path(
     os.environ.get("AGENT_WORKSPACE", str(PLA_ROOT / "workspace"))
 ).resolve()
-RERUN_THESIS_ROOT = Path(
-    os.environ.get("AGENT_RERUN_THESIS_ROOT", Path.home() / "Desktop" / "rerun_thesis")
-).resolve()
+WORKSPACES_CONFIG_ENV = "AGENT_WORKSPACES_CONFIG"
+
+def workspace_config_path() -> Path:
+    configured = os.environ.get(WORKSPACES_CONFIG_ENV)
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (PLA_ROOT / "config" / "workspaces.local.yaml").resolve()
+
 
 ALLOWED_PROGRAMS = {
     "python", "python.exe", "pytest", "pytest.exe", "git", "git.exe"
@@ -87,9 +99,12 @@ def truncate_text(value: str, limit: int = MAX_TEXT_CHARACTERS) -> dict[str, Any
     }
 
 
-def root_policy() -> RootPolicy:
-    """Build the registry from current roots so test/operator overrides stay effective."""
-    return build_root_policy(WORKSPACE, PLA_ROOT, RERUN_THESIS_ROOT)
+def root_policy(root_hint: str | None = None) -> RootPolicy:
+    """Build built-ins directly; load machine-local roots only when needed."""
+    configured_roots = {}
+    if root_hint not in {"workspace", "pla"}:
+        configured_roots = load_workspace_roots(workspace_config_path(), PLA_ROOT)
+    return build_root_policy(WORKSPACE, PLA_ROOT, configured_roots)
 
 
 def available_roots() -> dict[str, dict[str, bool]]:
@@ -97,11 +112,11 @@ def available_roots() -> dict[str, dict[str, bool]]:
 
 
 def safe_path(path: str, root: str = "workspace", access: str = "read") -> Path:
-    return root_policy().resolve(root, path, access).target
+    return root_policy(root).resolve(root, path, access).target
 
 
 def _relative_path(target: Path, root: str = "workspace") -> str:
-    return root_policy().resolve(root, str(target)).relative
+    return root_policy(root).resolve(root, str(target)).relative
 
 
 def _file_sha256(target: Path) -> str:
@@ -387,6 +402,44 @@ def workspace_mutation(function):
     return locked
 
 
+def workspace_roots_get() -> dict[str, Any]:
+    return workspace_registry_status(workspace_config_path(), PLA_ROOT)
+
+
+@workspace_mutation
+def workspace_root_upsert(
+    name: str,
+    path: str,
+    read: bool,
+    write: bool,
+    execute: bool,
+    expected_sha256: str | None,
+) -> dict[str, Any]:
+    return workspace_registry_upsert(
+        workspace_config_path(),
+        PLA_ROOT,
+        name=name,
+        path=path,
+        read=read,
+        write=write,
+        execute=execute,
+        expected_sha256=expected_sha256,
+    )
+
+
+@workspace_mutation
+def workspace_root_remove(
+    name: str,
+    expected_sha256: str | None,
+) -> dict[str, Any]:
+    return workspace_registry_remove(
+        workspace_config_path(),
+        PLA_ROOT,
+        name=name,
+        expected_sha256=expected_sha256,
+    )
+
+
 @workspace_mutation
 def write_text(
     path: str, content: str, expected_sha256: str | None = None,
@@ -479,7 +532,7 @@ def search_text(
                 continue
             resolved = candidate.resolve()
             try:
-                root_policy().resolve(root, str(resolved))
+                root_policy(root).resolve(root, str(resolved))
             except ValueError:
                 continue
             relative = _relative_path(resolved, root)
@@ -521,7 +574,7 @@ def search_text(
     command.extend(["--", query, str(target)])
 
     process = subprocess.Popen(
-        command, cwd=root_policy().resolve(root, ".").target,
+        command, cwd=root_policy(root).resolve(root, ".").target,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", errors="replace", shell=False,
     )
@@ -551,7 +604,7 @@ def search_text(
                 continue
             matched_path = Path(raw_path).resolve()
             try:
-                root_policy().resolve(root, str(matched_path))
+                root_policy(root).resolve(root, str(matched_path))
             except ValueError:
                 process.kill()
                 raise ValueError(f"ripgrep returned a path outside root {root!r}")
@@ -735,7 +788,7 @@ def _git_repo_context(cwd: str, root: str) -> tuple[Path, Path]:
         raise ValueError("Working directory is not inside a Git repository")
     repo_root = Path(probe.stdout.strip()).resolve()
     try:
-        root_policy().resolve(root, str(repo_root), "read")
+        root_policy(root).resolve(root, str(repo_root), "read")
     except ValueError as exc:
         raise ValueError("Git repository root is outside the selected root") from exc
     return working_directory, repo_root
@@ -1067,7 +1120,7 @@ def git_stage(
             raise ValueError("expected_sha256 is required and must be 64 hexadecimal characters")
 
     working_directory, repo_root = _git_repo_context(cwd, root)
-    root_base = root_policy().resolve(root, ".", "write").target.resolve()
+    root_base = root_policy(root).resolve(root, ".", "write").target.resolve()
     git_dir = Path(
         _git_run(working_directory, ["rev-parse", "--absolute-git-dir"]).stdout.strip()
     ).resolve()
@@ -1300,7 +1353,7 @@ def git_commit(
         raise ValueError("expected_head must be a full 40–64 character hexadecimal commit id")
 
     working_directory, repo_root = _git_repo_context(cwd, root)
-    root_base = root_policy().resolve(root, ".", "write").target.resolve()
+    root_base = root_policy(root).resolve(root, ".", "write").target.resolve()
     git_dir_result = _git_run(working_directory, ["rev-parse", "--absolute-git-dir"])
     git_dir = Path(git_dir_result.stdout.strip()).resolve()
     try:

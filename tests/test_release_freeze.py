@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.5.0"
+    assert server.mcp.version == "1.5.1"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
@@ -62,11 +62,14 @@ def test_release_version_and_provider_catalog():
         include_unavailable=True,
         limit=100,
     )
-    assert core_caps["match_count"] == 15
+    assert core_caps["match_count"] == 18
     assert {item["id"] for item in core_caps["capabilities"]} == {
         "core.human_takeover_begin",
         "core.human_takeover_status",
         "core.human_takeover_resume",
+        "core.workspace_roots_get",
+        "core.workspace_root_upsert",
+        "core.workspace_root_remove",
         "core.transaction_create",
         "core.transaction_get",
         "core.transaction_checkpoint",
@@ -108,6 +111,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.4.1.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.4.2.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.5.0.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v1.5.1.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()
