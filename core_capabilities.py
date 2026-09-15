@@ -506,103 +506,6 @@ def core_workspace_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
-def core_human_takeover_descriptors() -> tuple[CapabilityDescriptor, ...]:
-    """Human/agent ownership controls for interactive providers."""
-
-    return (
-        _descriptor(
-            "core.human_takeover_begin",
-            "human_takeover_begin",
-            "Begin Human Takeover",
-            (
-                "Pause AI access to selected Browser/Computer providers so a "
-                "human can safely take control without model observation."
-            ),
-            {
-                "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 1000,
-                    },
-                    "provider_ids": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 2,
-                        "uniqueItems": True,
-                        "items": {
-                            "type": "string",
-                            "enum": ["browser", "computer"],
-                        },
-                    },
-                },
-                "required": ["reason"],
-                "additionalProperties": False,
-            },
-            risk_level="write_local",
-            tags=("human-takeover", "governance", "pause", "control"),
-        ),
-        _descriptor(
-            "core.human_takeover_status",
-            "human_takeover_status",
-            "Human Takeover Status",
-            "Read durable human/agent ownership and resynchronization state.",
-            {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
-            risk_level="read",
-            tags=("human-takeover", "governance", "status", "read"),
-        ),
-        _descriptor(
-            "core.human_takeover_resume",
-            "human_takeover_resume",
-            "Resume From Human Takeover",
-            (
-                "Confirm that the human is finished and enter observation-only "
-                "resynchronization before AI control can resume."
-            ),
-            {
-                "type": "object",
-                "properties": {
-                    "takeover_id": {"type": "string", "minLength": 1},
-                    "expected_revision": {"type": "integer", "minimum": 1},
-                },
-                "required": ["takeover_id", "expected_revision"],
-                "additionalProperties": False,
-            },
-            risk_level="write_local",
-            tags=("human-takeover", "governance", "resume", "control"),
-            requires_confirmation=True,
-        ),
-    )
-
-
-def core_human_input_monitor_descriptors() -> tuple[CapabilityDescriptor, ...]:
-    """Read-only status for automatic physical-user takeover detection."""
-
-    return (
-        _descriptor(
-            "core.human_input_monitor_status",
-            "human_input_monitor_status",
-            "Human Input Monitor Status",
-            (
-                "Read whether automatic physical keyboard/mouse takeover detection "
-                "is enabled, armed, and successfully hooked on this machine."
-            ),
-            {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
-            risk_level="read",
-            tags=("human-takeover", "governance", "input-monitor", "read"),
-        ),
-    )
-
-
 def register_core_transaction_capabilities(
     registry: CapabilityRegistry,
     broker: CapabilityBroker,
@@ -610,8 +513,6 @@ def register_core_transaction_capabilities(
     event_store: EventStore | None = None,
     observer_hooks: ObserverHookRuntime | None = None,
     gate_hooks: GateHookRuntime | None = None,
-    human_takeover=None,
-    human_input_monitor=None,
 ) -> None:
     """Register stable core governance capabilities and in-process handlers."""
 
@@ -626,43 +527,11 @@ def register_core_transaction_capabilities(
         descriptors.extend(core_hook_descriptors())
     if gate_hooks is not None:
         descriptors.extend(core_gate_descriptors())
-    if human_takeover is not None:
-        descriptors.extend(core_human_takeover_descriptors())
-    if human_input_monitor is not None:
-        descriptors.extend(core_human_input_monitor_descriptors())
-
     registry.register_provider(
         "core",
         descriptors,
         enabled=True,
     )
-
-    if human_takeover is not None:
-        broker.register_internal_handler(
-            "core.human_takeover_begin",
-            lambda args: human_takeover.begin(
-                args["reason"],
-                args.get("provider_ids"),
-            ),
-        )
-        broker.register_internal_handler(
-            "core.human_takeover_status",
-            lambda _args: human_takeover.status(),
-        )
-        broker.register_internal_handler(
-            "core.human_takeover_resume",
-            lambda args: human_takeover.resume(
-                args["takeover_id"],
-                args["expected_revision"],
-                "RESUME",
-            ),
-        )
-
-    if human_input_monitor is not None:
-        broker.register_internal_handler(
-            "core.human_input_monitor_status",
-            lambda _args: human_input_monitor.status(),
-        )
 
     broker.register_internal_handler(
         "core.transaction_create",

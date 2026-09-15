@@ -21,14 +21,11 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent
 STATE_DIR = PROJECT_ROOT / "state"
 STATE_PATH = STATE_DIR / "computer_use_indicator.json"
-TAKEOVER_STATE_PATH = STATE_DIR / "human_takeover.json"
-TAKEOVER_NOTICE_PATH = STATE_DIR / "human_takeover_notice.json"
 
 _INDICATOR_PROCESS: subprocess.Popen[bytes] | None = None
 _INDICATOR_LOCK = RLock()
 _STALE_SECONDS = 120.0
 _LINGER_SECONDS = 12.0
-_TAKEOVER_NOTICE_SECONDS = 15.0
 _POLL_MS = 200
 _MUTEX_NAME = "Local\\PLAComputerUseIndicator_v1"
 _WINDOW_TITLE = "__PLA_INTERNAL_COMPUTER_USE_INDICATOR__"
@@ -45,57 +42,6 @@ def _read_state() -> dict[str, Any]:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
     return value if isinstance(value, dict) else {}
-
-
-def _read_takeover_state() -> dict[str, Any]:
-    try:
-        raw = TAKEOVER_STATE_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    except OSError:
-        return {"state": "error"}
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError:
-        return {"state": "error"}
-    return value if isinstance(value, dict) else {"state": "error"}
-
-
-def _takeover_overlay_text(state: dict[str, Any]) -> str | None:
-    takeover_state = state.get("state")
-    if takeover_state == "human":
-        return "PLA Human Takeover · 人工接管中，AI已暂停"
-    if takeover_state == "resync_required":
-        return "PLA Human Takeover · 正在重新同步，AI控制仍暂停"
-    if takeover_state == "error":
-        return "PLA Human Takeover · 状态异常，AI交互已锁定"
-    return None
-
-
-def _write_takeover_notice(now: float | None = None) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = time.time() if now is None else float(now)
-    temp = TAKEOVER_NOTICE_PATH.with_suffix(".tmp")
-    temp.write_text(
-        json.dumps(
-            {"schema_version": 1, "updated_at": timestamp},
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
-        encoding="utf-8",
-    )
-    os.replace(temp, TAKEOVER_NOTICE_PATH)
-
-
-def _takeover_notice_fresh(now: float | None = None) -> bool:
-    current = time.time() if now is None else float(now)
-    try:
-        value = json.loads(TAKEOVER_NOTICE_PATH.read_text(encoding="utf-8"))
-        updated_at = float(value.get("updated_at", 0.0))
-    except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError, ValueError):
-        return False
-    return updated_at > 0 and 0 <= current - updated_at <= _TAKEOVER_NOTICE_SECONDS
 
 
 def _write_state(state: dict[str, Any]) -> None:
@@ -145,15 +91,6 @@ def _ensure_indicator_process() -> None:
             close_fds=True,
             creationflags=creationflags,
         )
-
-
-def ensure_computer_use_indicator_process() -> None:
-    """Refresh takeover notice lifetime and ensure the shared overlay is running."""
-    try:
-        _write_takeover_notice()
-    except Exception:
-        pass
-    _ensure_indicator_process()
 
 
 def computer_use_indicator_observer(event: dict[str, Any]) -> dict[str, Any]:
@@ -317,22 +254,7 @@ def _run_overlay() -> int:
         fresh = updated_at > 0 and now - updated_at <= _STALE_SECONDS
         visible = fresh and (active_count > 0 or now <= linger_until)
 
-        takeover = _read_takeover_state()
-        takeover_text = _takeover_overlay_text(takeover)
-        takeover_visible = (
-            takeover_text is not None
-            and (
-                takeover.get("state") == "error"
-                or _takeover_notice_fresh(now)
-            )
-        )
-
-        if takeover_visible:
-            label.configure(text=takeover_text)
-            root.deiconify()
-            root.lift()
-            last_visible_at = now
-        elif visible:
+        if visible:
             mode = "control" if state.get("mode") == "control" else "observe"
             if mode == "control":
                 label.configure(text="PLA Computer Use · AI正在控制此电脑")
@@ -344,7 +266,7 @@ def _run_overlay() -> int:
         else:
             root.withdraw()
 
-        if not takeover_visible and now - max(last_visible_at, updated_at) > _STALE_SECONDS:
+        if now - max(last_visible_at, updated_at) > _STALE_SECONDS:
             root.destroy()
             return
         root.after(_POLL_MS, refresh)

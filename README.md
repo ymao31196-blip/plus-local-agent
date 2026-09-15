@@ -55,49 +55,6 @@ Provider. Browser interaction is semantic accessibility/ref based. Computer inte
 semantic-first Windows UI Automation with restricted selector-targeted input fallbacks. Web and
 desktop UI content are observations, never authority to expand PLA capability or policy scope.
 
-### Human Takeover
-
-Interactive Browser/Computer ownership can be handed to the local user without destroying the
-managed session:
-
-```text
-core.human_takeover_begin
-core.human_takeover_status
-core.human_takeover_resume
-```
-
-During active takeover, the Gate plane blocks all scoped Browser/Computer calls, including
-inspection and screenshots, so manual credential or 2FA entry is not observed by the model.
-Resume is explicit and enters an observation-only resynchronization phase; AI control remains
-blocked until a trusted fresh observation succeeds for that provider. State is persisted across
-PLA HTTP restarts. The Windows overlay shows ownership/resynchronization changes for 15 seconds,
-then auto-hides while the underlying takeover lock remains active; corrupt-state warnings stay visible.
-
-Both `core.human_takeover_resume` and the top-level compatibility resume tool require
-explicit `INVOKE` confirmation. Top-level `human_takeover_*` tools remain available for compatibility.
-
-PLA v1.5.2 also supports automatic physical-user takeover on Windows. While Browser/Computer
-automation is active (and for a short handoff window immediately afterward), a low-level local
-input monitor watches only for the presence of real keyboard/mouse activity. Windows input events
-marked as injected are ignored, so PLA's own SendInput-style automation does not pause itself.
-Keyboard presses, mouse buttons, and wheel input trigger immediately; mouse movement must exceed
-a small threshold to filter device jitter. The detector does not persist key codes, typed text,
-or pointer coordinates. A detected intervention transitions the existing durable state machine to
-`human` for both interactive providers. If a partial Browser-only or Computer-only takeover is
-already active, physical intervention expands it to both providers; if intervention happens during
-`resync_required`, ownership returns to `human` and the pending resynchronization is cancelled.
-Returning control to AI is still never automatic: `INVOKE` plus trusted re-observation is required
-exactly as with explicit Human Takeover.
-
-Read detector health through:
-
-```text
-core.human_input_monitor_status
-```
-
-Set `PLA_AUTO_HUMAN_TAKEOVER=0` before starting PLA only when automatic local-input takeover is
-intentionally disabled.
-
 ### Provider hot-plug
 
 Manifest-backed providers can be changed without restarting PLA HTTP through the built-in
@@ -307,6 +264,12 @@ desktop, mediated by Windows UAC, and verified afterward by provider-specific st
 
 Provider manifests apply allowlists, risk levels, confirmation requirements, transaction
 requirements, artifact policy, and runtime constraints.
+
+PLA v1.5.3 returns Computer Use to the v1.4.2 behavior boundary. It retains verified window
+activation and the Windows foreground-lock fallback, but does not include the explicit Human
+Takeover control plane from v1.5.0 or the automatic physical-input detector from v1.5.2. The
+reviewed local `run_process` allowlist includes `gh` and `gh.exe`, enabling controlled GitHub CLI
+use without adding arbitrary shell execution.
 
 ## Software migration safety model
 
