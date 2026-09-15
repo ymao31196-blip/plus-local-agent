@@ -26,9 +26,14 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 
 ### Download
 
+Choose an installation directory first. The example below uses a dedicated folder
+under the current Windows user profile; change `$PlaRoot` if you prefer another location.
+
 ~~~powershell
-git clone https://github.com/ymao31196-blip/plus-local-agent.git
-cd plus-local-agent
+$PlaRoot = Join-Path $env:USERPROFILE "AI_Tools\plus-local-agent"
+New-Item -ItemType Directory -Force -Path (Split-Path $PlaRoot) | Out-Null
+git clone https://github.com/ymao31196-blip/plus-local-agent.git $PlaRoot
+Set-Location $PlaRoot
 ~~~
 
 For a stable deployment, you may check out the release tag you want before installation.
@@ -86,12 +91,17 @@ More deployment details are available in
 
 ### 2. 下载PLA
 
-在PowerShell中执行：
+先确定安装目录。下面示例把PLA安装到当前Windows用户目录下的
+`AI_Tools\plus-local-agent`；如果你想安装到其他位置，只需要修改`$PlaRoot`。
 
 ~~~powershell
-git clone https://github.com/ymao31196-blip/plus-local-agent.git
-cd plus-local-agent
+$PlaRoot = Join-Path $env:USERPROFILE "AI_Tools\plus-local-agent"
+New-Item -ItemType Directory -Force -Path (Split-Path $PlaRoot) | Out-Null
+git clone https://github.com/ymao31196-blip/plus-local-agent.git $PlaRoot
+Set-Location $PlaRoot
 ~~~
+
+这样无论你从哪个PowerShell目录开始执行，PLA都会被clone到明确的目标位置，而不是落在当前目录。
 
 如果你希望使用稳定版本，可以在安装前切换到对应的release tag。
 
