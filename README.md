@@ -50,13 +50,54 @@ The installer creates the local Python environment, installs reviewed Provider d
 checks prerequisites, and runs validation. If customer-specific Tunnel credentials are not yet
 configured, a safe local installation may finish as **PARTIAL**.
 
-To configure the customer Tunnel and start PLA:
+Download the Windows x64 Tunnel client from the official
+[OpenAI Tunnels page](https://platform.openai.com/settings/organization/tunnels) (recommended) or
+the [official tunnel-client releases](https://github.com/openai/tunnel-client/releases). Choose
+the `windows-amd64` ZIP and extract it into a dedicated directory next to PLA. The executable is
+named `tunnel-client.exe` (with a hyphen).
+
+Official setup links:
+
+- [Create or manage a Tunnel and copy its Tunnel ID](https://platform.openai.com/settings/organization/tunnels)
+- [Create a secret API key](https://platform.openai.com/api-keys)
+- [Secure MCP Tunnel documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+- [Organization roles](https://platform.openai.com/settings/organization/people/roles) and
+  [groups](https://platform.openai.com/settings/organization/people/groups), if Tunnel access must
+  be granted by an organization owner or RBAC administrator
+
+Creating or editing a Tunnel requires **Tunnels Read + Manage**. Running `tunnel-client` requires
+**Tunnels Read + Use**. Create the secret key under the intended Platform organization/project and
+use it as the runtime API key; do not use an organization admin key for PLA.
+
+Create the runtime-key text file in the same directory as `tunnel-client.exe`:
+
+~~~powershell
+$TunnelDir = Join-Path (Split-Path $PlaRoot -Parent) "tunnel-client"
+$TunnelExe = Join-Path $TunnelDir "tunnel-client.exe"
+$TunnelKey = Join-Path $TunnelDir "control-plane-api-key.txt"
+
+# Paste only this machine's runtime API key into Notepad, then save and close it.
+if (-not (Test-Path -LiteralPath $TunnelKey)) {
+    New-Item -ItemType File -Path $TunnelKey | Out-Null
+}
+notepad.exe $TunnelKey
+
+Test-Path -LiteralPath $TunnelExe
+Test-Path -LiteralPath $TunnelKey
+~~~
+
+The two `Test-Path` commands should both return `True`. Do not include quotes, a variable name,
+or `Bearer ` in the text file, and do not paste the key into PowerShell command history. Obtain
+the Tunnel ID and a runtime API key for this machine from the Tunnels page; do not use an admin
+key as the runtime credential.
+
+Then configure the customer Tunnel and start PLA:
 
 ~~~powershell
 .\install.ps1 `
   -TunnelId "tunnel_CUSTOMER_ID" `
-  -TunnelClient "C:\path\to\tunnel-client.exe" `
-  -TunnelCredential "C:\path\to\control-plane-api-key.txt" `
+  -TunnelClient $TunnelExe `
+  -TunnelCredential $TunnelKey `
   -PersistEnvironment `
   -Start
 ~~~
@@ -120,19 +161,74 @@ Set-Location $PlaRoot
 
 ### 4. 配置Secure MCP Tunnel并启动
 
-准备好这台电脑自己的Tunnel ID、tunnel-client和credential后执行：
+先打开下面的官方页面：
+
+- [创建或管理Tunnel并复制Tunnel ID](https://platform.openai.com/settings/organization/tunnels)
+- [创建Secret API Key](https://platform.openai.com/api-keys)
+- [Secure MCP Tunnel官方文档](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+- 如果页面提示权限不足，由组织Owner或RBAC管理员在[Roles](https://platform.openai.com/settings/organization/people/roles)
+  和[Groups](https://platform.openai.com/settings/organization/people/groups)中授权
+
+创建或编辑Tunnel需要`Tunnels Read + Manage`权限；运行`tunnel-client`需要
+`Tunnels Read + Use`权限。请先选对Platform组织/项目，再创建这台电脑专用的Secret Key，
+把它作为runtime API key使用；PLA不应使用Organization Admin Key。
+
+然后按以下步骤准备文件：
+
+1. 在OpenAI官方的[Tunnels管理页面](https://platform.openai.com/settings/organization/tunnels)
+   创建或选择这台电脑要使用的Tunnel，并复制以`tunnel_`开头的`Tunnel ID`。
+   再从[API Keys页面](https://platform.openai.com/api-keys)创建Secret Key；Secret Key通常只在
+   创建时完整显示一次，请立即安全保存。
+   如果页面暂时不能直接下载，也可以从OpenAI官方的
+   [tunnel-client Releases](https://github.com/openai/tunnel-client/releases)下载。
+2. 选择Windows x64对应的`windows-amd64` ZIP。不要下载`Source code`压缩包。
+3. 把ZIP解压到PLA目录旁边的独立`tunnel-client`目录。程序的实际文件名是
+   `tunnel-client.exe`（中间是连字符`-`，不是下划线`_`）。
+4. 在`tunnel-client.exe`同一目录创建`control-plane-api-key.txt`，文件中只放runtime API key
+   本身，不要加引号、变量名或`Bearer `前缀。
+
+下面的命令会确定两个文件的路径，并用记事本创建key文件：
+
+~~~powershell
+$TunnelDir = Join-Path (Split-Path $PlaRoot -Parent) "tunnel-client"
+$TunnelExe = Join-Path $TunnelDir "tunnel-client.exe"
+$TunnelKey = Join-Path $TunnelDir "control-plane-api-key.txt"
+
+# 在记事本中粘贴这台电脑专用的runtime API key，然后保存并关闭。
+# 不要把真实key直接写进PowerShell命令，以免进入命令历史。
+if (-not (Test-Path -LiteralPath $TunnelKey)) {
+    New-Item -ItemType File -Path $TunnelKey | Out-Null
+}
+notepad.exe $TunnelKey
+
+Test-Path -LiteralPath $TunnelExe
+Test-Path -LiteralPath $TunnelKey
+~~~
+
+最后两条命令都应返回`True`。目录结构应类似：
+
+~~~text
+AI_Tools\
+|-- plus-local-agent\
+|   `-- install.ps1
+`-- tunnel-client\
+    |-- tunnel-client.exe
+    `-- control-plane-api-key.txt
+~~~
+
+准备好这三个值后执行：
 
 ~~~powershell
 .\install.ps1 `
   -TunnelId "tunnel_CUSTOMER_ID" `
-  -TunnelClient "C:\path\to\tunnel-client.exe" `
-  -TunnelCredential "C:\path\to\control-plane-api-key.txt" `
+  -TunnelClient $TunnelExe `
+  -TunnelCredential $TunnelKey `
   -PersistEnvironment `
   -Start
 ~~~
 
 PLA会把本机Tunnel配置写入config/tunnel.local.yaml。这个文件不会进入Git。
-不要复制或复用其他电脑、其他用户的Tunnel ID或credential。
+不要复制或复用其他电脑、其他用户的Tunnel ID或credential，也不要把key文件放进PLA仓库或提交到Git。
 
 ### 5. 只检查环境，不执行安装
 
