@@ -268,7 +268,7 @@ ChatGPT可以来自同一台电脑，也可以来自手机、网页端或另一�
 | Area | What PLA provides |
 | --- | --- |
 | Local execution | Controlled file, process, Python, PowerShell and local program execution |
-| Browser | Independent browser runtime with semantic accessibility/ref-based interaction |
+| Browser | Independent browser runtime with persistent PLA-managed profiles, reusable login sessions, and semantic accessibility/ref-based interaction |
 | Computer Use | Windows UI Automation with restricted selector-targeted input fallbacks |
 | Documents | Reviewed DOCX, PDF and Markdown conversion capabilities |
 | Windows management | Observation, WinGet integration and narrowly controlled application operations |
@@ -279,6 +279,8 @@ ChatGPT可以来自同一台电脑，也可以来自手机、网页端或另一�
 | Workspaces | Deployment-local authorized roots separated from PLA source |
 | Git | Expected-HEAD, explicit-path staging, commits, tags and controlled pushes |
 | Runtime lifecycle | Independent lifecycle broker for bounded HTTP restart and health checks |
+
+The Browser Provider uses a PLA-managed persistent profile. After you sign in to a site inside that profile, later browser tasks can reuse the stored login state instead of starting from a fresh browser session each time. The PLA browser profile is separate from your normal Edge profile and does not directly inherit an already-running Edge session.
 
 ## Use ChatGPT anywhere
 
