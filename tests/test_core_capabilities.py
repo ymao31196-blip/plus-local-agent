@@ -55,13 +55,14 @@ def test_core_transaction_capabilities_are_registered_on_stable_surface():
             limit=20,
         )
 
-        assert result["match_count"] == 5
+        assert result["match_count"] == 6
         assert {item["id"] for item in result["capabilities"]} == {
             "core.transaction_create",
             "core.transaction_get",
             "core.transaction_checkpoint",
             "core.transaction_finalize",
             "core.transaction_invoke",
+            "core.transaction_complete_external",
         }
     finally:
         store.close()
@@ -257,6 +258,122 @@ def test_core_transaction_invoke_forwards_target_confirmation():
         evidence = invoked["data"]["transaction"]["steps"][0]["evidence"]
         assert evidence["requires_confirmation"] is True
         assert evidence["confirmation_supplied"] is True
+    finally:
+        store.close()
+
+
+def test_core_transaction_complete_external_uses_persisted_verifier():
+    registry, broker, store = _runtime()
+    action = CapabilityDescriptor(
+        id="fixture.external",
+        provider_id="fixture",
+        remote_name="external",
+        title="External Fixture",
+        description="Fixture that completes asynchronously.",
+        input_schema={"type": "object", "additionalProperties": False},
+        risk_level="write_local",
+        requires_transaction=True,
+        tags=("fixture", "external"),
+    )
+    status = CapabilityDescriptor(
+        id="fixture.external_status",
+        provider_id="fixture",
+        remote_name="external_status",
+        title="External Fixture Status",
+        description="Read-only external completion verifier.",
+        input_schema={
+            "type": "object",
+            "properties": {"launch_id": {"type": "string"}},
+            "required": ["launch_id"],
+            "additionalProperties": False,
+        },
+        risk_level="read",
+        tags=("fixture", "external", "status"),
+    )
+    registry.register_provider("fixture", [action, status], enabled=True)
+    launch_id = "a" * 32
+    broker.register_internal_handler(
+        "fixture.external",
+        lambda _args: {
+            "status": "external_pending",
+            "launch_id": launch_id,
+            "completion": {
+                "capability_id": "fixture.external_status",
+                "arguments": {"launch_id": launch_id},
+            },
+        },
+    )
+    broker.register_internal_handler(
+        "fixture.external_status",
+        lambda args: {
+            "status": "completed",
+            "launch_id": args["launch_id"],
+            "verified": True,
+        },
+    )
+
+    try:
+        created = asyncio.run(
+            broker.invoke(
+                "core.transaction_create",
+                {
+                    "goal": "complete one external action",
+                    "steps": [
+                        {
+                            "step_id": "external",
+                            "title": "External",
+                            "kind": "action",
+                        }
+                    ],
+                },
+            )
+        )["data"]
+
+        pending = asyncio.run(
+            broker.invoke(
+                "core.transaction_invoke",
+                {
+                    "transaction_id": created["transaction_id"],
+                    "expected_revision": created["revision"],
+                    "step_id": "external",
+                    "capability_id": "fixture.external",
+                    "arguments": {},
+                },
+            )
+        )["data"]
+        assert pending["status"] == "external_interaction_pending"
+        assert pending["completion_required"] is True
+        assert pending["transaction"]["steps"][0]["state"] == "running"
+
+        with pytest.raises(ValueError, match="completion gate"):
+            asyncio.run(
+                broker.invoke(
+                    "core.transaction_checkpoint",
+                    {
+                        "transaction_id": created["transaction_id"],
+                        "expected_revision": pending["transaction"]["revision"],
+                        "step_id": "external",
+                        "outcome": "succeeded",
+                        "summary": "manual bypass",
+                        "evidence": {},
+                    },
+                )
+            )
+
+        completed = asyncio.run(
+            broker.invoke(
+                "core.transaction_complete_external",
+                {
+                    "transaction_id": created["transaction_id"],
+                    "expected_revision": pending["transaction"]["revision"],
+                    "step_id": "external",
+                },
+            )
+        )["data"]
+        assert completed["status"] == "completed"
+        assert completed["transaction"]["steps"][0]["state"] == "succeeded"
+        evidence = completed["transaction"]["steps"][0]["evidence"]
+        assert evidence["completion_verifier_capability_id"] == "fixture.external_status"
     finally:
         store.close()
 

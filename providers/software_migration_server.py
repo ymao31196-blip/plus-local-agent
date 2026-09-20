@@ -666,6 +666,10 @@ def _launch_elevated_uninstaller(
         "software_query": software_query,
         "executable": executable,
         "argv": args,
+        "completion": {
+            "capability_id": "software-migration.elevated_uninstall_status",
+            "arguments": {"launch_id": launch_id},
+        },
     }
 
 
@@ -770,6 +774,10 @@ def _launch_elevated_winget_install(
         "target_directory": target,
         "executable": winget,
         "argv": args,
+        "completion": {
+            "capability_id": "software-migration.elevated_install_status",
+            "arguments": {"launch_id": launch_id},
+        },
     }
 
 

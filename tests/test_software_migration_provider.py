@@ -562,6 +562,10 @@ def test_launch_elevated_uninstaller_queues_only_for_ready_broker(
 
     assert result["status"] == "external_pending"
     assert result["broker_pid"] == 1234
+    assert result["completion"] == {
+        "capability_id": "software-migration.elevated_uninstall_status",
+        "arguments": {"launch_id": "d" * 32},
+    }
     assert request["kind"] == "registered_uninstaller"
     assert request["executable"] == r"C:\Program Files\Example App\uninstall.exe"
     assert request["args"] == ["/S"]
@@ -604,6 +608,10 @@ def test_launch_elevated_winget_install_queues_reviewed_request(
     )
     assert result["status"] == "external_pending"
     assert result["broker_pid"] == 4321
+    assert result["completion"] == {
+        "capability_id": "software-migration.elevated_install_status",
+        "arguments": {"launch_id": "e" * 32},
+    }
     assert request["kind"] == "winget_install"
     assert request["package_id"] == "Vendor.Example"
     assert request["target_directory"] == r"D:\Apps\Example App"

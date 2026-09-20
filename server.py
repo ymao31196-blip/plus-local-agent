@@ -94,6 +94,7 @@ from core_capabilities import register_core_transaction_capabilities
 from external_provider_runtime import ExternalProviderRuntime
 from external_observer_runtime import ExternalObserverRuntime
 from provider_runtime_capabilities import register_provider_runtime_capabilities
+from windows_action_capabilities import register_windows_action_capabilities
 from provider_doctor import provider_doctor as run_provider_doctor
 
 
@@ -139,6 +140,10 @@ register_provider_runtime_capabilities(
     EXTERNAL_PROVIDER_RUNTIME,
     EXTERNAL_OBSERVER_RUNTIME,
 )
+register_windows_action_capabilities(
+    CAPABILITY_REGISTRY,
+    CAPABILITY_BROKER,
+)
 
 
 @asynccontextmanager
@@ -152,7 +157,7 @@ async def _runtime_lifespan(_server):
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="1.5.3",
+    version="1.6.0",
     lifespan=_runtime_lifespan,
 )
 

@@ -159,6 +159,33 @@ def test_cancel_real_long_process_and_preserve_unrelated_process(store, tmp_path
         unrelated.wait(timeout=5)
 
 
+def test_cancel_real_process_kills_owned_descendants(store, tmp_path):
+    survivor = tmp_path / "descendant-survived"
+    child_script = (
+        "import pathlib,time;"
+        "time.sleep(2);"
+        f"pathlib.Path({str(survivor)!r}).write_text('bad')"
+    )
+    parent_script = (
+        "import pathlib,subprocess,sys,time;"
+        f"child=subprocess.Popen([sys.executable,'-c',{child_script!r}]);"
+        "pathlib.Path('descendant-started').write_text(str(child.pid));"
+        "time.sleep(30)"
+    )
+    task_id = store.submit({"tool": "run_process", "arguments": {
+        "program": sys.executable, "args": ["-c", parent_script],
+    }})["task_id"]
+    deadline = time.monotonic() + 5
+    while not (tmp_path / "descendant-started").exists() and time.monotonic() < deadline:
+        time.sleep(.01)
+    assert (tmp_path / "descendant-started").exists()
+    store.cancel(task_id)
+    record = finish(store, task_id)
+    assert record["status"] == "cancelled"
+    time.sleep(2.5)
+    assert not survivor.exists()
+
+
 def test_terminal_cancel_idempotent_and_missing(store):
     task_id = store.submit({"tool": "list_directory", "arguments": {}})["task_id"]
     record = finish(store, task_id)

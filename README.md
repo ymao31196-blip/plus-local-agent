@@ -267,7 +267,7 @@ ChatGPT可以来自同一台电脑，也可以来自手机、网页端或另一�
 
 | Area | What PLA provides |
 | --- | --- |
-| Local execution | Controlled file, process, Python, PowerShell and local program execution |
+| Local execution | Controlled file, process, Python and local program execution, plus allow-listed structured PowerShell diagnostics for processes, services, TCP/UDP endpoints, adapters, routing, IP-interface metrics/DHCP/MTU, IP/DNS configuration, bounded System/Application event logs, scheduled-task state, file signatures and workspace ACLs |
 | Browser | Independent browser runtime with persistent PLA-managed profiles, reusable login sessions, and semantic accessibility/ref-based interaction |
 | Computer Use | Windows UI Automation with restricted selector-targeted input fallbacks |
 | Documents | Reviewed DOCX, PDF and Markdown conversion capabilities |
@@ -281,6 +281,8 @@ ChatGPT可以来自同一台电脑，也可以来自手机、网页端或另一�
 | Runtime lifecycle | Independent lifecycle broker for bounded HTTP restart and health checks |
 
 The Browser Provider uses a PLA-managed persistent profile. After you sign in to a site inside that profile, later browser tasks can reuse the stored login state instead of starting from a fresh browser session each time. The PLA browser profile is separate from your normal Edge profile and does not directly inherit an already-running Edge session.
+
+System write operations use a separate `windows.*` capability boundary instead of expanding the generic PowerShell tool. `windows.flush_dns_cache` requires explicit `INVOKE` confirmation. `windows.service_control_preflight` is read-only and reports service state, dependent-service state, policy authorization, broker readiness and concrete blockers before any elevation request is created. `windows.service_control` additionally requires a transaction context and a deployment-local rule in `config/windows_actions.local.json` for the exact service and operation, so authorizing `restart` does not automatically authorize `stop`. Service actions are rechecked immediately before queueing and again by the Interactive Elevation Broker before UAC; disabled or unstable services, services that cannot stop, and stop/restart operations with active dependent services are rejected. The caller cannot supply an executable or command line. External-pending actions can declare a fixed read-only completion verifier. The Transaction Envelope validates that verifier immediately when the pending result is received, rejecting contracts that point to write, confirmation-gated, or transaction-gated capabilities. It then persists the accepted completion contract, prevents ordinary `succeeded` checkpoints from bypassing it, and exposes `core.transaction_complete_external`, which can only invoke the recorded verifier and marks the step successful after the verifier reports `completed`. Completion-gated running actions survive a PLA runtime restart as resumable `running` steps with a new transaction revision; ordinary running steps without a trusted completion contract are still recovered as `interrupted` and blocked. Windows service control and the elevated software migration flows use this Completion Gate. `windows.elevation_broker_restart` is a separate confirmed lifecycle action that refuses to restart a busy Broker and verifies process identity before replacement. Copy `config/windows_actions.example.json` when you intentionally want to add a service rule on one machine. The local policy file is ignored by Git and protected from normal PLA file access.
 
 ## Use ChatGPT anywhere
 
@@ -527,6 +529,7 @@ and customer workspace outputs are excluded from Git.
 1. **ChatGPT stays the Agent Brain.** PLA does not add a competing autonomous planner.
 2. **ChatGPT stays the UI.** PLA focuses on execution and safety rather than building another chat app.
 3. **Capabilities are reviewed and bounded.** Arbitrary shell execution is not the default integration model.
+   PowerShell remains a fixed cmdlet/parameter allowlist; diagnostic output is projected to bounded structured data, and task cancellation only terminates runtime-owned process trees.
 4. **Local state stays local.** Credentials, customer workspace roots and deployment configuration are not product source.
 5. **High-risk actions are explicit.** Confirmation, transactions, UAC and Git preconditions remain separate safety layers.
 6. **Providers are extensible without flattening security.** New MCP capabilities still pass through the same runtime policy boundary.

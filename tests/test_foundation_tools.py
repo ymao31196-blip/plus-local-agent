@@ -1,4 +1,5 @@
 import hashlib
+import socket
 import subprocess
 from pathlib import Path
 
@@ -697,6 +698,9 @@ def test_run_powershell_allowlisted_cmdlet_succeeds_on_windows(workspace):
     )
     assert result["status"] == "completed"
     assert result["returncode"] == 0
+    assert isinstance(result["data"], list)
+    assert result["data"][0]["Name"] == "a.txt"
+    assert result["data_truncated"] is False
     assert "a.txt" in result["stdout"]
 
 
@@ -749,6 +753,233 @@ def test_run_powershell_rejects_unlisted_parameter(workspace):
     })
     assert result.ok is False
     assert result.error["type"] == "PowerShellValidationError"
+
+
+def test_run_powershell_returns_structured_command_observation(workspace):
+    result = local_tools.run_powershell("Get-Command", {"Name": "python"})
+    assert result["status"] == "completed"
+    assert result["stderr"] == ""
+    assert result["data_truncated"] is False
+    assert isinstance(result["data"], list)
+    assert result["data"]
+    record = result["data"][0]
+    assert set(record) == {"Name", "CommandType", "Source", "Version"}
+    assert record["Name"].casefold().startswith("python")
+
+
+def test_run_powershell_clixml_error_is_normalized(workspace):
+    result = local_tools.run_powershell("Get-Process", {"Id": 2147483647})
+    assert result["status"] == "error"
+    assert "#< CLIXML" not in result["stderr"]
+    assert "Cannot find a process" in result["stderr"]
+
+
+def test_run_powershell_get_service_is_structured(workspace):
+    result = local_tools.run_powershell("Get-Service", {"Name": "EventLog"})
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    record = result["data"][0]
+    assert record["Name"] == "EventLog"
+    assert set(record) == {"Name", "DisplayName", "Status", "StartType"}
+
+
+def test_run_powershell_get_net_tcp_connection_local_port(workspace):
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        port = listener.getsockname()[1]
+        result = local_tools.run_powershell(
+            "Get-NetTCPConnection", {"LocalPort": port, "State": "Listen"}
+        )
+    finally:
+        listener.close()
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert any(
+        row["LocalPort"] == port and row["State"] == "Listen"
+        for row in result["data"]
+    )
+
+
+def test_run_powershell_get_net_udp_endpoint_local_port(workspace):
+    listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    listener.bind(("127.0.0.1", 0))
+    try:
+        port = listener.getsockname()[1]
+        result = local_tools.run_powershell(
+            "Get-NetUDPEndpoint", {"LocalPort": port}
+        )
+    finally:
+        listener.close()
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert any(row["LocalPort"] == port for row in result["data"])
+    assert set(result["data"][0]) == {"LocalAddress", "LocalPort", "OwningProcess"}
+
+
+def test_run_powershell_get_net_adapter_is_structured(workspace):
+    result = local_tools.run_powershell("Get-NetAdapter")
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {
+        "Name", "InterfaceDescription", "InterfaceIndex",
+        "Status", "MacAddress", "LinkSpeed",
+    }
+
+
+def test_run_powershell_get_net_ip_configuration_is_structured(workspace):
+    result = local_tools.run_powershell("Get-NetIPConfiguration")
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {
+        "InterfaceAlias", "InterfaceIndex", "IPv4Address", "IPv6Address",
+        "IPv4DefaultGateway", "IPv6DefaultGateway",
+    }
+    for row in result["data"]:
+        assert None not in row["IPv4Address"]
+        assert None not in row["IPv6Address"]
+        assert None not in row["IPv4DefaultGateway"]
+        assert None not in row["IPv6DefaultGateway"]
+
+
+def test_run_powershell_get_dns_client_server_address_is_structured(workspace):
+    result = local_tools.run_powershell(
+        "Get-DnsClientServerAddress", {"AddressFamily": "IPv4"}
+    )
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {
+        "InterfaceAlias", "InterfaceIndex", "AddressFamily", "ServerAddresses",
+    }
+    assert all(row["AddressFamily"] == "IPv4" for row in result["data"])
+
+
+@pytest.mark.parametrize("parameters", [
+    {"LocalPort": 65536},
+    {"RemotePort": 70000},
+    {"OwningProcess": 0},
+])
+def test_run_powershell_rejects_invalid_tcp_numeric_parameters(workspace, parameters):
+    result = execute_local_tool("run_powershell", {
+        "command": "Get-NetTCPConnection", "parameters": parameters,
+    })
+    assert result.ok is False
+    assert result.error["type"] == "PowerShellValidationError"
+
+
+def test_run_powershell_rejects_invalid_tcp_state(workspace):
+    result = execute_local_tool("run_powershell", {
+        "command": "Get-NetTCPConnection", "parameters": {"State": "DefinitelyNotAState"},
+    })
+    assert result.ok is False
+    assert result.error["type"] == "PowerShellValidationError"
+
+
+def test_run_powershell_rejects_invalid_address_family(workspace):
+    result = execute_local_tool("run_powershell", {
+        "command": "Get-DnsClientServerAddress",
+        "parameters": {"AddressFamily": "IPX"},
+    })
+    assert result.ok is False
+    assert result.error["type"] == "PowerShellValidationError"
+
+
+def test_run_powershell_get_net_route_is_structured(workspace):
+    result = local_tools.run_powershell(
+        "Get-NetRoute", {"AddressFamily": "IPv4"}
+    )
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {
+        "InterfaceIndex", "AddressFamily", "DestinationPrefix",
+        "NextHop", "RouteMetric", "State",
+    }
+    assert all(row["AddressFamily"] == "IPv4" for row in result["data"])
+
+
+def test_run_powershell_get_net_ip_interface_is_structured(workspace):
+    result = local_tools.run_powershell(
+        "Get-NetIPInterface", {"AddressFamily": "IPv4"}
+    )
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {
+        "InterfaceAlias", "InterfaceIndex", "AddressFamily",
+        "ConnectionState", "Dhcp", "AutomaticMetric",
+        "InterfaceMetric", "NlMtu",
+    }
+    assert all(row["AddressFamily"] == "IPv4" for row in result["data"])
+
+
+def test_run_powershell_get_win_event_is_bounded_and_structured(workspace):
+    result = local_tools.run_powershell(
+        "Get-WinEvent", {"LogName": "Application", "MaxEvents": 2}
+    )
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert 0 < len(result["data"]) <= 2
+    assert set(result["data"][0]) == {
+        "Id", "ProviderName", "LevelDisplayName", "TimeCreated", "Message",
+    }
+    assert all(len(row["Message"]) <= 1000 for row in result["data"])
+
+
+@pytest.mark.parametrize("parameters", [
+    {"LogName": "Security", "MaxEvents": 1},
+    {"LogName": "Application", "MaxEvents": 51},
+    {"LogName": "System", "MaxEvents": 0},
+])
+def test_run_powershell_rejects_unreviewed_win_event_requests(workspace, parameters):
+    result = execute_local_tool("run_powershell", {
+        "command": "Get-WinEvent", "parameters": parameters,
+    })
+    assert result.ok is False
+    assert result.error["type"] == "PowerShellValidationError"
+
+
+def test_run_powershell_get_scheduled_task_is_structured(workspace):
+    result = local_tools.run_powershell(
+        "Get-ScheduledTask", {"TaskName": "ScheduledDefrag"}
+    )
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {"TaskName", "TaskPath", "State"}
+    assert result["data"][0]["TaskName"] == "ScheduledDefrag"
+
+
+def test_run_powershell_get_authenticode_signature_is_workspace_bounded(workspace):
+    target = workspace / "sample.ps1"
+    target.write_text("Write-Output 'ok'\n", encoding="utf-8")
+    result = local_tools.run_powershell(
+        "Get-AuthenticodeSignature", {"FilePath": "sample.ps1"}
+    )
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {
+        "Path", "Status", "StatusMessage",
+        "SignerSubject", "SignerIssuer", "SignerThumbprint",
+    }
+    assert result["data"][0]["Path"].endswith("sample.ps1")
+
+
+def test_run_powershell_get_acl_is_workspace_bounded(workspace):
+    target = workspace / "acl.txt"
+    target.write_text("ok", encoding="utf-8")
+    result = local_tools.run_powershell("Get-Acl", {"LiteralPath": "acl.txt"})
+    assert result["status"] == "completed"
+    assert result["data_truncated"] is False
+    assert result["data"]
+    assert set(result["data"][0]) == {"Path", "Owner", "Access"}
+    assert isinstance(result["data"][0]["Access"], list)
 
 
 def test_run_powershell_timeout_is_structured(workspace, monkeypatch):

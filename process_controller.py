@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 from threading import Event, Thread
-from runtime_context import CURRENT, checkpoint
+from runtime_context import CURRENT, checkpoint, terminate_owned_process_tree
 
 
 class CapturedText(str):
@@ -93,8 +93,7 @@ def controlled_run(command, *, cwd, timeout, shell=False, env=None,
                 process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 timed_out = True
-                process.kill()
-                process.wait(timeout=5)
+                terminate_owned_process_tree(process)
             deadline = time.monotonic() + 1
             for reader in readers:
                 reader.join(max(0, deadline - time.monotonic()))
@@ -109,8 +108,7 @@ def controlled_run(command, *, cwd, timeout, shell=False, env=None,
         finally:
             stop.set()
             if process.poll() is None:
-                process.kill()
-                process.wait(timeout=5)
+                terminate_owned_process_tree(process)
             for reader in readers:
                 if reader.ident is not None:
                     reader.join(timeout=1)

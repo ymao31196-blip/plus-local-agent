@@ -258,6 +258,74 @@ def test_restart_marks_running_step_interrupted(tmp_path):
         second.close()
 
 
+def test_restart_preserves_resumable_external_pending_step(tmp_path):
+    db_path = tmp_path / "transactions.sqlite3"
+    first = ActionTransactionStore(db_path=db_path)
+    record = first.create(
+        "external action",
+        [{"step_id": "external", "title": "External", "kind": "action"}],
+    )
+    record = first.checkpoint(
+        record["transaction_id"],
+        record["revision"],
+        "external",
+        "started",
+        "external action started",
+        {"capability_id": "fixture.external"},
+    )
+    record = first.checkpoint(
+        record["transaction_id"],
+        record["revision"],
+        "external",
+        "external_pending",
+        "waiting for external completion",
+        {
+            "capability_id": "fixture.external",
+            "external_completion_required": True,
+            "completion_contract": {
+                "capability_id": "fixture.external_status",
+                "arguments": {"launch_id": "a" * 32},
+            },
+        },
+    )
+    tx = record["transaction_id"]
+    assert record["revision"] == 3
+    first.close()
+
+    second = ActionTransactionStore(db_path=db_path)
+    try:
+        recovered = second.get(tx)
+        step = recovered["steps"][0]
+
+        assert recovered["status"] == "active"
+        assert recovered["revision"] == 4
+        assert step["state"] == "running"
+        assert step["finished_at"] is None
+        assert step["evidence"]["external_completion_required"] is True
+        assert step["evidence"]["completion_contract"] == {
+            "capability_id": "fixture.external_status",
+            "arguments": {"launch_id": "a" * 32},
+        }
+        assert step["evidence"]["runtime_recovered"] is True
+        assert step["evidence"]["runtime_recovery_count"] == 1
+        event = recovered["events"][-1]
+        assert event["type"] == "runtime_recovery"
+        assert event["data"]["reason"] == "external_pending_preserved"
+        assert event["data"]["preserved_external_count"] == 1
+
+        with pytest.raises(ValueError, match="completion gate"):
+            second.checkpoint(
+                tx,
+                recovered["revision"],
+                "external",
+                "succeeded",
+                "manual bypass after restart",
+                {},
+            )
+    finally:
+        second.close()
+
+
 def test_store_survives_normal_reopen(tmp_path):
     db_path = tmp_path / "transactions.sqlite3"
     first = ActionTransactionStore(db_path=db_path)

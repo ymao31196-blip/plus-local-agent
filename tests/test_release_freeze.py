@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.5.3"
+    assert server.mcp.version == "1.6.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
@@ -60,7 +60,7 @@ def test_release_version_and_provider_catalog():
         include_unavailable=True,
         limit=100,
     )
-    assert core_caps["match_count"] == 15
+    assert core_caps["match_count"] == 16
     assert {item["id"] for item in core_caps["capabilities"]} == {
         "core.workspace_roots_get",
         "core.workspace_root_upsert",
@@ -70,6 +70,7 @@ def test_release_version_and_provider_catalog():
         "core.transaction_checkpoint",
         "core.transaction_finalize",
         "core.transaction_invoke",
+        "core.transaction_complete_external",
         "core.git_tag",
         "core.git_push",
         "core.event_query",
@@ -78,6 +79,29 @@ def test_release_version_and_provider_catalog():
         "core.gate_status",
         "core.gate_decision_query",
     }
+
+    windows_caps = server.CAPABILITY_REGISTRY.search(
+        "",
+        provider_id="windows",
+        include_unavailable=True,
+        limit=20,
+    )
+    assert windows_caps["match_count"] == 6
+    assert {item["id"] for item in windows_caps["capabilities"]} == {
+        "windows.action_status",
+        "windows.flush_dns_cache",
+        "windows.service_control_preflight",
+        "windows.service_control",
+        "windows.service_control_status",
+        "windows.elevation_broker_restart",
+    }
+    service_control = next(
+        item
+        for item in windows_caps["capabilities"]
+        if item["id"] == "windows.service_control"
+    )
+    assert service_control["requires_confirmation"] is True
+    assert service_control["requires_transaction"] is True
 
     release_caps = server.CAPABILITY_REGISTRY.search(
         "release",
@@ -108,6 +132,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.5.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.5.1.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.5.3.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v1.6.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()

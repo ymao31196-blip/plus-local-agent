@@ -31,7 +31,10 @@ STEP_STATES = {
     "skipped",
     "interrupted",
 }
-OUTCOMES = {"started", "succeeded", "failed", "verified", "rolled_back", "skipped"}
+OUTCOMES = {
+    "started", "succeeded", "failed", "verified", "rolled_back", "skipped",
+    "external_pending", "external_verified",
+}
 DECISIONS = {"commit", "abort", "rolled_back"}
 _STEP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 MAX_STEPS = 100
@@ -245,31 +248,94 @@ class ActionTransactionStore:
             for row in rows:
                 steps = json.loads(row["steps"])
                 changed = False
+                interrupted_count = 0
+                preserved_external_count = 0
+                recovered_at = _now()
+
                 for step in steps:
-                    if step.get("state") == "running":
-                        step["state"] = "interrupted"
-                        step["finished_at"] = _now()
+                    if step.get("state") != "running":
+                        continue
+
+                    evidence = step.get("evidence")
+                    if not isinstance(evidence, dict):
+                        evidence = {}
+                    can_resume_external = (
+                        step.get("kind") == "action"
+                        and evidence.get("external_completion_required") is True
+                        and isinstance(evidence.get("completion_contract"), dict)
+                    )
+                    if can_resume_external:
+                        recovery_count = evidence.get("runtime_recovery_count", 0)
+                        if (
+                            not isinstance(recovery_count, int)
+                            or isinstance(recovery_count, bool)
+                            or recovery_count < 0
+                        ):
+                            recovery_count = 0
+                        evidence = {
+                            **evidence,
+                            "runtime_recovered": True,
+                            "runtime_recovered_at": recovered_at,
+                            "runtime_recovery_count": recovery_count + 1,
+                        }
+                        step["evidence"] = evidence
                         step["summary"] = (
-                            "Runtime restarted while this step was running; "
-                            "external side effects are unknown and must be inspected."
+                            "Runtime restarted while awaiting external completion; "
+                            "the recorded read-only completion verifier remains required."
                         )
+                        preserved_external_count += 1
                         changed = True
+                        continue
+
+                    step["state"] = "interrupted"
+                    step["finished_at"] = recovered_at
+                    step["summary"] = (
+                        "Runtime restarted while this step was running; "
+                        "external side effects are unknown and must be inspected."
+                    )
+                    interrupted_count += 1
+                    changed = True
+
                 if changed:
                     revision = row["revision"] + 1
+                    next_status = (
+                        "blocked"
+                        if interrupted_count
+                        else (
+                            row["status"]
+                            if row["status"] != "planned"
+                            else "active"
+                        )
+                    )
                     self._db.execute(
-                        "UPDATE action_transactions SET status='blocked',revision=?,updated_at=?,steps=? "
+                        "UPDATE action_transactions SET status=?,revision=?,updated_at=?,steps=? "
                         "WHERE transaction_id=?",
                         (
+                            next_status,
                             revision,
-                            _now(),
+                            recovered_at,
                             json.dumps(steps, ensure_ascii=False),
                             row["transaction_id"],
                         ),
                     )
+                    reason = (
+                        "running_step_interrupted"
+                        if interrupted_count and not preserved_external_count
+                        else (
+                            "external_pending_preserved"
+                            if preserved_external_count and not interrupted_count
+                            else "mixed_running_steps_recovered"
+                        )
+                    )
                     self._event(
                         row["transaction_id"],
                         "runtime_recovery",
-                        {"status": "blocked", "reason": "running_step_interrupted"},
+                        {
+                            "status": next_status,
+                            "reason": reason,
+                            "interrupted_count": interrupted_count,
+                            "preserved_external_count": preserved_external_count,
+                        },
                     )
 
     def create(
@@ -384,9 +450,39 @@ class ActionTransactionStore:
                 step["state"] = "running"
                 step["started_at"] = now
                 next_status = "active"
-            elif outcome == "succeeded":
+            elif outcome == "external_pending":
+                if step["kind"] != "action" or previous != "running":
+                    raise ValueError(
+                        "external_pending is only valid for running action steps"
+                    )
+                if (
+                    evidence.get("external_completion_required") is not True
+                    or not isinstance(evidence.get("completion_contract"), dict)
+                ):
+                    raise ValueError(
+                        "external_pending requires a persisted completion contract"
+                    )
+                step["state"] = "running"
+                next_status = "active"
+            elif outcome in {"succeeded", "external_verified"}:
                 if step["kind"] != "action" or previous not in {"pending", "running"}:
-                    raise ValueError("succeeded is only valid for pending/running action steps")
+                    raise ValueError(
+                        f"{outcome} is only valid for pending/running action steps"
+                    )
+                pending_evidence = step.get("evidence") or {}
+                completion_required = (
+                    previous == "running"
+                    and pending_evidence.get("external_completion_required") is True
+                )
+                if outcome == "succeeded" and completion_required:
+                    raise ValueError(
+                        "External-pending action requires the completion gate"
+                    )
+                if outcome == "external_verified":
+                    if previous != "running" or not completion_required:
+                        raise ValueError(
+                            "external_verified requires a running external-pending action"
+                        )
                 step["state"] = "succeeded"
                 step["started_at"] = step["started_at"] or now
                 step["finished_at"] = now

@@ -311,6 +311,7 @@ class RootPolicy:
     _DATABASE_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
     _PLA_PRIVATE_FILES = frozenset({
         ("config", "workspaces.local.yaml"),
+        ("config", "windows_actions.local.json"),
     })
 
     def __init__(self, roots: dict[str, RootDefinition]) -> None:

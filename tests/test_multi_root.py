@@ -221,6 +221,7 @@ def test_pla_apply_changeset(roots):
     ".git/config", "state/tasks.sqlite3", "cache/item", "tmp/item",
     "__pycache__/source.pyc", "auth/credential.json", "auth/token.secret",
     "runtime.sqlite3", "config/workspaces.local.yaml",
+    "config/windows_actions.local.json",
 ])
 def test_pla_protected_paths_cannot_be_written(roots, path):
     _, pla = roots
@@ -231,7 +232,7 @@ def test_pla_protected_paths_cannot_be_written(roots, path):
 
 @pytest.mark.parametrize("path", [
     ".git/config", "state/tasks.sqlite3", "auth/credential.json",
-    "config/workspaces.local.yaml",
+    "config/workspaces.local.yaml", "config/windows_actions.local.json",
 ])
 def test_pla_private_paths_cannot_be_read(roots, path):
     _, pla = roots

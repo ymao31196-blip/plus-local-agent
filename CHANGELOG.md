@@ -2,6 +2,39 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.6.0 - 2026-09-20
+
+### Added
+
+- Structured read-only Windows diagnostics for TCP/UDP endpoints, adapters, IP/DNS/route/interface state, services, bounded event logs, scheduled tasks, Authenticode signatures, and ACLs.
+- Governed `windows.*` action domain with DNS cache flush, service-control preflight/control/status, and controlled Elevation Broker restart.
+- Deployment-local `config/windows_actions.local.json` policy with tracked empty example configuration.
+- `core.transaction_complete_external` and persisted completion contracts for external-pending transaction actions.
+
+### Changed
+
+- Reviewed PowerShell commands now return structured JSON observations and normalized CLIXML errors.
+- Runtime cancellation/timeout terminates the runtime-owned process tree instead of only the direct child.
+- Windows service actions are rechecked before queueing and again inside the Elevation Broker before UAC.
+- Elevated software-migration install/uninstall flows use the shared External Completion Gate.
+- Completion-gated running actions survive PLA HTTP restart as resumable running steps; ordinary unknown running actions remain interrupted and blocked.
+- README documents the existing persistent Browser Provider profile and the v1.6.0 Windows action boundary.
+
+### Security
+
+- Generic PowerShell remains non-arbitrary; system writes are isolated behind reviewed `windows.*` capabilities.
+- Service control requires explicit confirmation, transaction context, and an exact machine-local service/operation authorization.
+- Completion verifiers are validated immediately and must be read-only with no confirmation or transaction requirement.
+- External-pending steps cannot be manually checkpointed as succeeded when a completion contract is present.
+- Elevation Broker restart verifies process identity and refuses to replace a broker handling an active elevated action.
+
+### Verified
+
+- Full v1.6.0 split regression: **602 / 602 passed**.
+- Python compilation checks passed for the modified runtime and provider modules.
+- Loaded-runtime E2E verified the six `windows.*` capabilities, six core transaction capabilities, structured service preflight, HTTP lifecycle restart, Elevation Broker replacement, and software-migration rediscovery.
+- No DNS flush, Windows service state change, software installation, or software uninstallation was performed during release validation.
+
 ## 1.5.3 - 2026-09-15
 
 ### Added

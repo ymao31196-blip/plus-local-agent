@@ -162,6 +162,34 @@ def _decode_powershell_output(value: str | bytes | None) -> str:
     return value.decode("utf-8", errors="replace")
 
 
+POWERSHELL_XML_ESCAPE = re.compile(r"_x([0-9A-Fa-f]{4})_")
+
+
+def _normalize_powershell_stderr(value: str) -> str:
+    """Extract readable PowerShell error-stream text from CLIXML when possible."""
+    if not value.startswith("#< CLIXML"):
+        return value
+    _, separator, payload = value.partition("\n")
+    if not separator:
+        return value
+    try:
+        root = ET.fromstring(payload.strip())
+    except ET.ParseError:
+        return value
+    messages: list[str] = []
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1]
+        if tag != "S" or element.attrib.get("S") != "Error" or not element.text:
+            continue
+        decoded = POWERSHELL_XML_ESCAPE.sub(
+            lambda match: chr(int(match.group(1), 16)),
+            element.text,
+        ).rstrip()
+        if decoded:
+            messages.append(decoded)
+    return "\n".join(messages)
+
+
 def _remove_cached_bytecode(target: Path) -> None:
     """Avoid stale pyc files after rapid same-size Python source edits."""
     if target.suffix != ".py":
@@ -1786,14 +1814,47 @@ POWERSHELL_PARAMETER_POLICY: dict[str, dict[str, str]] = {
         "NotMatch": "bool",
     },
     "Get-FileHash": {"LiteralPath": "path", "Algorithm": "hash_algorithm"},
-    "Get-Process": {"Name": "str", "Id": "int"},
+    "Get-Process": {"Name": "str", "Id": "pid"},
     "Get-Command": {"Name": "str"},
     "Get-Location": {},
     "Resolve-Path": {"LiteralPath": "path"},
     "Get-Date": {"Date": "str", "Format": "str"},
+    "Get-NetTCPConnection": {
+        "LocalPort": "port", "RemotePort": "port", "OwningProcess": "pid",
+        "State": "tcp_state",
+    },
+    "Get-Service": {"Name": "str"},
+    "Get-NetUDPEndpoint": {"LocalPort": "port", "OwningProcess": "pid"},
+    "Get-NetAdapter": {"Name": "str"},
+    "Get-NetIPConfiguration": {
+        "InterfaceAlias": "str", "InterfaceIndex": "positive_int",
+    },
+    "Get-DnsClientServerAddress": {
+        "InterfaceAlias": "str", "InterfaceIndex": "positive_int",
+        "AddressFamily": "address_family",
+    },
+    "Get-NetRoute": {
+        "InterfaceIndex": "positive_int", "AddressFamily": "address_family",
+    },
+    "Get-NetIPInterface": {
+        "InterfaceAlias": "str", "InterfaceIndex": "positive_int",
+        "AddressFamily": "address_family",
+    },
+    "Get-WinEvent": {"LogName": "event_log", "MaxEvents": "event_count"},
+    "Get-ScheduledTask": {"TaskName": "str", "TaskPath": "str"},
+    "Get-AuthenticodeSignature": {"FilePath": "path"},
+    "Get-Acl": {"LiteralPath": "path"},
+}
+
+POWERSHELL_TCP_STATES = {
+    "Bound", "Closed", "CloseWait", "Closing", "DeleteTCB", "Established",
+    "FinWait1", "FinWait2", "LastAck", "Listen", "SynReceived", "SynSent", "TimeWait",
 }
 
 POWERSHELL_SCRIPT = """$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$VerbosePreference = 'SilentlyContinue'
+$InformationPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
 [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
 $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:PLUS_LOCAL_AGENT_PS_PAYLOAD))
@@ -1801,20 +1862,262 @@ $payload = $json | ConvertFrom-Json
 $parameters = @{}
 $payload.parameters.psobject.Properties | ForEach-Object { $parameters[$_.Name] = $_.Value }
 $result = switch ($payload.command) {
-    'Get-ChildItem' { Get-ChildItem @parameters }
-    'Get-Item' { Get-Item @parameters }
-    'Test-Path' { Test-Path @parameters }
-    'Get-Content' { Get-Content @parameters }
-    'Select-String' { Select-String @parameters }
-    'Get-FileHash' { Get-FileHash @parameters }
-    'Get-Process' { Get-Process @parameters }
-    'Get-Command' { Get-Command @parameters }
-    'Get-Location' { Get-Location @parameters }
-    'Resolve-Path' { Resolve-Path @parameters }
-    'Get-Date' { Get-Date @parameters }
+    'Get-ChildItem' {
+        Get-ChildItem @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                FullName = $_.FullName
+                Length = if ($_.PSIsContainer) { $null } else { $_.Length }
+                LastWriteTimeUtc = $_.LastWriteTimeUtc.ToString('o')
+                IsContainer = [bool]$_.PSIsContainer
+            }
+        }
+    }
+    'Get-Item' {
+        Get-Item @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                FullName = $_.FullName
+                Length = if ($_.PSIsContainer) { $null } else { $_.Length }
+                LastWriteTimeUtc = $_.LastWriteTimeUtc.ToString('o')
+                IsContainer = [bool]$_.PSIsContainer
+            }
+        }
+    }
+    'Test-Path' { [pscustomobject]@{ Exists = [bool](Test-Path @parameters) } }
+    'Get-Content' {
+        $value = Get-Content @parameters
+        if ($parameters.ContainsKey('Raw') -and $parameters['Raw']) {
+            [pscustomobject]@{ Content = [string]$value }
+        } else {
+            [pscustomobject]@{ Content = @($value) }
+        }
+    }
+    'Select-String' {
+        Select-String @parameters | ForEach-Object {
+            [pscustomobject]@{ Path = $_.Path; LineNumber = $_.LineNumber; Line = $_.Line }
+        }
+    }
+    'Get-FileHash' {
+        Get-FileHash @parameters | ForEach-Object {
+            [pscustomobject]@{ Path = $_.Path; Algorithm = $_.Algorithm; Hash = $_.Hash }
+        }
+    }
+    'Get-Process' {
+        Get-Process @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Id = $_.Id
+                ProcessName = $_.ProcessName
+                CPU = $_.CPU
+                WorkingSet64 = $_.WorkingSet64
+            }
+        }
+    }
+    'Get-Command' {
+        Get-Command @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                CommandType = [string]$_.CommandType
+                Source = $_.Source
+                Version = [string]$_.Version
+            }
+        }
+    }
+    'Get-Location' { [pscustomobject]@{ Path = [string](Get-Location).Path } }
+    'Resolve-Path' {
+        Resolve-Path @parameters | ForEach-Object {
+            [pscustomobject]@{ Path = $_.Path; ProviderPath = $_.ProviderPath }
+        }
+    }
+    'Get-Date' { [pscustomobject]@{ Value = [string](Get-Date @parameters) } }
+    'Get-NetTCPConnection' {
+        Get-NetTCPConnection @parameters | ForEach-Object {
+            [pscustomobject]@{
+                LocalAddress = $_.LocalAddress
+                LocalPort = $_.LocalPort
+                RemoteAddress = $_.RemoteAddress
+                RemotePort = $_.RemotePort
+                State = [string]$_.State
+                OwningProcess = $_.OwningProcess
+            }
+        }
+    }
+    'Get-Service' {
+        Get-Service @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                DisplayName = $_.DisplayName
+                Status = [string]$_.Status
+                StartType = [string]$_.StartType
+            }
+        }
+    }
+    'Get-NetUDPEndpoint' {
+        Get-NetUDPEndpoint @parameters | ForEach-Object {
+            [pscustomobject]@{
+                LocalAddress = $_.LocalAddress
+                LocalPort = $_.LocalPort
+                OwningProcess = $_.OwningProcess
+            }
+        }
+    }
+    'Get-NetAdapter' {
+        Get-NetAdapter @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                InterfaceDescription = $_.InterfaceDescription
+                InterfaceIndex = $_.ifIndex
+                Status = [string]$_.Status
+                MacAddress = $_.MacAddress
+                LinkSpeed = [string]$_.LinkSpeed
+            }
+        }
+    }
+    'Get-NetIPConfiguration' {
+        Get-NetIPConfiguration @parameters | ForEach-Object {
+            [pscustomobject]@{
+                InterfaceAlias = $_.InterfaceAlias
+                InterfaceIndex = $_.InterfaceIndex
+                IPv4Address = @($_.IPv4Address | ForEach-Object {
+                    if ($_.IPAddress) { $_.IPAddress }
+                })
+                IPv6Address = @($_.IPv6Address | ForEach-Object {
+                    if ($_.IPAddress) { $_.IPAddress }
+                })
+                IPv4DefaultGateway = @($_.IPv4DefaultGateway | ForEach-Object {
+                    if ($_.NextHop) { $_.NextHop }
+                })
+                IPv6DefaultGateway = @($_.IPv6DefaultGateway | ForEach-Object {
+                    if ($_.NextHop) { $_.NextHop }
+                })
+            }
+        }
+    }
+    'Get-DnsClientServerAddress' {
+        Get-DnsClientServerAddress @parameters | ForEach-Object {
+            [pscustomobject]@{
+                InterfaceAlias = $_.InterfaceAlias
+                InterfaceIndex = $_.InterfaceIndex
+                AddressFamily = if ([int]$_.AddressFamily -eq 2) {
+                    'IPv4'
+                } elseif ([int]$_.AddressFamily -eq 23) {
+                    'IPv6'
+                } else {
+                    [string]$_.AddressFamily
+                }
+                ServerAddresses = @($_.ServerAddresses)
+            }
+        }
+    }
+    'Get-NetRoute' {
+        Get-NetRoute @parameters | ForEach-Object {
+            [pscustomobject]@{
+                InterfaceIndex = $_.InterfaceIndex
+                AddressFamily = if ([int]$_.AddressFamily -eq 2) {
+                    'IPv4'
+                } elseif ([int]$_.AddressFamily -eq 23) {
+                    'IPv6'
+                } else {
+                    [string]$_.AddressFamily
+                }
+                DestinationPrefix = $_.DestinationPrefix
+                NextHop = $_.NextHop
+                RouteMetric = $_.RouteMetric
+                State = [string]$_.State
+            }
+        }
+    }
+    'Get-NetIPInterface' {
+        Get-NetIPInterface @parameters | ForEach-Object {
+            [pscustomobject]@{
+                InterfaceAlias = $_.InterfaceAlias
+                InterfaceIndex = $_.InterfaceIndex
+                AddressFamily = if ([int]$_.AddressFamily -eq 2) {
+                    'IPv4'
+                } elseif ([int]$_.AddressFamily -eq 23) {
+                    'IPv6'
+                } else {
+                    [string]$_.AddressFamily
+                }
+                ConnectionState = [string]$_.ConnectionState
+                Dhcp = [string]$_.Dhcp
+                AutomaticMetric = [string]$_.AutomaticMetric
+                InterfaceMetric = $_.InterfaceMetric
+                NlMtu = $_.NlMtu
+            }
+        }
+    }
+    'Get-WinEvent' {
+        Get-WinEvent @parameters | ForEach-Object {
+            $message = [string]$_.Message
+            if ($message.Length -gt 1000) {
+                $message = $message.Substring(0, 1000)
+            }
+            [pscustomobject]@{
+                Id = $_.Id
+                ProviderName = $_.ProviderName
+                LevelDisplayName = $_.LevelDisplayName
+                TimeCreated = if ($_.TimeCreated) {
+                    $_.TimeCreated.ToUniversalTime().ToString('o')
+                } else {
+                    $null
+                }
+                Message = $message
+            }
+        }
+    }
+    'Get-ScheduledTask' {
+        Get-ScheduledTask @parameters | ForEach-Object {
+            [pscustomobject]@{
+                TaskName = $_.TaskName
+                TaskPath = $_.TaskPath
+                State = [string]$_.State
+            }
+        }
+    }
+    'Get-AuthenticodeSignature' {
+        Get-AuthenticodeSignature @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Path = $_.Path
+                Status = [string]$_.Status
+                StatusMessage = $_.StatusMessage
+                SignerSubject = if ($_.SignerCertificate) {
+                    $_.SignerCertificate.Subject
+                } else {
+                    $null
+                }
+                SignerIssuer = if ($_.SignerCertificate) {
+                    $_.SignerCertificate.Issuer
+                } else {
+                    $null
+                }
+                SignerThumbprint = if ($_.SignerCertificate) {
+                    $_.SignerCertificate.Thumbprint
+                } else {
+                    $null
+                }
+            }
+        }
+    }
+    'Get-Acl' {
+        Get-Acl @parameters | ForEach-Object {
+            [pscustomobject]@{
+                Path = $_.Path
+                Owner = $_.Owner
+                Access = @($_.Access | ForEach-Object {
+                    [pscustomobject]@{
+                        IdentityReference = [string]$_.IdentityReference
+                        AccessControlType = [string]$_.AccessControlType
+                        FileSystemRights = [string]$_.FileSystemRights
+                        IsInherited = [bool]$_.IsInherited
+                    }
+                })
+            }
+        }
+    }
     default { throw 'Command rejected by runtime allowlist' }
 }
-$result | Out-String -Width 240
+ConvertTo-Json -InputObject @($result) -Depth 4 -Compress
 """
 
 
@@ -1843,6 +2146,23 @@ def _validate_powershell_parameters(
                     f"{name} must be a non-negative integer"
                 )
             result[name] = value
+        elif kind == "positive_int":
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise PowerShellValidationError(f"{name} must be a positive integer")
+            result[name] = value
+        elif kind == "pid":
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise PowerShellValidationError(f"{name} must be a positive process id")
+            result[name] = value
+        elif kind == "port":
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 0
+                or value > 65535
+            ):
+                raise PowerShellValidationError(f"{name} must be an integer from 0 to 65535")
+            result[name] = value
         elif kind == "str":
             if not isinstance(value, str):
                 raise PowerShellValidationError(f"{name} must be a string")
@@ -1858,6 +2178,33 @@ def _validate_powershell_parameters(
         elif kind == "hash_algorithm":
             if value not in {"SHA256", "SHA384", "SHA512"}:
                 raise PowerShellValidationError("Algorithm is not allowed")
+            result[name] = value
+        elif kind == "tcp_state":
+            if value not in POWERSHELL_TCP_STATES:
+                raise PowerShellValidationError(
+                    "State must be one of: " + ", ".join(sorted(POWERSHELL_TCP_STATES))
+                )
+            result[name] = value
+        elif kind == "address_family":
+            if value not in {"IPv4", "IPv6"}:
+                raise PowerShellValidationError("AddressFamily must be IPv4 or IPv6")
+            result[name] = value
+        elif kind == "event_log":
+            if value not in {"Application", "System"}:
+                raise PowerShellValidationError(
+                    "LogName must be Application or System"
+                )
+            result[name] = value
+        elif kind == "event_count":
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value <= 0
+                or value > 50
+            ):
+                raise PowerShellValidationError(
+                    "MaxEvents must be an integer from 1 to 50"
+                )
             result[name] = value
     return result
 
@@ -1904,12 +2251,32 @@ def run_powershell(
             process_args, cwd=working_directory, capture_output=True,
             timeout=timeout, shell=False, env=child_env,
         )
-        stdout = truncate_text(_decode_powershell_output(completed.stdout))
-        stderr = truncate_text(_decode_powershell_output(completed.stderr))
+        raw_stdout = _decode_powershell_output(completed.stdout)
+        raw_stderr = _normalize_powershell_stderr(
+            _decode_powershell_output(completed.stderr)
+        )
+        data = None
+        data_truncated = False
+        if completed.returncode == 0:
+            try:
+                parsed = json.loads(raw_stdout) if raw_stdout.strip() else []
+                encoded = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+                if len(encoded) <= MAX_TEXT_CHARACTERS:
+                    data = parsed
+                else:
+                    data_truncated = True
+            except json.JSONDecodeError as exc:
+                raw_stderr = (raw_stderr + "\n" if raw_stderr else "") + (
+                    f"Structured PowerShell output decode failed: {exc}"
+                )
+        stdout = truncate_text(raw_stdout)
+        stderr = truncate_text(raw_stderr)
         return {
             "status": "completed" if completed.returncode == 0 else "error",
             "command": command,
             "returncode": completed.returncode,
+            "data": data,
+            "data_truncated": data_truncated,
             "stdout": stdout["content"],
             "stderr": stderr["content"],
             "stdout_truncated": stdout["truncated"],
@@ -1919,7 +2286,9 @@ def run_powershell(
         }
     except subprocess.TimeoutExpired as exc:
         stdout = truncate_text(_decode_powershell_output(exc.stdout))
-        stderr = truncate_text(_decode_powershell_output(exc.stderr))
+        stderr = truncate_text(_normalize_powershell_stderr(
+            _decode_powershell_output(exc.stderr)
+        ))
         return {
             "status": "error", "command": command, "timeout": True,
             "stdout": stdout["content"], "stderr": stderr["content"],

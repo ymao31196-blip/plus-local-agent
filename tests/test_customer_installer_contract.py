@@ -65,6 +65,17 @@ def test_customer_workspace_registry_is_machine_local():
     assert "project_example" in example
 
 
+def test_windows_action_policy_is_machine_local():
+    gitignore = _read(".gitignore")
+    actions = _read("windows_action_capabilities.py")
+    example = _read("config/windows_actions.example.json")
+
+    assert "config/windows_actions.local.json" in gitignore
+    assert "WINDOWS_ACTIONS_CONFIG" in actions
+    assert '"version": 1' in example
+    assert '"services": {}' in example
+
+
 def test_tunnel_startup_prefers_local_or_explicit_config():
     start_tunnel = _read("start_tunnel.ps1")
     start_all = _read("start_all.ps1")

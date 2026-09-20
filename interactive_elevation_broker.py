@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import ctypes
 from ctypes import wintypes
 from datetime import datetime, timezone
@@ -12,6 +13,8 @@ import subprocess
 import sys
 import time
 from typing import Any
+
+from windows_action_capabilities import load_windows_action_policy
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -88,7 +91,7 @@ def _desktop_context() -> dict[str, Any]:
 
 def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
     kind = value.get("kind")
-    if kind not in {"registered_uninstaller", "winget_install"}:
+    if kind not in {"registered_uninstaller", "winget_install", "service_control"}:
         raise ValueError("Unsupported elevation request kind")
 
     launch_id = value.get("launch_id")
@@ -98,6 +101,139 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         or not launch_id.isalnum()
     ):
         raise ValueError("Invalid launch_id")
+
+    timeout_seconds = value.get("timeout_seconds", 300)
+    if (
+        type(timeout_seconds) is not int
+        or not 30 <= timeout_seconds <= 900
+    ):
+        raise ValueError("timeout_seconds must be between 30 and 900")
+
+    if kind == "service_control":
+        allowed_fields = {
+            "kind", "launch_id", "created_at", "service_name",
+            "operation", "timeout_seconds",
+        }
+        if set(value) - allowed_fields:
+            raise ValueError("service_control request contains unsupported fields")
+        service_name = value.get("service_name")
+        operation = value.get("operation")
+        if (
+            not isinstance(service_name, str)
+            or not re.fullmatch(r"[A-Za-z0-9_$.-]{1,256}", service_name)
+        ):
+            raise ValueError("Invalid service_name")
+        if operation not in {"start", "stop", "restart"}:
+            raise ValueError("Invalid service_control operation")
+
+        policy = load_windows_action_policy()
+        rule = policy["services"].get(service_name.casefold())
+        if rule is None or operation not in rule["operations"]:
+            raise ValueError(
+                "service_control request is not authorized by local policy"
+            )
+        service_name = rule["service_name"]
+
+        result_path = STATE_DIR / f"{launch_id}.result.json"
+        payload = {
+            "service_name": service_name,
+            "operation": operation,
+            "result_path": str(result_path.resolve()),
+        }
+        payload_b64 = base64.b64encode(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii")
+        script = f"""$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{payload_b64}'))
+$payload = $json | ConvertFrom-Json
+$name = [string]$payload.service_name
+$operation = [string]$payload.operation
+$before = Get-Service -Name $name -ErrorAction Stop
+$beforeStatus = [string]$before.Status
+if ($beforeStatus -notin @('Running', 'Stopped')) {{
+    throw 'Service is not in a stable state'
+}}
+if ($operation -in @('start', 'restart') -and [string]$before.StartType -eq 'Disabled') {{
+    throw 'Service is disabled'
+}}
+if (
+    $operation -in @('stop', 'restart') -and
+    $beforeStatus -eq 'Running' -and
+    -not [bool]$before.CanStop
+) {{
+    throw 'Service cannot be stopped'
+}}
+$activeDependents = @(
+    $before.DependentServices | Where-Object {{ [string]$_.Status -ne 'Stopped' }}
+)
+if ($operation -in @('stop', 'restart') -and $activeDependents.Count -gt 0) {{
+    throw 'Service has active dependent services'
+}}
+switch ($operation) {{
+    'start' {{
+        Start-Service -Name $name -ErrorAction Stop
+        (Get-Service -Name $name -ErrorAction Stop).WaitForStatus(
+            'Running', [TimeSpan]::FromSeconds(20)
+        )
+    }}
+    'stop' {{
+        Stop-Service -Name $name -ErrorAction Stop
+        (Get-Service -Name $name -ErrorAction Stop).WaitForStatus(
+            'Stopped', [TimeSpan]::FromSeconds(20)
+        )
+    }}
+    'restart' {{
+        Restart-Service -Name $name -ErrorAction Stop
+        (Get-Service -Name $name -ErrorAction Stop).WaitForStatus(
+            'Running', [TimeSpan]::FromSeconds(20)
+        )
+    }}
+    default {{ throw 'Operation rejected by elevation broker' }}
+}}
+$after = Get-Service -Name $name -ErrorAction Stop
+$result = [pscustomobject]@{{
+    ServiceName = $name
+    Operation = $operation
+    BeforeStatus = $beforeStatus
+    AfterStatus = [string]$after.Status
+}}
+[IO.File]::WriteAllText(
+    [string]$payload.result_path,
+    ($result | ConvertTo-Json -Compress),
+    (New-Object Text.UTF8Encoding $false)
+)
+"""
+        encoded_command = base64.b64encode(
+            script.encode("utf-16-le")
+        ).decode("ascii")
+        system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        executable_path = (
+            system_root
+            / "System32"
+            / "WindowsPowerShell"
+            / "v1.0"
+            / "powershell.exe"
+        )
+        if not executable_path.is_file():
+            raise ValueError("Windows PowerShell 5.1 is unavailable")
+        return {
+            **value,
+            "launch_id": launch_id,
+            "service_name": service_name,
+            "executable": str(executable_path.resolve()),
+            "args": [
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Restricted",
+                "-EncodedCommand",
+                encoded_command,
+            ],
+            "result_path": str(result_path.resolve()),
+            "timeout_seconds": timeout_seconds,
+        }
 
     executable = value.get("executable")
     if not isinstance(executable, str) or not executable:
@@ -119,13 +255,6 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         ):
             raise ValueError(f"args[{index}] is invalid")
         clean_args.append(arg)
-
-    timeout_seconds = value.get("timeout_seconds", 300)
-    if (
-        type(timeout_seconds) is not int
-        or not 30 <= timeout_seconds <= 900
-    ):
-        raise ValueError("timeout_seconds must be between 30 and 900")
 
     if kind == "winget_install":
         if executable_path.name.casefold() != "winget.exe":
@@ -340,6 +469,7 @@ def _process_one_request() -> bool:
             request = _validate_request(
                 json.loads(request_path.read_text(encoding="utf-8"))
             )
+            _broker_status("running", launch_id)
             _execute_elevated(request, status_path)
         except Exception as exc:
             _atomic_json_write(
@@ -353,6 +483,8 @@ def _process_one_request() -> bool:
                     "message": str(exc)[:2000],
                 },
             )
+        finally:
+            _broker_status("running")
         return True
     return False
 

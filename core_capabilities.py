@@ -19,7 +19,10 @@ from local_tools import (
     workspace_root_upsert as controlled_workspace_root_upsert,
     workspace_roots_get as controlled_workspace_roots_get,
 )
-from transaction_action_envelope import invoke_capability_in_transaction
+from transaction_action_envelope import (
+    complete_external_capability_in_transaction,
+    invoke_capability_in_transaction,
+)
 from transaction_runtime import ActionTransactionStore
 
 
@@ -206,6 +209,32 @@ def core_transaction_descriptors() -> tuple[CapabilityDescriptor, ...]:
             },
             risk_level="privileged",
             tags=("transaction", "governance", "invoke", "capability"),
+        ),
+        _descriptor(
+            "core.transaction_complete_external",
+            "transaction_complete_external",
+            "Complete External Transaction Action",
+            (
+                "Invoke the read-only completion verifier already persisted on one "
+                "running external-pending action step. The caller cannot replace the "
+                "recorded verifier or its arguments."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "string"},
+                    "expected_revision": {"type": "integer", "minimum": 1},
+                    "step_id": {"type": "string"},
+                },
+                "required": [
+                    "transaction_id",
+                    "expected_revision",
+                    "step_id",
+                ],
+                "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("transaction", "governance", "external", "complete"),
         ),
     )
 
@@ -581,6 +610,20 @@ def register_core_transaction_capabilities(
     broker.register_internal_handler(
         "core.transaction_invoke",
         invoke_handler,
+    )
+
+    async def complete_external_handler(args: dict) -> dict:
+        return await complete_external_capability_in_transaction(
+            transaction_store,
+            broker,
+            transaction_id=args["transaction_id"],
+            expected_revision=args["expected_revision"],
+            step_id=args["step_id"],
+        )
+
+    broker.register_internal_handler(
+        "core.transaction_complete_external",
+        complete_external_handler,
     )
     broker.register_internal_handler(
         "core.git_tag",
