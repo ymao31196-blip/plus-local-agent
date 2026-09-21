@@ -6,9 +6,16 @@ capability, create follow-up plans, or bypass target capability policy.
 
 from __future__ import annotations
 
+from artifact_bridge import materialize_artifact as controlled_materialize_artifact
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
+from capability_steering import (
+    route_generic_request,
+    routing_catalog,
+    steering_rules,
+)
+from routing_audit import audit_routing
 from event_runtime import EventStore
 from observer_hook_runtime import ObserverHookRuntime
 from gate_hook_runtime import GateHookRuntime
@@ -54,6 +61,8 @@ def _descriptor(
     risk_level: str,
     tags: tuple[str, ...],
     requires_confirmation: bool = False,
+    routing_authority: str = "recommendation",
+    routing: dict | None = None,
 ) -> CapabilityDescriptor:
     return CapabilityDescriptor(
         id=capability_id,
@@ -67,6 +76,8 @@ def _descriptor(
         requires_confirmation=requires_confirmation,
         requires_transaction=False,
         tags=tags,
+        routing_authority=routing_authority,
+        routing=dict(routing or {}),
     )
 
 
@@ -235,6 +246,61 @@ def core_transaction_descriptors() -> tuple[CapabilityDescriptor, ...]:
             },
             risk_level="write_local",
             tags=("transaction", "governance", "external", "complete"),
+        ),
+    )
+
+
+def core_routing_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    return (
+        _descriptor(
+            "core.capability_route",
+            "capability_route",
+            "Route Capability Request",
+            (
+                "Evaluate one proposed run_process, run_powershell, or "
+                "capability_invoke route against deterministic steering rules "
+                "without invoking the proposed action or any suggested replacement."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "enum": [
+                            "run_process",
+                            "run_powershell",
+                            "capability_invoke",
+                        ],
+                    },
+                    "arguments": {"type": "object"},
+                },
+                "required": ["tool", "arguments"],
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("routing", "governance", "capability", "read"),
+        ),
+        _descriptor(
+            "core.routing_audit",
+            "routing_audit",
+            "Audit Capability Routing Coverage",
+            (
+                "Read the complete capability registry and routing catalog, check "
+                "catalog health, and surface conservative cross-provider overlap "
+                "candidates for review. This never changes routing rules."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "include_unavailable": {
+                        "type": "boolean",
+                        "default": True,
+                    },
+                },
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("routing", "governance", "audit", "capability", "read"),
         ),
     )
 
@@ -457,6 +523,43 @@ def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_artifact_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Artifact persistence capabilities exposed through the broker surface."""
+
+    sha_schema = {
+        "anyOf": [
+            {"type": "string", "minLength": 64, "maxLength": 64},
+            {"type": "null"},
+        ]
+    }
+    return (
+        _descriptor(
+            "core.artifact_materialize",
+            "artifact_materialize",
+            "Materialize Artifact",
+            (
+                "Persist one live immutable artifact into a writable PLA root. "
+                "Existing destinations are protected by default; replacement "
+                "requires overwrite=true and the current destination SHA-256."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "artifact_id": {"type": "string", "minLength": 1},
+                    "destination_path": {"type": "string", "minLength": 1},
+                    "root": {"type": "string", "default": "workspace"},
+                    "overwrite": {"type": "boolean", "default": False},
+                    "expected_sha256": sha_schema,
+                },
+                "required": ["artifact_id", "destination_path"],
+                "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("artifact", "materialize", "persistence", "local-write"),
+        ),
+    )
+
+
 def core_workspace_descriptors() -> tuple[CapabilityDescriptor, ...]:
     """Machine-local workspace authorization controls."""
 
@@ -546,8 +649,10 @@ def register_core_transaction_capabilities(
     """Register stable core governance capabilities and in-process handlers."""
 
     descriptors = [
+        *core_routing_descriptors(),
         *core_transaction_descriptors(),
         *core_release_descriptors(),
+        *core_artifact_descriptors(),
         *core_workspace_descriptors(),
     ]
     if event_store is not None:
@@ -562,6 +667,24 @@ def register_core_transaction_capabilities(
         enabled=True,
     )
 
+    broker.register_internal_handler(
+        "core.capability_route",
+        lambda args: route_generic_request(
+            args["tool"],
+            args["arguments"],
+            registry.snapshot(include_unavailable=True),
+        ),
+    )
+    broker.register_internal_handler(
+        "core.routing_audit",
+        lambda args: audit_routing(
+            registry.snapshot(
+                include_unavailable=args.get("include_unavailable", True)
+            ),
+            routing_catalog(),
+            steering_rules(),
+        ),
+    )
     broker.register_internal_handler(
         "core.transaction_create",
         lambda args: transaction_store.create(
@@ -644,6 +767,16 @@ def register_core_transaction_capabilities(
             "PUSH",
             args.get("cwd", "."),
             "pla",
+        ),
+    )
+    broker.register_internal_handler(
+        "core.artifact_materialize",
+        lambda args: controlled_materialize_artifact(
+            args["artifact_id"],
+            args["destination_path"],
+            args.get("root", "workspace"),
+            args.get("overwrite", False),
+            args.get("expected_sha256"),
         ),
     )
     broker.register_internal_handler(

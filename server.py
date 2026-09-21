@@ -90,6 +90,7 @@ from computer_use_indicator import computer_use_indicator_observer
 from gate_hook_runtime import GATE_HOOK_RUNTIME
 from mcp_client_manager import MCPClientManager
 from capability_broker import CapabilityBroker
+from browser_download import register_browser_download_extension
 from core_capabilities import register_core_transaction_capabilities
 from external_provider_runtime import ExternalProviderRuntime
 from external_observer_runtime import ExternalObserverRuntime
@@ -109,6 +110,7 @@ OBSERVER_HOOK_RUNTIME.register(
 )
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
+register_browser_download_extension(MCP_CLIENT_MANAGER)
 CAPABILITY_BROKER = CapabilityBroker(
     CAPABILITY_REGISTRY,
     MCP_CLIENT_MANAGER,
@@ -157,7 +159,7 @@ async def _runtime_lifespan(_server):
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="1.6.0",
+    version="1.7.0",
     lifespan=_runtime_lifespan,
 )
 

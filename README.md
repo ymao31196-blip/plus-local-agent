@@ -491,7 +491,53 @@ git_stage requires an expected HEAD and SHA-256 for each selected file. git_comm
 the exact staged path set. Release-oriented tag and push operations also require exact branch/HEAD
 matching and explicit confirmation; force push is unavailable.
 
+Generic process execution does not bypass this boundary for the PLA source repository. If ChatGPT
+tries to run `git` through `run_process` with `root="pla"`, PLA returns a structured
+`specialized_capability_required` decision with the governed Git tools/capabilities that should
+be considered next. PLA does not automatically substitute or invoke the suggested action.
+
 This lets ChatGPT work on real repositories without turning Git into an unrestricted shell escape.
+
+## Capability steering
+
+PLA keeps deterministic routing rules for generic execution paths that overlap a governed specialized
+capability. A steering rule never invokes the suggested replacement. It returns a structured decision
+with the matched domain, routing mode, attempted route and ordered capability suggestions, leaving the
+next choice to ChatGPT.
+
+Current enforced routes include PLA-source Git through `run_process` and Windows service state changes
+through `run_powershell`. The read-only dynamic capability `core.capability_route` can also evaluate
+a proposed `capability_invoke` before execution. Enforced overlaps return `specialized_required`;
+advisory overlaps return `specialized_preferred`; unrelated routes return `generic_allowed`.
+
+The first advisory rule covers explicit browser targets sent through the Computer Provider. When a
+Computer capability such as inspect, click, type, press, wait, search or screenshot names Edge,
+Chrome, Chromium or Firefox in its `app` argument, PLA prefers the corresponding `browser.*`
+capability while keeping Computer Use available as a fallback. PLA does not infer browser identity
+from an opaque HWND alone.
+
+Routing is invoked through the existing `capability_invoke` surface, so the steering layer can grow
+without adding another fixed top-level MCP tool. Read-only `Get-Service`, GitHub CLI `gh`, and
+customer-workspace Git are not redirected by the enforced rules.
+
+External providers can also declare routing metadata in their manifest. Capability descriptors carry
+`routing_authority` plus `preferred_over`, `fallback_for`, or `supersedes` relations, optionally
+guarded by argument conditions. External manifests are limited to `recommendation` or `preferred`
+authority; `enforced` remains reserved for PLA built-in policy. Routing reads the live Capability
+Registry on every query, so provider add/change/enable/disable/remove operations take effect after the
+normal hot-rescan without restarting the routing layer.
+
+The read-only dynamic capability `core.routing_audit` inspects the complete Capability Registry and
+the maintained Routing Catalog. It checks that catalog rules still reference real capabilities, then
+surfaces conservative cross-provider overlap candidates using action aliases, risk compatibility,
+shared tags and explicit provider relationships. Candidates are review hints only: the audit never
+creates, changes or invokes a routing rule.
+
+Audit candidates have three review states. `covered` means an active routing rule already handles the
+overlap. `reviewed_parallel` means the overlap was examined and intentionally kept as separate
+capability surfaces because the responsibilities differ. Only `uncovered` candidates still need
+routing review. Broad search-like actions are ignored unless an explicit provider relationship exists,
+which prevents unrelated UI, process and package searches from being treated as duplicates.
 
 ## Start and stop
 

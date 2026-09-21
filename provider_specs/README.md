@@ -20,9 +20,58 @@ Adding a reviewed provider normally requires:
 
 The runtime never installs provider dependencies automatically.
 
+## Declarative routing metadata
+
+External providers may declare capability-routing hints in their manifest without adding new top-level
+MCP tools. Set the provider-level `routing_authority` to either `recommendation` or `preferred`,
+then add a `routing` object to an individual `tool_overrides` entry.
+
+Supported relations are:
+
+- `preferred_over`: prefer this capability over another capability when the relation matches.
+- `fallback_for`: use this capability only when the referenced source capability is unavailable.
+- `supersedes`: request replacement semantics. External providers still cannot make this enforced;
+  the effective routing mode is capped by the provider's authority.
+
+Each relation names a `capability_id` and may include one `when` condition. Conditions currently
+support a string argument with exactly one of `contains_any` or `equals_any`. Matching is
+case-insensitive.
+
+Example:
+
+~~~json
+{
+  "routing_authority": "preferred",
+  "tool_overrides": {
+    "browser_click": {
+      "routing": {
+        "preferred_over": [
+          {
+            "capability_id": "computer.click",
+            "when": {
+              "argument": "app",
+              "contains_any": ["edge", "chrome", "firefox"]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+~~~
+
+Provider manifests cannot request `routing_authority: "enforced"`. Enforced routing remains a PLA
+built-in policy authority. A third-party `supersedes` declaration under `preferred` therefore
+resolves only to `specialized_preferred`, never `specialized_enforced`.
+
+Routing is evaluated from the live Capability Registry snapshot. After a provider add/change/enable,
+disable, or removal is applied through the normal provider rescan lifecycle, subsequent
+`core.capability_route` calls see the new declaration immediately; no Routing-layer restart is
+required.
+
 Current providers:
 
-- `browser`: Microsoft Playwright MCP `0.0.80`, installed into a provider-scoped npm prefix.
+- `browser`: Microsoft Playwright MCP `0.0.82`, installed into a provider-scoped npm prefix.
   The Browser Runtime uses a PLA-managed browser profile and exposes only reviewed semantic tools.
 - `computer`: PLA's Windows Computer Use provider. It wraps Microsoft winapp CLI `0.5.0`
   from a provider-scoped npm prefix and exposes a semantic-first UI Automation surface.

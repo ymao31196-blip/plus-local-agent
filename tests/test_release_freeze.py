@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.6.0"
+    assert server.mcp.version == "1.7.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
@@ -60,8 +60,11 @@ def test_release_version_and_provider_catalog():
         include_unavailable=True,
         limit=100,
     )
-    assert core_caps["match_count"] == 16
+    assert core_caps["match_count"] == 19
     assert {item["id"] for item in core_caps["capabilities"]} == {
+        "core.capability_route",
+        "core.routing_audit",
+        "core.artifact_materialize",
         "core.workspace_roots_get",
         "core.workspace_root_upsert",
         "core.workspace_root_remove",
@@ -133,6 +136,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.5.1.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.5.3.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.6.0.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v1.7.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()

@@ -464,6 +464,18 @@ def test_run_process_allowlist_includes_github_cli():
     assert {"gh", "gh.exe"}.issubset(local_tools.ALLOWED_PROGRAMS)
 
 
+def test_run_process_pla_git_returns_specialized_capability_steering():
+    result = local_tools.run_process(
+        "git", ["push", "origin", "master"], root="pla"
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "specialized_capability_required"
+    assert result["routing_mode"] == "specialized_enforced"
+    assert result["attempted_route"]["root"] == "pla"
+    assert result["suggested_capabilities"][0]["name"] == "core.git_push"
+
+
 def test_run_process_custom_workdir(workspace):
     child = workspace / "child"
     child.mkdir()
@@ -713,6 +725,22 @@ def test_run_powershell_rejects_dangerous_commands(workspace, command):
     result = execute_local_tool("run_powershell", {"command": command})
     assert result.ok is False
     assert result.error["type"] == "PowerShellValidationError"
+
+
+def test_run_powershell_service_write_returns_specialized_capability_steering():
+    result = local_tools.run_powershell(
+        "Restart-Service",
+        {"Name": "Spooler"},
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "specialized_capability_required"
+    assert result["domain"] == "windows_service"
+    assert result["attempted_route"]["operation"] == "restart"
+    assert result["attempted_route"]["service_name"] == "Spooler"
+    assert result["suggested_capabilities"][0]["name"] == (
+        "windows.service_control_preflight"
+    )
 
 
 @pytest.mark.parametrize("path", ["../../outside", "C:\\\\", r"\\server\share"])

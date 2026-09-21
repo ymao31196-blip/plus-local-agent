@@ -5,6 +5,7 @@ import pytest
 from fastmcp.client.transports import PythonStdioTransport
 
 import artifact_bridge
+import capability_broker as broker_module
 import local_tools
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
@@ -531,3 +532,264 @@ def test_event_persistence_failure_does_not_change_capability_result():
 
     assert result["status"] == "completed"
     assert result["data"]["echo"] == "still-runs"
+
+def _browser_click_descriptor() -> CapabilityDescriptor:
+    return CapabilityDescriptor(
+        id="browser.click",
+        provider_id="browser",
+        remote_name="browser_click",
+        title="Click Browser Element",
+        description="Browser click fixture with download artifact recovery.",
+        input_schema={
+            "type": "object",
+            "properties": {"target": {"type": "string"}},
+            "required": ["target"],
+            "additionalProperties": False,
+        },
+        artifact_outputs=True,
+        artifact_contract={
+            "transport": "local_path",
+            "inputs": [],
+            "input_arrays": [],
+            "outputs": [],
+            "output_paths": {},
+            "result_paths": [
+                {
+                    "pattern": (
+                        r'Downloaded file .*? to '
+                        r'"(?P<path>state\\browser\\.+?)"'
+                    ),
+                    "group": "path",
+                    "root": "state/browser",
+                    "remove_source": True,
+                }
+            ],
+        },
+        risk_level="write_external",
+        requires_confirmation=False,
+        tags=("browser", "download", "artifact"),
+    )
+
+
+def test_browser_download_recovers_completed_pdf_without_second_click(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    output_dir = tmp_path / "state" / "browser"
+    monkeypatch.setattr(local_tools, "WORKSPACE", workspace)
+    monkeypatch.setattr(broker_module, "PROJECT_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(
+        broker_module,
+        "_BROWSER_DOWNLOAD_RECOVERY_TIMEOUT_SECONDS",
+        0.2,
+    )
+    monkeypatch.setattr(
+        broker_module,
+        "_BROWSER_DOWNLOAD_RECOVERY_POLL_SECONDS",
+        0.01,
+    )
+
+    runtime_starts = {"count": 0}
+
+    def fake_start_browser_runtime():
+        runtime_starts["count"] += 1
+        return {"ready": True}
+
+    monkeypatch.setattr(
+        "browser_runtime.start_browser_runtime",
+        fake_start_browser_runtime,
+    )
+
+    class FailingBrowserManager:
+        def __init__(self):
+            self.call_count = 0
+            self.discovery_count = 0
+
+        async def call_tool(self, provider_id, remote_name, arguments):
+            assert provider_id == "browser"
+            assert remote_name == "browser_click"
+            assert arguments == {"target": "download"}
+            self.call_count += 1
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "paper.pdf").write_bytes(
+                b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n"
+                b"trailer\n<<>>\n%%EOF\n"
+            )
+            raise RuntimeError("SSE stream ended without a response")
+
+        def provider_status(self, provider_id):
+            assert provider_id == "browser"
+            return {"state": "degraded"}
+
+        async def discover_provider(self, provider_id, *, force=False):
+            assert provider_id == "browser"
+            assert force is True
+            self.discovery_count += 1
+            return {"state": "ready"}
+
+    registry = CapabilityRegistry()
+    registry.register_provider(
+        "browser",
+        [_browser_click_descriptor()],
+        enabled=True,
+    )
+    manager = FailingBrowserManager()
+    broker = CapabilityBroker(registry, manager)
+
+    result = asyncio.run(
+        broker.invoke(
+            "browser.click",
+            {"target": "download"},
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert result["is_error"] is False
+    assert result["data"] == {
+        "download_recovered": True,
+        "provider_recovered": True,
+        "artifact_count": 1,
+    }
+    assert result["meta"]["download_recovered"] is True
+    assert result["meta"]["provider_recovered"] is True
+    assert manager.call_count == 1
+    assert manager.discovery_count == 1
+    assert runtime_starts["count"] == 1
+    assert not (output_dir / "paper.pdf").exists()
+
+    artifact_id = result["artifact_outputs"]["result_1"]
+    payload = artifact_bridge.read_artifact_bytes(artifact_id)
+    assert payload.startswith(b"%PDF-")
+    assert b"%%EOF" in payload
+
+
+def test_browser_download_does_not_recover_incomplete_pdf(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    output_dir = tmp_path / "state" / "browser"
+    monkeypatch.setattr(local_tools, "WORKSPACE", workspace)
+    monkeypatch.setattr(broker_module, "PROJECT_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(
+        broker_module,
+        "_BROWSER_DOWNLOAD_RECOVERY_TIMEOUT_SECONDS",
+        0.05,
+    )
+    monkeypatch.setattr(
+        broker_module,
+        "_BROWSER_DOWNLOAD_RECOVERY_POLL_SECONDS",
+        0.01,
+    )
+
+    runtime_starts = {"count": 0}
+
+    def fake_start_browser_runtime():
+        runtime_starts["count"] += 1
+        return {"ready": True}
+
+    monkeypatch.setattr(
+        "browser_runtime.start_browser_runtime",
+        fake_start_browser_runtime,
+    )
+
+    class IncompleteBrowserManager:
+        def __init__(self):
+            self.call_count = 0
+            self.discovery_count = 0
+
+        async def call_tool(self, *_args, **_kwargs):
+            self.call_count += 1
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "partial.pdf").write_bytes(
+                b"%PDF-1.4\npartial"
+            )
+            raise RuntimeError("SSE stream ended without a response")
+
+        def provider_status(self, _provider_id):
+            return {"state": "degraded"}
+
+        async def discover_provider(self, _provider_id, *, force=False):
+            assert force is True
+            self.discovery_count += 1
+            return {"state": "ready"}
+
+    registry = CapabilityRegistry()
+    registry.register_provider(
+        "browser",
+        [_browser_click_descriptor()],
+        enabled=True,
+    )
+    manager = IncompleteBrowserManager()
+    broker = CapabilityBroker(registry, manager)
+
+    with pytest.raises(
+        RuntimeError,
+        match="SSE stream ended without a response",
+    ):
+        asyncio.run(
+            broker.invoke(
+                "browser.click",
+                {"target": "download"},
+            )
+        )
+
+    assert manager.call_count == 1
+    assert manager.discovery_count == 1
+    assert runtime_starts["count"] == 1
+    assert (output_dir / "partial.pdf").exists()
+
+
+def test_browser_click_business_error_does_not_restart_provider(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr(local_tools, "WORKSPACE", workspace)
+    monkeypatch.setattr(broker_module, "PROJECT_ROOT", tmp_path.resolve())
+
+    def forbidden_start():
+        raise AssertionError("browser runtime should not restart")
+
+    monkeypatch.setattr(
+        "browser_runtime.start_browser_runtime",
+        forbidden_start,
+    )
+
+    class ReadyBrowserManager:
+        def __init__(self):
+            self.call_count = 0
+
+        async def call_tool(self, *_args, **_kwargs):
+            self.call_count += 1
+            raise RuntimeError("element not found")
+
+        def provider_status(self, _provider_id):
+            return {"state": "ready"}
+
+        async def discover_provider(self, *_args, **_kwargs):
+            raise AssertionError("provider should not be rediscovered")
+
+    registry = CapabilityRegistry()
+    registry.register_provider(
+        "browser",
+        [_browser_click_descriptor()],
+        enabled=True,
+    )
+    manager = ReadyBrowserManager()
+    broker = CapabilityBroker(registry, manager)
+
+    with pytest.raises(RuntimeError, match="element not found"):
+        asyncio.run(
+            broker.invoke(
+                "browser.click",
+                {"target": "missing"},
+            )
+        )
+
+    assert manager.call_count == 1
+

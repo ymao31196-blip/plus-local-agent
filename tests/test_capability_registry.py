@@ -76,6 +76,23 @@ def test_registry_scales_to_100_capabilities_and_limits_results():
     assert result["capabilities"][0]["id"] == "bulk.tool000"
 
 
+def test_registry_snapshot_is_complete_and_deterministic():
+    registry = CapabilityRegistry()
+    registry.register_provider(
+        "bulk",
+        [make_capability("bulk", f"tool{i:03d}") for i in range(115)],
+    )
+
+    snapshot = registry.snapshot()
+
+    assert snapshot["capability_count"] == 115
+    assert snapshot["provider_count"] == 1
+    assert snapshot["providers"] == {"bulk": True}
+    assert snapshot["capabilities"][0]["id"] == "bulk.tool000"
+    assert snapshot["capabilities"][-1]["id"] == "bulk.tool114"
+    assert all(item["available"] is True for item in snapshot["capabilities"])
+
+
 def test_registry_rejects_duplicate_ids_from_provider():
     registry = CapabilityRegistry()
     capability = make_capability("alpha", "one")
@@ -102,6 +119,63 @@ def test_descriptor_requires_provider_namespace_and_valid_risk():
             description="Tool",
             input_schema={},
             risk_level="unknown",
+        )
+
+
+def test_descriptor_validates_declarative_routing_metadata():
+    descriptor = CapabilityDescriptor(
+        id="alpha.tool",
+        provider_id="alpha",
+        remote_name="tool",
+        title="Tool",
+        description="Tool",
+        input_schema={},
+        routing_authority="preferred",
+        routing={
+            "preferred_over": [
+                {
+                    "capability_id": "beta.tool",
+                    "when": {
+                        "argument": "app",
+                        "contains_any": ["browser"],
+                    },
+                }
+            ]
+        },
+    )
+
+    assert descriptor.detail()["routing_authority"] == "preferred"
+    assert descriptor.detail()["routing"]["preferred_over"][0][
+        "capability_id"
+    ] == "beta.tool"
+
+    with pytest.raises(ValueError, match="routing_authority"):
+        CapabilityDescriptor(
+            id="alpha.bad",
+            provider_id="alpha",
+            remote_name="bad",
+            title="Bad",
+            description="Bad",
+            input_schema={},
+            routing_authority="owner",
+        )
+
+    with pytest.raises(ValueError, match="exactly one"):
+        CapabilityDescriptor(
+            id="alpha.badroute",
+            provider_id="alpha",
+            remote_name="badroute",
+            title="Bad Route",
+            description="Bad Route",
+            input_schema={},
+            routing={
+                "preferred_over": [
+                    {
+                        "capability_id": "beta.tool",
+                        "when": {"argument": "app"},
+                    }
+                ]
+            },
         )
 
 

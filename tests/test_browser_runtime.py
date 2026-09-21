@@ -34,7 +34,7 @@ def test_browser_runtime_uses_only_provider_scoped_playwright_cli(tmp_path, monk
     cli.parent.mkdir(parents=True)
     cli.write_text("// reviewed test fixture", encoding="utf-8")
     (cli.parent / "package.json").write_text(
-        '{"version":"0.0.80"}',
+        '{"version":"0.0.82"}',
         encoding="utf-8",
     )
 

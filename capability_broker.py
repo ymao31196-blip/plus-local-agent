@@ -7,6 +7,7 @@ plans follow-up calls.
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from dataclasses import dataclass, field
 import hashlib
@@ -91,6 +92,119 @@ def _public_artifact(metadata: dict[str, Any]) -> dict[str, Any]:
     return {key: metadata.get(key) for key in keys}
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+_BROWSER_DOWNLOAD_PROVIDER_ID = "browser"
+_BROWSER_DOWNLOAD_REMOTE_NAME = "browser_click"
+_BROWSER_DOWNLOAD_RECOVERY_TIMEOUT_SECONDS = 4.0
+_BROWSER_DOWNLOAD_RECOVERY_POLL_SECONDS = 0.25
+_BROWSER_PARTIAL_SUFFIXES = {".crdownload", ".part", ".partial", ".tmp"}
+_BROWSER_RUNTIME_OBSERVATION_PATTERNS = (
+    re.compile(r"^page-.*\.ya?ml$", re.IGNORECASE),
+    re.compile(r"^(?:console|network)-.*\.log$", re.IGNORECASE),
+)
+
+
+def _approved_result_path_root(specification: dict[str, Any]) -> Path:
+    root = specification.get("root")
+    if not isinstance(root, str) or not root:
+        raise ValueError("Result path specification is missing a valid root")
+    approved_root = (PROJECT_ROOT / root).resolve()
+    try:
+        approved_root.relative_to(PROJECT_ROOT)
+    except ValueError as exc:
+        raise ValueError("Result path root escapes PLA project") from exc
+    return approved_root
+
+
+def _snapshot_result_files(root: Path) -> dict[Path, tuple[int, int]]:
+    snapshot: dict[Path, tuple[int, int]] = {}
+    if not root.exists():
+        return snapshot
+    for candidate in root.rglob("*"):
+        try:
+            if not candidate.is_file():
+                continue
+            stat = candidate.stat()
+        except OSError:
+            continue
+        snapshot[candidate.resolve()] = (stat.st_size, stat.st_mtime_ns)
+    return snapshot
+
+
+def _is_browser_download_candidate(path: Path) -> bool:
+    if path.suffix.casefold() in _BROWSER_PARTIAL_SUFFIXES:
+        return False
+    name = path.name
+    return not any(
+        pattern.fullmatch(name)
+        for pattern in _BROWSER_RUNTIME_OBSERVATION_PATTERNS
+    )
+
+
+def _browser_download_looks_complete(path: Path) -> bool:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False
+    if size <= 0:
+        return False
+    if path.suffix.casefold() != ".pdf":
+        return True
+    try:
+        with path.open("rb") as handle:
+            if handle.read(5) != b"%PDF-":
+                return False
+            handle.seek(max(0, size - 8192))
+            tail = handle.read()
+    except OSError:
+        return False
+    return b"%%EOF" in tail
+
+
+async def _wait_for_browser_downloads(
+    contexts: list[
+        tuple[
+            dict[str, Any],
+            Path,
+            dict[Path, tuple[int, int]],
+        ]
+    ],
+) -> list[tuple[dict[str, Any], Path, Path]]:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _BROWSER_DOWNLOAD_RECOVERY_TIMEOUT_SECONDS
+    last_signatures: dict[Path, tuple[int, int]] = {}
+    stable_polls: dict[Path, int] = {}
+
+    while True:
+        ready: list[tuple[dict[str, Any], Path, Path]] = []
+        for specification, approved_root, before in contexts:
+            current = _snapshot_result_files(approved_root)
+            for path, signature in current.items():
+                if before.get(path) == signature:
+                    continue
+                if not _is_browser_download_candidate(path):
+                    continue
+
+                if last_signatures.get(path) == signature:
+                    stable_polls[path] = stable_polls.get(path, 1) + 1
+                else:
+                    stable_polls[path] = 1
+                last_signatures[path] = signature
+
+                if (
+                    stable_polls[path] >= 2
+                    and _browser_download_looks_complete(path)
+                ):
+                    ready.append((specification, approved_root, path))
+
+        if ready:
+            ready.sort(key=lambda item: str(item[2]).casefold())
+            return ready
+        if loop.time() >= deadline:
+            return []
+        await asyncio.sleep(_BROWSER_DOWNLOAD_RECOVERY_POLL_SECONDS)
+
+
 class CapabilityBroker:
     def __init__(
         self,
@@ -119,6 +233,53 @@ class CapabilityBroker:
         if capability_id in self._internal_handlers:
             raise ValueError(f"Internal handler already registered: {capability_id}")
         self._internal_handlers[capability_id] = handler
+
+    def _browser_provider_needs_recovery(self, exc: Exception) -> bool:
+        try:
+            state = self._mcp_clients.provider_status(
+                _BROWSER_DOWNLOAD_PROVIDER_ID
+            )
+        except Exception:
+            state = None
+        if isinstance(state, dict) and state.get("state") != "ready":
+            return True
+
+        message = str(exc).casefold()
+        return any(
+            marker in message
+            for marker in (
+                "sse stream ended",
+                "targetclosederror",
+                "target page, context or browser has been closed",
+                "connection closed",
+                "connection reset",
+                "cannot read properties of undefined (reading 'url')",
+            )
+        )
+
+    async def _restore_browser_provider_after_failure(self) -> dict[str, Any]:
+        try:
+            from browser_runtime import start_browser_runtime
+
+            runtime_state = await asyncio.to_thread(start_browser_runtime)
+            provider_state = await self._mcp_clients.discover_provider(
+                _BROWSER_DOWNLOAD_PROVIDER_ID,
+                force=True,
+            )
+            return {
+                "ok": bool(
+                    runtime_state.get("ready")
+                    and provider_state.get("state") == "ready"
+                ),
+                "runtime_ready": bool(runtime_state.get("ready")),
+                "provider_state": provider_state.get("state"),
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc)[:500],
+            }
 
     def _validated_descriptor_and_arguments(
         self,
@@ -418,6 +579,36 @@ class CapabilityBroker:
             capability_id, arguments, confirmation, transaction_context
         )
         contract = descriptor.get("artifact_contract") or {}
+
+        if capability_id == "browser.download":
+            from browser_download import download_browser_target
+
+            try:
+                artifact_metadata, download_data = await download_browser_target(
+                    self._mcp_clients,
+                    target=provider_arguments["target"],
+                    policy=contract.get("policy") or {},
+                )
+            except Exception as exc:
+                if self._browser_provider_needs_recovery(exc):
+                    await self._restore_browser_provider_after_failure()
+                raise
+
+            public = _public_artifact(artifact_metadata)
+            return {
+                "status": "completed",
+                "provider_id": descriptor["provider_id"],
+                "capability_id": capability_id,
+                "remote_name": descriptor["remote_name"],
+                "data": download_data,
+                "content": [],
+                "content_omitted_for_artifact_contract": True,
+                "artifacts": [public],
+                "artifact_outputs": {"result_1": public["artifact_id"]},
+                "meta": {"session_download": True},
+                "is_error": False,
+            }
+
         internal_handler = self._internal_handlers.get(capability_id)
         if internal_handler is not None:
             if contract:
@@ -479,6 +670,28 @@ class CapabilityBroker:
         ):
             raise ValueError(f"Invalid artifact contract for {capability_id}")
 
+        browser_download_invocation = bool(
+            descriptor["provider_id"] == _BROWSER_DOWNLOAD_PROVIDER_ID
+            and descriptor["remote_name"] == _BROWSER_DOWNLOAD_REMOTE_NAME
+        )
+        browser_recovery_contexts: list[
+            tuple[
+                dict[str, Any],
+                Path,
+                dict[Path, tuple[int, int]],
+            ]
+        ] = []
+        if browser_download_invocation:
+            for specification in result_path_specs:
+                approved_root = _approved_result_path_root(specification)
+                browser_recovery_contexts.append(
+                    (
+                        specification,
+                        approved_root,
+                        _snapshot_result_files(approved_root),
+                    )
+                )
+
         with ArtifactInvocation(
             descriptor["provider_id"],
             capability_id,
@@ -535,11 +748,101 @@ class CapabilityBroker:
                     specification,
                 )
 
-            result = await self._mcp_clients.call_tool(
-                descriptor["provider_id"],
-                descriptor["remote_name"],
-                provider_arguments,
-            )
+            try:
+                result = await self._mcp_clients.call_tool(
+                    descriptor["provider_id"],
+                    descriptor["remote_name"],
+                    provider_arguments,
+                )
+            except Exception as exc:
+                if (
+                    browser_download_invocation
+                    and self._browser_provider_needs_recovery(exc)
+                ):
+                    recovered_candidates = await _wait_for_browser_downloads(
+                        browser_recovery_contexts
+                    )
+                    recovered_artifacts: list[dict[str, Any]] = []
+                    recovered_outputs: dict[str, str] = {}
+                    import_errors: list[dict[str, str]] = []
+
+                    for (
+                        specification,
+                        approved_root,
+                        source_path,
+                    ) in recovered_candidates[
+                        : invocation.policy["max_output_artifacts"]
+                    ]:
+                        try:
+                            metadata = invocation.import_discovered_output(
+                                source_path,
+                                approved_root,
+                                name=source_path.name,
+                                mime_type=specification.get("mime_type"),
+                                remove_source=bool(
+                                    specification.get("remove_source", False)
+                                ),
+                            )
+                        except (OSError, ValueError) as import_exc:
+                            import_errors.append(
+                                {
+                                    "type": type(import_exc).__name__,
+                                    "message": str(import_exc)[:500],
+                                }
+                            )
+                            continue
+
+                        public = _public_artifact(metadata)
+                        recovered_artifacts.append(public)
+                        recovered_outputs[
+                            f"result_{len(recovered_outputs) + 1}"
+                        ] = public["artifact_id"]
+
+                    provider_recovery = (
+                        await self._restore_browser_provider_after_failure()
+                    )
+                    if recovered_artifacts:
+                        recovery_meta: dict[str, Any] = {
+                            "download_recovered": True,
+                            "provider_recovered": bool(
+                                provider_recovery.get("ok")
+                            ),
+                            "provider_failure": {
+                                "type": type(exc).__name__,
+                                "message": str(exc)[:500],
+                            },
+                            "provider_recovery": provider_recovery,
+                        }
+                        if import_errors:
+                            recovery_meta["import_errors"] = import_errors
+                        return {
+                            "status": "completed",
+                            "provider_id": descriptor["provider_id"],
+                            "capability_id": capability_id,
+                            "remote_name": descriptor["remote_name"],
+                            "data": {
+                                "download_recovered": True,
+                                "provider_recovered": bool(
+                                    provider_recovery.get("ok")
+                                ),
+                                "artifact_count": len(recovered_artifacts),
+                            },
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        "Recovered browser download after "
+                                        "provider transport failure."
+                                    ),
+                                }
+                            ],
+                            "content_omitted_for_artifact_contract": False,
+                            "artifacts": recovered_artifacts,
+                            "artifact_outputs": recovered_outputs,
+                            "meta": recovery_meta,
+                            "is_error": False,
+                        }
+                raise
 
             raw_data = result.data
             if raw_data is None:
@@ -593,7 +896,6 @@ class CapabilityBroker:
                     if isinstance(item, dict) and isinstance(item.get("text"), str)
                 ]
                 result_text = "\n".join(text_fragments)
-                project_root = Path(__file__).resolve().parent
                 seen_sources: set[Path] = set()
 
                 for specification in result_path_specs:
@@ -613,13 +915,9 @@ class CapabilityBroker:
                             f"Invalid result path contract for {capability_id}"
                         )
 
-                    approved_root = (project_root / root).resolve()
-                    try:
-                        approved_root.relative_to(project_root)
-                    except ValueError as exc:
-                        raise ValueError(
-                            f"Result path root escapes PLA project for {capability_id}"
-                        ) from exc
+                    approved_root = _approved_result_path_root(
+                        specification
+                    )
 
                     for match in re.finditer(pattern, result_text):
                         raw_path = match.group(group)
@@ -627,7 +925,7 @@ class CapabilityBroker:
                         source_path = (
                             candidate.resolve()
                             if candidate.is_absolute()
-                            else (project_root / candidate).resolve()
+                            else (PROJECT_ROOT / candidate).resolve()
                         )
                         if source_path in seen_sources:
                             continue

@@ -293,8 +293,12 @@ def test_process_uses_pla_workdir_and_rejects_escape(roots):
 
 
 def test_git_is_not_newly_enabled_for_pla_root(roots):
-    with pytest.raises(ValueError, match="Git execution"):
-        local_tools.run_process("git", ["status"], root="pla")
+    result = local_tools.run_process("git", ["status"], root="pla")
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "specialized_capability_required"
+    assert result["routing_mode"] == "specialized_enforced"
+    assert result["suggested_capabilities"][0]["name"] == "git_status"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell policy")

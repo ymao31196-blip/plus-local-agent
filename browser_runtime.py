@@ -42,8 +42,8 @@ OUTPUT_DIR = PROJECT_ROOT / "state" / "browser"
 HOST = "127.0.0.1"
 MCP_PORT = 8931
 MCP_ENDPOINT_URL = f"http://localhost:{MCP_PORT}/mcp"
-PACKAGE = "@playwright/mcp@0.0.80"
-PACKAGE_VERSION = "0.0.80"
+PACKAGE = "@playwright/mcp@0.0.82"
+PACKAGE_VERSION = "0.0.82"
 
 _START_TIMEOUT_SECONDS = 60.0
 _KEEPER_TIMEOUT_SECONDS = 30.0

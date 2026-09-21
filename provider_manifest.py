@@ -31,6 +31,7 @@ class ProviderManifest:
     path: Path
     autostart: bool
     mode: str
+    routing_authority: str
     runtime_kind: str
     command_path: Path | None
     endpoint_url: str | None
@@ -49,6 +50,7 @@ class ProviderManifest:
             "manifest": str(self.path),
             "autostart": self.autostart,
             "mode": self.mode,
+            "routing_authority": self.routing_authority,
             "runtime_kind": self.runtime_kind,
             "cwd": str(self.cwd),
             "discovery_timeout_seconds": self.discovery_timeout_seconds,
@@ -121,6 +123,7 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         "id",
         "autostart",
         "mode",
+        "routing_authority",
         "runtime",
         "tool_allowlist",
         "tool_overrides",
@@ -148,6 +151,13 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
     mode = payload.get("mode", "auto")
     if mode not in {"auto", "legacy"}:
         raise ValueError(f"{path.name}.mode must be 'auto' or 'legacy'")
+
+    routing_authority = payload.get("routing_authority", "recommendation")
+    if routing_authority not in {"recommendation", "preferred"}:
+        raise ValueError(
+            f"{path.name}.routing_authority must be "
+            "'recommendation' or 'preferred'"
+        )
 
     runtime = _require_object(payload.get("runtime"), f"{path.name}.runtime")
     runtime_unknown = set(runtime) - {
@@ -325,6 +335,7 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
         path=path,
         autostart=autostart,
         mode=mode,
+        routing_authority=routing_authority,
         runtime_kind=runtime_kind,
         command_path=command_path,
         endpoint_url=endpoint_url,

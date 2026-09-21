@@ -2,6 +2,38 @@
 
 All notable PLA release changes are recorded here.
 
+## 1.7.0 - 2026-09-21
+
+### Added
+
+- Governed `browser.download` for authenticated downloads through the managed Browser session, with Artifact Plane output.
+- Capability Steering for generic PLA-source Git and Windows service write paths.
+- Dynamic read-only `core.capability_route` and `core.routing_audit` capabilities.
+- Declarative Provider routing metadata with `preferred_over`, `fallback_for`, `supersedes`, argument conditions, and routing authority.
+- Complete Capability Registry snapshots for routing audit and hot-plug routing decisions.
+
+### Changed
+
+- Browser-over-Computer routing is now declared in `browser-playwright.json` instead of hard-coded in the steering registry.
+- Routing resolves from the live Capability Registry, so provider add/change/enable/disable/remove operations update routing after hot-rescan without restarting the routing layer.
+- Routing Audit distinguishes active coverage, reviewed parallel capabilities, and genuinely uncovered overlaps.
+- Browser download handling reuses managed-session headers/cookies and returns governed artifacts instead of arbitrary output paths.
+
+### Security
+
+- External Provider manifests are limited to `recommendation` or `preferred` routing authority; only PLA built-in policy may enforce routing.
+- A third-party `supersedes` declaration is capped by its Provider authority and cannot self-promote to `specialized_enforced`.
+- Browser downloads reject loopback/private targets and enforce bounded size and content-integrity checks.
+- Steering rejects governed generic paths with structured suggestions rather than silently executing a replacement.
+
+### Verified
+
+- Full v1.7.0 split regression: **665 / 665 passed**.
+- Python compilation checks passed for modified routing, Provider, browser, artifact, runtime, and server modules.
+- Loaded runtime exposed 116 capabilities across 11 providers with eight external Providers ready.
+- Routing Audit reported two built-in static rules, seven manifest-declared Browser relations, three reviewed parallel overlaps, and zero uncovered candidates.
+- Hot-plug regression verified routing declaration add/change/disable/enable/remove behavior without Routing-layer restart.
+
 ## 1.6.0 - 2026-09-20
 
 ### Added

@@ -341,6 +341,41 @@ def test_tool_override_can_define_file_uri_artifact_contract_and_lower_risk():
     assert {"mcp", "document", "pdf"} <= set(detail["tags"])
 
 
+def test_tool_override_propagates_declarative_routing_metadata():
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    manager.add_provider(
+        "external",
+        build_external_mcp(),
+        routing_authority="preferred",
+        tool_overrides={
+            "compress_pdf": {
+                "risk_level": "read",
+                "requires_confirmation": False,
+                "routing": {
+                    "preferred_over": [
+                        {
+                            "capability_id": "fallback.compress",
+                            "when": {
+                                "argument": "app",
+                                "contains_any": ["reader"],
+                            },
+                        }
+                    ]
+                },
+            }
+        },
+    )
+
+    asyncio.run(manager.discover_provider("external"))
+    detail = registry.describe("external.compress_pdf")
+
+    assert detail["routing_authority"] == "preferred"
+    assert detail["routing"]["preferred_over"][0]["capability_id"] == (
+        "fallback.compress"
+    )
+
+
 def test_tool_allowlist_limits_registered_capabilities():
     registry = CapabilityRegistry()
     manager = MCPClientManager(registry)

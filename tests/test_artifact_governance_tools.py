@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 import local_tools
@@ -26,3 +28,26 @@ def test_artifact_verify_tool_reports_valid_artifact(tmp_path, monkeypatch):
 
     assert result["valid"] is True
     assert result["artifact_id"] == metadata["artifact_id"]
+
+
+def test_materialize_artifact_tool_persists_live_artifact(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+    source = tmp_path / "sample.txt"
+    source.write_text("hello", encoding="utf-8")
+    metadata = server.internal_export_artifact("sample.txt")
+
+    result = asyncio.run(
+        server.CAPABILITY_BROKER.invoke(
+            "core.artifact_materialize",
+            {
+                "artifact_id": metadata["artifact_id"],
+                "destination_path": "saved/sample.txt",
+            },
+        )
+    )["data"]
+
+    assert (tmp_path / "saved" / "sample.txt").read_text(
+        encoding="utf-8"
+    ) == "hello"
+    assert result["sha256"] == metadata["sha256"]
+    assert result["path"] == "saved/sample.txt"

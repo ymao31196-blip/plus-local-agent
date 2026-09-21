@@ -321,6 +321,17 @@ def _execute_local_tool(tool_name: str, arguments: dict[str, Any]) -> LocalToolR
         if tool_name == "apply_changeset" and value.get("status") != "completed":
             return LocalToolResult(tool_name, False, value, value["error"])
         if tool_name in {"run_process", "run_powershell"} and isinstance(value, dict):
+            if value.get("status") == "blocked":
+                reason = str(value.get("reason") or "blocked")
+                error_type = (
+                    "SpecializedCapabilityRequired"
+                    if reason == "specialized_capability_required"
+                    else "ActionBlocked"
+                )
+                return LocalToolResult(
+                    tool_name, False, value,
+                    {"type": error_type, "message": str(value.get("message") or reason)},
+                )
             if value.get("timeout") is True:
                 return LocalToolResult(
                     tool_name, False, value,

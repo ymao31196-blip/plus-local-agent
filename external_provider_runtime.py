@@ -78,6 +78,7 @@ def _register_manifest(
         transport,
         enabled=enabled,
         mode=manifest.mode,
+        routing_authority=manifest.routing_authority,
         tool_allowlist=(
             list(manifest.tool_allowlist)
             if manifest.tool_allowlist is not None

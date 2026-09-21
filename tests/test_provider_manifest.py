@@ -54,6 +54,27 @@ def test_load_provider_manifest_resolves_isolated_runtime(tmp_path):
     assert manifest.cwd == tmp_path.resolve()
     assert manifest.tool_allowlist == ("convert",)
     assert manifest.tool_overrides["convert"]["risk_level"] == "read"
+    assert manifest.routing_authority == "recommendation"
+
+
+def test_manifest_accepts_preferred_routing_authority(tmp_path):
+    path = write_manifest(tmp_path, routing_authority="preferred")
+
+    manifest = load_provider_manifest(path, tmp_path)
+
+    assert manifest.routing_authority == "preferred"
+    assert manifest.summary()["routing_authority"] == "preferred"
+
+
+@pytest.mark.parametrize("value", ["enforced", "owner", True, 2])
+def test_manifest_rejects_external_enforced_or_invalid_routing_authority(
+    tmp_path,
+    value,
+):
+    path = write_manifest(tmp_path, routing_authority=value)
+
+    with pytest.raises(ValueError, match="routing_authority"):
+        load_provider_manifest(path, tmp_path)
 
 
 def test_load_provider_manifest_resolves_executable_runtime(tmp_path):

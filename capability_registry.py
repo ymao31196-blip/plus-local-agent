@@ -139,5 +139,38 @@ class CapabilityRegistry:
             "truncated": len(ranked) > limit,
         }
 
+    def snapshot(
+        self,
+        *,
+        include_unavailable: bool = True,
+    ) -> dict:
+        """Return a complete deterministic registry snapshot without search limits."""
+        capabilities: list[dict] = []
+        for capability_id in sorted(self._capabilities):
+            descriptor = self._capabilities[capability_id]
+            available = bool(
+                descriptor.enabled
+                and self._provider_enabled.get(descriptor.provider_id, False)
+            )
+            if not available and not include_unavailable:
+                continue
+            capabilities.append(
+                {
+                    **descriptor.summary(),
+                    "remote_name": descriptor.remote_name,
+                    "routing_authority": descriptor.routing_authority,
+                    "routing": descriptor.routing,
+                    "available": available,
+                }
+            )
+
+        providers = dict(sorted(self._provider_enabled.items()))
+        return {
+            "capability_count": len(capabilities),
+            "provider_count": len(providers),
+            "providers": providers,
+            "capabilities": capabilities,
+        }
+
     def provider_status(self) -> dict[str, bool]:
         return dict(sorted(self._provider_enabled.items()))

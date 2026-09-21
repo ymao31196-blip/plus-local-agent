@@ -241,6 +241,97 @@ def read_artifact_bytes(artifact_id: str) -> bytes:
     return snapshot.read_bytes()
 
 
+def materialize_artifact(
+    artifact_id: str,
+    destination_path: str,
+    root: str = "workspace",
+    overwrite: bool = False,
+    expected_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Persist one live artifact into a writable PLA root.
+
+    Existing destinations are protected by default. Replacing an existing file
+    requires both ``overwrite=True`` and the current destination SHA-256 so the
+    write remains guarded by PLA's optimistic-concurrency model.
+    """
+    metadata, snapshot = _validated_snapshot(artifact_id)
+    if not isinstance(destination_path, str) or not destination_path.strip():
+        raise ValueError("destination_path must be a non-empty string")
+
+    target = local_tools.safe_path(destination_path, root, "write")
+    artifact_store = _store_root().resolve()
+    try:
+        target.resolve().relative_to(artifact_store)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Destination cannot be inside the artifact store")
+
+    existed = target.exists()
+    previous_sha256: str | None = None
+    if existed:
+        if not target.is_file():
+            raise ValueError(f"Destination is not a file: {destination_path}")
+        previous_sha256 = local_tools._file_sha256(target)
+        if not overwrite:
+            raise FileExistsError(
+                "Destination already exists; set overwrite=True to replace it"
+            )
+        if expected_sha256 is None:
+            raise PermissionError(
+                "Replacing an existing destination requires expected_sha256"
+            )
+        local_tools._validate_expected_sha256(
+            target, expected_sha256, root,
+        )
+    elif expected_sha256 is not None:
+        local_tools._validate_expected_sha256(
+            target, expected_sha256, root,
+        )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name: str | None = None
+    try:
+        with snapshot.open("rb") as src, tempfile.NamedTemporaryFile(
+            mode="wb",
+            delete=False,
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+        ) as tmp:
+            shutil.copyfileobj(src, tmp, length=1024 * 1024)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            temporary_name = tmp.name
+
+        temporary_path = Path(temporary_name)
+        if temporary_path.stat().st_size != metadata["size"]:
+            raise IOError("Materialized artifact size verification failed")
+        temporary_sha256 = local_tools._file_sha256(temporary_path)
+        if temporary_sha256 != metadata["sha256"]:
+            raise IOError("Materialized artifact SHA-256 verification failed")
+        os.replace(temporary_path, target)
+        temporary_name = None
+    finally:
+        if temporary_name is not None:
+            Path(temporary_name).unlink(missing_ok=True)
+
+    relative = local_tools.root_policy().resolve(
+        root, str(target), "read",
+    ).relative
+    return {
+        "artifact_id": metadata["artifact_id"],
+        "artifact_name": metadata["name"],
+        "root": root,
+        "path": relative,
+        "mime_type": metadata["mime_type"],
+        "size": metadata["size"],
+        "sha256": metadata["sha256"],
+        "overwritten": existed,
+        "previous_sha256": previous_sha256,
+    }
+
+
 def import_internal_artifact(
     source: Path,
     *,

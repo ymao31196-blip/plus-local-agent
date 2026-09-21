@@ -92,6 +92,7 @@ class MCPClientManager:
         self._sources: dict[str, Any] = {}
         self._enabled: dict[str, bool] = {}
         self._modes: dict[str, str] = {}
+        self._routing_authorities: dict[str, str] = {}
         self._tool_overrides: dict[str, dict[str, dict[str, Any]]] = {}
         self._tool_allowlists: dict[str, set[str] | None] = {}
         self._discovery_timeouts: dict[str, float] = {}
@@ -191,6 +192,7 @@ class MCPClientManager:
         *,
         enabled: bool = True,
         mode: str = "auto",
+        routing_authority: str = "recommendation",
         tool_overrides: dict[str, dict[str, Any]] | None = None,
         tool_allowlist: list[str] | tuple[str, ...] | set[str] | None = None,
         discovery_timeout: float | None = None,
@@ -203,6 +205,14 @@ class MCPClientManager:
             raise ValueError("source is required")
         if mode not in {"auto", "legacy"}:
             raise ValueError("mode must be 'auto' or 'legacy'")
+        if routing_authority not in {
+            "recommendation",
+            "preferred",
+            "enforced",
+        }:
+            raise ValueError(
+                "routing_authority must be recommendation, preferred, or enforced"
+            )
         if tool_overrides is not None and not isinstance(tool_overrides, dict):
             raise TypeError("tool_overrides must be an object")
         if discovery_timeout is not None and discovery_timeout <= 0:
@@ -228,6 +238,7 @@ class MCPClientManager:
         self._sources[provider_id] = source
         self._enabled[provider_id] = bool(enabled)
         self._modes[provider_id] = mode
+        self._routing_authorities[provider_id] = routing_authority
         self._tool_overrides[provider_id] = dict(tool_overrides or {})
         self._tool_allowlists[provider_id] = normalized_allowlist
         self._discovery_timeouts[provider_id] = float(
@@ -355,6 +366,10 @@ class MCPClientManager:
                 provider_id,
                 tools,
                 self._tool_overrides.get(provider_id, {}),
+                self._routing_authorities.get(
+                    provider_id,
+                    "recommendation",
+                ),
             )
             extensions = list(
                 self._capability_extensions.get(provider_id, {}).values()
@@ -547,6 +562,7 @@ class MCPClientManager:
         provider_id: str,
         tools: list[Any],
         tool_overrides: dict[str, dict[str, Any]] | None = None,
+        routing_authority: str = "recommendation",
     ) -> list[CapabilityDescriptor]:
         descriptors: list[CapabilityDescriptor] = []
         seen_ids: dict[str, str] = {}
@@ -745,6 +761,9 @@ class MCPClientManager:
             risk_level = override.get("risk_level", "privileged")
             requires_confirmation = override.get("requires_confirmation", True)
             requires_transaction = override.get("requires_transaction", False)
+            routing = override.get("routing", {})
+            if not isinstance(routing, dict):
+                raise ValueError(f"Invalid routing metadata for {remote_name}")
             if not isinstance(requires_transaction, bool):
                 raise ValueError(
                     f"Invalid requires_transaction override for {remote_name}"
@@ -781,5 +800,7 @@ class MCPClientManager:
                 requires_confirmation=bool(requires_confirmation),
                 requires_transaction=requires_transaction,
                 tags=tuple(dict.fromkeys(tags)),
+                routing_authority=routing_authority,
+                routing=dict(routing),
             ))
         return descriptors

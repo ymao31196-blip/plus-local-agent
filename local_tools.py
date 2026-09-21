@@ -21,6 +21,7 @@ from xml.etree import ElementTree as ET
 
 from runtime_context import CURRENT, checkpoint
 from process_controller import controlled_run
+from capability_steering import steer_run_powershell, steer_run_process
 from typing import Any, Callable, Literal
 from typing_extensions import TypedDict
 from workspace_manager import (
@@ -714,8 +715,9 @@ def run_process(
     program_name = Path(program).name.lower()
     if program_name not in ALLOWED_PROGRAMS:
         raise ValueError(f"Program not allowed: {program}")
-    if root == "pla" and program_name in {"git", "git.exe"}:
-        raise ValueError("Git execution is not allowed through root 'pla'")
+    steering = steer_run_process(program, args, root)
+    if steering is not None:
+        return steering
     working_directory = safe_path(cwd, root, "execute")
     if not working_directory.exists():
         raise ValueError(f"Working directory does not exist: {cwd}")
@@ -2225,6 +2227,9 @@ def run_powershell(
     root: str = "workspace",
 ) -> dict[str, Any]:
     """Run one allow-listed cmdlet from validated structured parameters."""
+    steering = steer_run_powershell(command, parameters, root)
+    if steering is not None:
+        return steering
     if command not in POWERSHELL_PARAMETER_POLICY:
         raise PowerShellValidationError(f"PowerShell command not allowed: {command}")
     if parameters is None:

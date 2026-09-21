@@ -89,6 +89,33 @@ def test_process_allowlist_still_applies_in_unified_executor():
     assert result.error["message"] == "Program not allowed: powershell.exe"
 
 
+def test_specialized_routing_block_is_error_in_unified_executor():
+    result = execute_local_tool(
+        "run_process",
+        {"program": "git", "args": ["status"], "root": "pla"},
+    )
+
+    assert result.ok is False
+    assert result.error["type"] == "SpecializedCapabilityRequired"
+    assert result.result["reason"] == "specialized_capability_required"
+    assert result.result["suggested_capabilities"][0]["name"] == "git_status"
+
+
+def test_powershell_service_steering_is_error_in_unified_executor():
+    result = execute_local_tool(
+        "run_powershell",
+        {"command": "Stop-Service", "parameters": {"Name": "ExampleSvc"}},
+    )
+
+    assert result.ok is False
+    assert result.error["type"] == "SpecializedCapabilityRequired"
+    assert result.result["domain"] == "windows_service"
+    assert result.result["attempted_route"]["operation"] == "stop"
+    assert result.result["suggested_capabilities"][0]["name"] == (
+        "windows.service_control_preflight"
+    )
+
+
 def test_stdout_truncation_is_explicit(tmp_path, monkeypatch):
     monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
     result = execute_local_tool("run_process", {

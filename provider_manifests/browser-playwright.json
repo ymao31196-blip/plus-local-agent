@@ -3,6 +3,7 @@
   "id": "browser",
   "autostart": true,
   "mode": "auto",
+  "routing_authority": "preferred",
   "runtime": {
     "kind": "streamable_http",
     "url": "http://localhost:8931/mcp",
@@ -41,6 +42,15 @@
       "description": "Return a semantic accessibility snapshot of the current page. Prefer this over screenshots for interaction decisions.",
       "risk_level": "read",
       "requires_confirmation": false,
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.inspect",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
       "tags": ["browser", "playwright", "observation", "accessibility", "untrusted-web-content"]
     },
     "browser_find": {
@@ -49,12 +59,21 @@
       "description": "Search the current accessibility snapshot for text or a regular expression and return compact matching context.",
       "risk_level": "read",
       "requires_confirmation": false,
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.search",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
       "tags": ["browser", "playwright", "observation", "accessibility", "compact", "untrusted-web-content"]
     },
     "browser_click": {
       "public_name": "click",
       "title": "Click Browser Element",
-      "description": "Click one semantic element reference from a browser inspection. Browser downloads are imported into the PLA Artifact Plane instead of exposing filesystem paths.",
+      "description": "Click one semantic element reference from a browser inspection for ordinary page interactions. When the intent is to save a file, use browser.download instead of clicking the download control.",
       "artifact_contract": {
         "transport": "local_path",
         "inputs": [],
@@ -79,7 +98,16 @@
       },
       "risk_level": "write_external",
       "requires_confirmation": false,
-      "tags": ["browser", "playwright", "interaction", "download", "artifact"]
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.click",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
+      "tags": ["browser", "playwright", "interaction"]
     },
     "browser_type": {
       "public_name": "type",
@@ -87,6 +115,15 @@
       "description": "Type text into one semantic element reference from a browser inspection.",
       "risk_level": "write_external",
       "requires_confirmation": false,
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.type",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
       "tags": ["browser", "playwright", "interaction"]
     },
     "browser_file_upload": {
@@ -136,6 +173,15 @@
       "description": "Press a keyboard key in the current browser page.",
       "risk_level": "write_external",
       "requires_confirmation": false,
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.press",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
       "tags": ["browser", "playwright", "interaction"]
     },
     "browser_wait_for": {
@@ -144,6 +190,15 @@
       "description": "Wait for text, disappearance, or a bounded delay in the current page.",
       "risk_level": "read",
       "requires_confirmation": false,
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.wait",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
       "tags": ["browser", "playwright", "observation"]
     },
     "browser_tabs": {
@@ -189,6 +244,15 @@
       },
       "risk_level": "read",
       "requires_confirmation": false,
+      "routing": {
+        "preferred_over": [{
+          "capability_id": "computer.screenshot",
+          "when": {
+            "argument": "app",
+            "contains_any": ["edge", "chrome", "chromium", "firefox"]
+          }
+        }]
+      },
       "tags": ["browser", "playwright", "observation", "visual", "artifact", "untrusted-web-content"]
     },
     "browser_console_messages": {

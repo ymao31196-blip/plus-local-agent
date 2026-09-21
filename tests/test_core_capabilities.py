@@ -2,6 +2,8 @@ import asyncio
 
 import pytest
 
+import artifact_bridge
+import local_tools
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
@@ -68,8 +70,170 @@ def test_core_transaction_capabilities_are_registered_on_stable_surface():
         store.close()
 
 
+def test_core_artifact_materialize_is_brokered_write_capability(tmp_path, monkeypatch):
+    registry, broker, store = _runtime()
+    try:
+        monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+        source = tmp_path / "source.txt"
+        source.write_text("hello", encoding="utf-8")
+        artifact = artifact_bridge.export_artifact("source.txt")
+
+        descriptor = registry.describe("core.artifact_materialize")
+        assert descriptor["risk_level"] == "write_local"
+        assert descriptor["requires_confirmation"] is False
+        assert descriptor["requires_transaction"] is False
+
+        result = asyncio.run(
+            broker.invoke(
+                "core.artifact_materialize",
+                {
+                    "artifact_id": artifact["artifact_id"],
+                    "destination_path": "saved/source.txt",
+                },
+            )
+        )
+
+        assert result["data"]["path"] == "saved/source.txt"
+        assert result["data"]["sha256"] == artifact["sha256"]
+        assert (tmp_path / "saved" / "source.txt").read_text(
+            encoding="utf-8"
+        ) == "hello"
+    finally:
+        store.close()
 
 
+def test_core_capability_route_is_dynamic_read_only_surface():
+    registry, broker, store = _runtime()
+    try:
+        descriptor = registry.describe("core.capability_route")
+        assert descriptor["risk_level"] == "read"
+        assert descriptor["requires_confirmation"] is False
+        assert descriptor["requires_transaction"] is False
+
+        git_route = asyncio.run(
+            broker.invoke(
+                "core.capability_route",
+                {
+                    "tool": "run_process",
+                    "arguments": {
+                        "program": "git.exe",
+                        "args": ["push"],
+                        "root": "pla",
+                    },
+                },
+            )
+        )
+        assert git_route["data"]["status"] == "specialized_required"
+        assert git_route["data"]["steering_rule_id"] == "pla_source_git"
+        assert git_route["data"]["suggested_capabilities"][0]["name"] == (
+            "core.git_push"
+        )
+
+        gh_route = asyncio.run(
+            broker.invoke(
+                "core.capability_route",
+                {
+                    "tool": "run_process",
+                    "arguments": {
+                        "program": "gh.exe",
+                        "args": ["release", "list"],
+                        "root": "pla",
+                    },
+                },
+            )
+        )
+        assert gh_route["data"]["status"] == "generic_allowed"
+
+        registry.register_provider(
+            "computer",
+            [
+                CapabilityDescriptor(
+                    id="computer.inspect",
+                    provider_id="computer",
+                    remote_name="inspect",
+                    title="Inspect Windows UI",
+                    description="Inspect a target application.",
+                    input_schema={"type": "object", "properties": {}},
+                    risk_level="read",
+                )
+            ],
+            enabled=True,
+        )
+        registry.register_provider(
+            "browser",
+            [
+                CapabilityDescriptor(
+                    id="browser.inspect",
+                    provider_id="browser",
+                    remote_name="inspect",
+                    title="Inspect Browser",
+                    description="Inspect browser semantics.",
+                    input_schema={"type": "object", "properties": {}},
+                    risk_level="read",
+                    routing_authority="preferred",
+                    routing={
+                        "preferred_over": [
+                            {
+                                "capability_id": "computer.inspect",
+                                "when": {
+                                    "argument": "app",
+                                    "contains_any": ["edge"],
+                                },
+                            }
+                        ]
+                    },
+                )
+            ],
+            enabled=True,
+        )
+
+        browser_route = asyncio.run(
+            broker.invoke(
+                "core.capability_route",
+                {
+                    "tool": "capability_invoke",
+                    "arguments": {
+                        "capability_id": "computer.inspect",
+                        "arguments": {"app": "Microsoft Edge"},
+                    },
+                },
+            )
+        )
+        assert browser_route["data"]["status"] == "specialized_preferred"
+        assert browser_route["data"]["declared_relation"]["target_capability_id"] == (
+            "browser.inspect"
+        )
+        assert browser_route["data"]["suggested_capabilities"][0]["name"] == (
+            "browser.inspect"
+        )
+    finally:
+        store.close()
+
+
+def test_core_routing_audit_is_dynamic_read_only_surface():
+    registry, broker, store = _runtime()
+    try:
+        descriptor = registry.describe("core.routing_audit")
+        assert descriptor["risk_level"] == "read"
+        assert descriptor["requires_confirmation"] is False
+        assert descriptor["requires_transaction"] is False
+
+        result = asyncio.run(
+            broker.invoke(
+                "core.routing_audit",
+                {"include_unavailable": True},
+            )
+        )
+        data = result["data"]
+
+        assert data["registry"]["capability_count"] >= 1
+        assert data["catalog"]["rule_count"] == 2
+        assert data["catalog"]["health"]["healthy"] is False
+        assert data["catalog"]["health"]["missing_capabilities"]
+        assert data["candidate_count"] >= data["covered_candidate_count"]
+        assert data["candidate_count"] >= data["uncovered_candidate_count"]
+    finally:
+        store.close()
 
 
 def test_core_transaction_create_get_and_finalize_roundtrip():

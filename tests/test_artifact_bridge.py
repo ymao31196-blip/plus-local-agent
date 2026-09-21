@@ -32,6 +32,92 @@ def test_export_creates_immutable_snapshot_with_metadata(workspace):
     assert artifact_bridge.read_artifact_bytes(result["artifact_id"]) == b"version one"
 
 
+def test_materialize_artifact_creates_verified_persistent_copy(workspace):
+    source = workspace / "source.bin"
+    source.write_bytes(b"artifact payload")
+    artifact = artifact_bridge.export_artifact("source.bin")
+
+    result = artifact_bridge.materialize_artifact(
+        artifact["artifact_id"],
+        "downloads/persisted.bin",
+    )
+
+    target = workspace / "downloads" / "persisted.bin"
+    assert target.read_bytes() == b"artifact payload"
+    assert result["root"] == "workspace"
+    assert result["path"] == "downloads/persisted.bin"
+    assert result["size"] == len(b"artifact payload")
+    assert result["sha256"] == artifact["sha256"]
+    assert result["overwritten"] is False
+    assert result["previous_sha256"] is None
+
+
+def test_materialize_artifact_requires_hash_guard_for_overwrite(workspace):
+    source = workspace / "source.bin"
+    source.write_bytes(b"new payload")
+    artifact = artifact_bridge.export_artifact("source.bin")
+    target = workspace / "existing.bin"
+    target.write_bytes(b"old payload")
+    old_sha256 = hashlib.sha256(b"old payload").hexdigest()
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        artifact_bridge.materialize_artifact(
+            artifact["artifact_id"], "existing.bin",
+        )
+    with pytest.raises(PermissionError, match="expected_sha256"):
+        artifact_bridge.materialize_artifact(
+            artifact["artifact_id"], "existing.bin", overwrite=True,
+        )
+    with pytest.raises(local_tools.FileChangedSinceRead):
+        artifact_bridge.materialize_artifact(
+            artifact["artifact_id"],
+            "existing.bin",
+            overwrite=True,
+            expected_sha256="0" * 64,
+        )
+
+    result = artifact_bridge.materialize_artifact(
+        artifact["artifact_id"],
+        "existing.bin",
+        overwrite=True,
+        expected_sha256=old_sha256,
+    )
+
+    assert target.read_bytes() == b"new payload"
+    assert result["overwritten"] is True
+    assert result["previous_sha256"] == old_sha256
+
+
+def test_materialize_artifact_rejects_store_destination(workspace):
+    source = workspace / "source.bin"
+    source.write_bytes(b"payload")
+    artifact = artifact_bridge.export_artifact("source.bin")
+
+    with pytest.raises(ValueError, match="artifact store"):
+        artifact_bridge.materialize_artifact(
+            artifact["artifact_id"],
+            f"{artifact_bridge.STORE_DIRNAME}/manual-copy.bin",
+        )
+
+
+def test_materialize_artifact_rechecks_source_integrity(workspace):
+    source = workspace / "source.bin"
+    source.write_bytes(b"payload")
+    artifact = artifact_bridge.export_artifact("source.bin")
+    payload = (
+        workspace
+        / artifact_bridge.STORE_DIRNAME
+        / artifact["artifact_id"]
+        / "payload"
+    )
+    payload.write_bytes(b"tampered")
+
+    with pytest.raises(ValueError, match="integrity"):
+        artifact_bridge.materialize_artifact(
+            artifact["artifact_id"], "copy.bin",
+        )
+
+
 def test_export_rejects_invalid_ttl_and_directories(workspace):
     (workspace / "folder").mkdir()
     with pytest.raises(ValueError, match="ttl_seconds"):
