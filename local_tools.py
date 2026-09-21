@@ -50,7 +50,7 @@ def workspace_config_path() -> Path:
 
 
 ALLOWED_PROGRAMS = {
-    "python", "python.exe", "pytest", "pytest.exe", "git", "git.exe", "gh", "gh.exe"
+    "python", "python.exe", "pytest", "pytest.exe", "git", "git.exe", "gh", "gh.exe", "latexmk", "latexmk.exe", "xelatex", "xelatex.exe"
 }
 
 MAX_TEXT_CHARACTERS = 20_000
