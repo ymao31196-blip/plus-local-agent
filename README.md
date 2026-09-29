@@ -23,6 +23,7 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 - Microsoft Edge
 - Secure MCP Tunnel credentials for the target machine
 - WinGet MCP runtime for the full Windows package-management feature set
+- WPS Office for the WPS Office Provider (optional if you do not need Office automation)
 
 ### Download
 
@@ -267,17 +268,17 @@ ChatGPT可以来自同一台电脑，也可以来自手机、网页端或另一�
 
 | Area | What PLA provides |
 | --- | --- |
-| Local execution | Controlled file, process, Python and local program execution, plus allow-listed structured PowerShell diagnostics for processes, services, TCP/UDP endpoints, adapters, routing, IP-interface metrics/DHCP/MTU, IP/DNS configuration, bounded System/Application event logs, scheduled-task state, file signatures and workspace ACLs |
+| Local execution | Controlled file, process, Python and local program execution, including governed WSL access plus allow-listed `latexmk`/`xelatex`, and structured PowerShell diagnostics for processes, services, TCP/UDP endpoints, adapters, routing, IP-interface metrics/DHCP/MTU, IP/DNS configuration, bounded System/Application event logs, scheduled-task state, file signatures and workspace ACLs |
 | Browser | Independent browser runtime with persistent PLA-managed profiles, reusable login sessions, and semantic accessibility/ref-based interaction |
 | Computer Use | Windows UI Automation with restricted selector-targeted input fallbacks |
-| Documents | Reviewed DOCX, PDF and Markdown conversion capabilities |
+| Documents | WPS Office automation plus reviewed PDF and Markdown conversion capabilities; the legacy standalone DOCX Provider is retained but disabled by default |
 | Windows management | Observation, WinGet integration and narrowly controlled application operations |
 | Artifacts | Structured artifact export, metadata, chunking and provenance checks |
 | Providers | Manifest-backed MCP providers with isolated environments and hot reload |
 | Transactions | Durable multi-step actions with checkpoints, confirmation and recovery state |
 | Events and policy | Event, Observer and Gate planes for audit and policy enforcement |
 | Workspaces | Deployment-local authorized roots separated from PLA source |
-| Git | Expected-HEAD, explicit-path staging, commits, tags and controlled pushes |
+| Git | Expected-HEAD, explicit-path staging/removal, commits, tags and controlled pushes |
 | Runtime lifecycle | Independent lifecycle broker for bounded HTTP restart and health checks |
 
 The Browser Provider uses a PLA-managed persistent profile. After you sign in to a site inside that profile, later browser tasks can reuse the stored login state instead of starting from a fresh browser session each time. The PLA browser profile is separate from your normal Edge profile and does not directly inherit an already-running Edge session.
@@ -307,13 +308,19 @@ PLA on the target Windows PC
         +-- External MCP providers
 ~~~
 
-PLA does not contain a second autonomous planner. Providers expose reviewed capabilities;
-ChatGPT decides how to combine them into multi-step work.
+PLA does not contain a second autonomous planner and no longer carries an MCP Sampling execution
+path. Providers expose reviewed capabilities; ChatGPT remains the Agent Brain and decides how to
+combine them into multi-step work.
 
 ## Stable capability surface
 
 External Provider tool catalogs are not copied wholesale into ChatGPT's MCP schema. PLA keeps a
-small stable surface:
+small hot-path surface for common local work and routes specialized or low-frequency operations
+through the Capability Registry.
+
+The v1.8.0 runtime exposes **23 top-level MCP tools**. These cover the capability router itself plus
+high-frequency file, process, artifact-export, task, Git status/diff, and recovery/diagnostic paths.
+The broader runtime is discovered on demand through:
 
 ~~~text
 capability_search
@@ -321,8 +328,9 @@ capability_describe
 capability_invoke
 ~~~
 
-ChatGPT searches the runtime registry, inspects the selected capability, and invokes only the tool
-needed for the current step.
+At the v1.8.0 release point, the live registry contains **393 dynamic capabilities**. ChatGPT searches
+that registry, inspects the selected capability, and invokes only what is needed for the current
+step instead of receiving every Provider tool schema up front.
 
 Provider manifests define tool allowlists, risk levels, confirmation requirements, transaction
 requirements, artifact policy, runtime constraints, and dependency setup.
@@ -459,21 +467,28 @@ The production Provider set includes capabilities for:
 - Browser automation
 - Windows Computer Use
 - Markdown/document conversion
-- DOCX generation
 - PDF processing
 - WinGet package discovery and reviewed installation
 - Windows observation and narrowly controlled application management
 - Software migration workflows
-- WPS Office automation through the reviewed `lc2panda/wps-skills` MCP provider, including WPS spreadsheets and the broader Office tool surface
+- WPS Office automation through the reviewed `lc2panda/wps-skills` MCP provider, including documents, spreadsheets, presentations and the broader Office tool surface
+- Skill Library access for advisory reusable `SKILL.md` experience, with cache-first search/read and Git-backed refresh
 
 The WPS Office Provider is installed as a source-backed Node Provider pinned to a reviewed upstream
 commit. PLA applies its tracked Windows COM compatibility patch before build, then exposes the
 upstream MCP tools through the same capability registry. Common spreadsheet reads are classified as
 `read`, ordinary writes/formatting/saves as `write_local`, while destructive worksheet/row/column
-operations and raw method execution remain confirmation-gated. Windows use requires WPS Office and
-Node.js 18+.
+operations and raw method execution remain confirmation-gated. WPS is the primary Office automation
+surface in v1.8.0; the older standalone DOCX Provider remains available in source form but does not
+autostart. Windows use requires WPS Office and Node.js 18+.
 
-The exact loaded Provider set can be inspected at runtime with runtime.provider_status.
+The Skill Library Provider is intentionally lighter-weight. Skills are advisory reusable experience
+used to reduce recurring mistakes, preserve stable workflows, and surface easy-to-forget conventions.
+They do not override current user instructions, task facts, or ChatGPT's judgment.
+
+The exact loaded Provider set can be inspected at runtime with `runtime.provider_status`. The v1.8.0
+release point has nine active external Providers; WPS exposes 250 capabilities and Skill Library
+exposes four.
 
 ## Software migration
 
@@ -590,3 +605,4 @@ and customer workspace outputs are excluded from Git.
 4. **Local state stays local.** Credentials, customer workspace roots and deployment configuration are not product source.
 5. **High-risk actions are explicit.** Confirmation, transactions, UAC and Git preconditions remain separate safety layers.
 6. **Providers are extensible without flattening security.** New MCP capabilities still pass through the same runtime policy boundary.
+7. **Keep the top-level tool surface small.** High-frequency recovery paths stay directly visible; specialized, governance and provider-specific operations are discovered through the Capability Registry.

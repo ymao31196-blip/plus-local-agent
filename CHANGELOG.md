@@ -4,22 +4,38 @@ All notable PLA release changes are recorded here.
 
 ## Unreleased
 
+## 1.8.0 - 2026-09-29
+
 ### Added
 
 - Source-backed Git/npm Provider installation with exact Git commit pinning, repository-owned compatibility patches, fixed build entrypoints, and fresh-install support through `setup_providers.ps1`.
-- Reviewed WPS Office Provider based on `lc2panda/wps-skills`, exposing the upstream WPS MCP tool surface through PLA's Capability Registry.
+- Reviewed WPS Office Provider based on `lc2panda/wps-skills`, exposing 250 Office capabilities through PLA's Capability Registry.
+- Skill Library Provider for advisory reusable `SKILL.md` experience with cache-first search/read and Git-backed refresh.
+- Governed WSL execution plus allow-listed `latexmk` and `xelatex`.
+- Dynamic `core.git_remove` for staging explicit tracked-file deletions under expected-HEAD and clean-index preconditions.
 
 ### Changed
 
-- Common WPS spreadsheet reads are classified as `read`; ordinary spreadsheet writes, formatting, navigation, and saves are `write_local` without per-call confirmation. Destructive worksheet/row/column operations and raw WPS method execution remain confirmation-gated.
+- The top-level MCP surface is reduced from 55 tools to 23 hot-path tools; specialized Git, Project, Transaction, Artifact-management and Provider capabilities are discovered dynamically.
+- The live Capability Registry contains 393 dynamic capabilities at the v1.8.0 release point.
+- WPS Office is the primary Office automation surface; the legacy standalone DOCX Provider remains in source form but no longer autostarts.
+- Common WPS spreadsheet reads are classified as `read`; ordinary spreadsheet writes, formatting, navigation and saves are `write_local`, while destructive worksheet/row/column operations and raw method execution remain confirmation-gated.
+- Artifact cleanup and revocation are dynamic destructive capabilities with explicit confirmation; cleanup preview remains read-only.
 - PLA applies a tracked Windows COM compatibility patch to WPS Skills before build, fixing active-sheet fallback for omitted sheet arguments and restoring high-level cell-format operations.
+- Git steering now routes stage/remove/commit/tag/push operations to governed `core.git_*` capabilities while retaining top-level `git_status` and `git_diff` as recovery-friendly read paths.
+
+### Removed
+
+- MCP Sampling is retired from the runtime. `probe_sampling`, `run_agent_task`, the Sampling backend and Sampling-specific tests have been removed.
+- The server-side model loop is no longer part of PLA; ChatGPT remains the Agent Brain.
 
 ### Verified
 
+- Full PLA regression: **658 / 658 passed**.
+- Live runtime exposes **23 top-level MCP tools** and **393 dynamic capabilities**.
+- Nine external Providers are active; WPS exposes 250 capabilities and Skill Library exposes four.
 - Live WPS E2E: create workbook -> write range -> format header -> set formula -> save -> read back. The saved workbook returned the expected data and `SUM(B2:B4)=9`.
-- WPS Provider live probe: healthy, 250 tools discovered.
-- Full PLA regression: **668 / 668 passed**.
-- Python compilation checks passed for the source-backed Provider setup modules.
+- Python compilation checks passed for the modified runtime, Git, Provider and routing modules.
 
 ## 1.7.0 - 2026-09-21
 

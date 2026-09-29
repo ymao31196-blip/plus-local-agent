@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.7.0"
+    assert server.mcp.version == "1.8.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
@@ -163,6 +163,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.5.3.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.6.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.7.0.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v1.8.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()
