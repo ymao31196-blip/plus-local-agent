@@ -102,6 +102,52 @@ def test_core_artifact_materialize_is_brokered_write_capability(tmp_path, monkey
         store.close()
 
 
+def test_core_artifact_management_is_dynamic_and_destructive_actions_are_gated(
+    tmp_path, monkeypatch
+):
+    registry, broker, store = _runtime()
+    try:
+        monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+        source = tmp_path / "managed.txt"
+        source.write_text("managed", encoding="utf-8")
+        artifact = artifact_bridge.export_artifact("managed.txt")
+
+        metadata = asyncio.run(
+            broker.invoke(
+                "core.artifact_metadata",
+                {"artifact_id": artifact["artifact_id"]},
+            )
+        )
+        assert metadata["data"]["sha256"] == artifact["sha256"]
+
+        verified = asyncio.run(
+            broker.invoke(
+                "core.artifact_verify",
+                {"artifact_id": artifact["artifact_id"]},
+            )
+        )
+        assert verified["data"]["valid"] is True
+
+        with pytest.raises(PermissionError, match="confirmation"):
+            asyncio.run(
+                broker.invoke(
+                    "core.artifact_revoke",
+                    {"artifact_id": artifact["artifact_id"]},
+                )
+            )
+
+        revoked = asyncio.run(
+            broker.invoke(
+                "core.artifact_revoke",
+                {"artifact_id": artifact["artifact_id"]},
+                confirmation="INVOKE",
+            )
+        )
+        assert revoked["data"]["revoked"] is True
+    finally:
+        store.close()
+
+
 def test_core_capability_route_is_dynamic_read_only_surface():
     registry, broker, store = _runtime()
     try:

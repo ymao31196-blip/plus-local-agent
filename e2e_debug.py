@@ -1,4 +1,4 @@
-"""Opt-in, local-only diagnostics for ChatGPT MCP sampling E2E runs."""
+"""Opt-in, local-only diagnostics for ChatGPT-to-PLA MCP E2E runs."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class E2EDebugTrace:
         if not enabled():
             return
         record = {
-            "component": "inner_sampling_model",
+            "component": "local_mcp_runtime",
             "event": event,
             "request_sequence": self.request_sequence,
             "protocol_mode": self.protocol,

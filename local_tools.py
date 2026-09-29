@@ -1362,6 +1362,246 @@ def git_stage(
         lock_path.unlink(missing_ok=True)
         if candidate_path is not None:
             candidate_path.unlink(missing_ok=True)
+
+@workspace_mutation
+def git_remove(
+    paths: list[str],
+    expected_head: str,
+    cwd: str = ".",
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Stage explicit tracked files that have already been removed from the worktree."""
+
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 64:
+        raise ValueError("paths must contain 1–64 explicit files")
+    if (
+        not isinstance(expected_head, str)
+        or not re.fullmatch(r"[0-9a-fA-F]{40,64}", expected_head)
+    ):
+        raise ValueError(
+            "expected_head must be a full 40–64 character hexadecimal commit id"
+        )
+    if any(not isinstance(path, str) or not path for path in paths):
+        raise ValueError("each remove path must be a non-empty string")
+    if len(paths) != len(set(paths)):
+        raise ValueError("remove paths must be unique")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    root_base = root_policy(root).resolve(root, ".", "write").target.resolve()
+    git_dir = Path(
+        _git_run(working_directory, ["rev-parse", "--absolute-git-dir"]).stdout.strip()
+    ).resolve()
+    try:
+        common = os.path.commonpath(
+            (os.path.normcase(str(root_base)), os.path.normcase(str(git_dir)))
+        )
+    except ValueError as exc:
+        raise ValueError("Git metadata directory is outside the selected root") from exc
+    if common != os.path.normcase(str(root_base)):
+        raise ValueError("Git metadata directory is outside the selected root")
+
+    current_head = _git_resolve_commit(working_directory, "HEAD")
+    if current_head != expected_head.lower():
+        raise ValueError(
+            f"HEAD changed since inspection: expected {expected_head.lower()}, "
+            f"current {current_head}"
+        )
+    for marker in (
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "BISECT_LOG",
+        "rebase-merge",
+        "rebase-apply",
+        "sequencer",
+    ):
+        if (git_dir / marker).exists():
+            raise ValueError(
+                f"Structured remove is disabled while repository state {marker} exists"
+            )
+
+    index_path = git_dir / "index"
+    if not index_path.is_file():
+        raise ValueError("Structured remove requires an existing Git index")
+    lock_path = git_dir / "index.lock"
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise ValueError("Git index is locked by another operation") from exc
+
+    candidate_path: Path | None = None
+    lock_open = True
+    try:
+        snapshot = index_path.read_bytes()
+        snapshot_sha = hashlib.sha256(snapshot).hexdigest()
+        if _git_resolve_commit(working_directory, "HEAD") != current_head:
+            raise ValueError("HEAD changed while acquiring the Git index lock")
+
+        already_staged = [
+            item
+            for item in _git_run(
+                working_directory,
+                ["diff", "--cached", "--name-only", "-z", current_head],
+            ).stdout.split("\x00")
+            if item
+        ]
+        if already_staged:
+            raise ValueError(
+                "Git index already contains staged changes; commit or clear them "
+                "before structured remove"
+            )
+
+        prepared: list[tuple[str, str]] = []
+        for path in paths:
+            target = safe_path(path, root, "read")
+            if target.exists():
+                raise ValueError(
+                    f"Structured remove requires the worktree file to be absent: {path}"
+                )
+            try:
+                repo_relative = target.relative_to(repo_root)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Remove path is outside the selected Git repository: {path}"
+                ) from exc
+            repo_path = repo_relative.as_posix()
+            if repo_path in {"", "."}:
+                raise ValueError(
+                    "Remove paths must name explicit files, not the repository root"
+                )
+
+            entry_result = _git_run(
+                working_directory,
+                ["ls-files", "--stage", "-z", "--", repo_path],
+            )
+            entries = [item for item in entry_result.stdout.split("\x00") if item]
+            if len(entries) != 1 or "\t" not in entries[0]:
+                raise ValueError(
+                    f"Structured remove requires one tracked regular file: {path}"
+                )
+            metadata, listed_path = entries[0].split("\t", 1)
+            fields = metadata.split()
+            if (
+                len(fields) != 3
+                or fields[2] != "0"
+                or listed_path != repo_path
+                or fields[0] not in {"100644", "100755"}
+            ):
+                raise ValueError(
+                    f"Structured remove supports only tracked regular files: {path}"
+                )
+            prepared.append((repo_path, _relative_path(target, root)))
+
+        with tempfile.NamedTemporaryFile(
+            dir=git_dir, prefix=".pla-remove-index-", suffix=".tmp", delete=False
+        ) as candidate:
+            candidate.write(snapshot)
+            candidate.flush()
+            os.fsync(candidate.fileno())
+            candidate_path = Path(candidate.name)
+
+        candidate_env = os.environ.copy()
+        candidate_env["GIT_INDEX_FILE"] = str(candidate_path)
+        expected_paths = [item[0] for item in prepared]
+        _git_run(
+            working_directory,
+            ["update-index", "--remove", "--", *expected_paths],
+            env=candidate_env,
+        )
+
+        staged_paths = [
+            item
+            for item in _git_run(
+                working_directory,
+                ["diff", "--cached", "--name-only", "-z", current_head],
+                env=candidate_env,
+            ).stdout.split("\x00")
+            if item
+        ]
+        if set(staged_paths) != set(expected_paths) or len(staged_paths) != len(
+            expected_paths
+        ):
+            raise ValueError(
+                "Structured remove requires every selected file to be staged as "
+                "deleted and no other staged paths"
+            )
+
+        status_output = _git_run(
+            working_directory,
+            ["diff", "--cached", "--name-status", "-z", current_head],
+            env=candidate_env,
+        ).stdout.split("\x00")
+        pairs = [item for item in status_output if item]
+        for index in range(0, len(pairs), 2):
+            if index + 1 >= len(pairs):
+                raise ValueError("Git returned malformed staged deletion metadata")
+            if pairs[index] != "D" or pairs[index + 1] not in expected_paths:
+                raise ValueError("Structured remove staged a non-deletion change")
+
+        tree = _git_run(
+            working_directory, ["write-tree"], env=candidate_env
+        ).stdout.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40,64}", tree):
+            raise ValueError("Git returned an invalid tree id")
+
+        if _git_resolve_commit(working_directory, "HEAD") != current_head:
+            raise ValueError(
+                "HEAD changed during structured remove; Git index was not replaced"
+            )
+        if hashlib.sha256(index_path.read_bytes()).hexdigest() != snapshot_sha:
+            raise ValueError(
+                "Git index changed outside its lock; refusing to replace it"
+            )
+
+        candidate_bytes = candidate_path.read_bytes()
+        with os.fdopen(lock_fd, "wb", closefd=False) as lock_handle:
+            lock_handle.write(candidate_bytes)
+            lock_handle.flush()
+            os.fsync(lock_handle.fileno())
+        os.close(lock_fd)
+        lock_open = False
+        os.replace(lock_path, index_path)
+
+        actual_staged = [
+            item
+            for item in _git_run(
+                working_directory,
+                ["diff", "--cached", "--name-only", "-z", current_head],
+            ).stdout.split("\x00")
+            if item
+        ]
+        if set(actual_staged) != set(expected_paths) or len(actual_staged) != len(
+            expected_paths
+        ):
+            raise RuntimeError(
+                "Structured remove could not verify the installed Git index"
+            )
+
+        return {
+            "status": "completed",
+            "repo_root": _relative_path(repo_root, root),
+            "cwd": _relative_path(working_directory, root),
+            "head": current_head,
+            "tree": tree,
+            "paths": [item[1] for item in prepared],
+            "file_count": len(prepared),
+            "preflight": {
+                "expected_head_matched": True,
+                "index_initially_clean": True,
+                "tracked_files_only": True,
+                "worktree_files_absent": True,
+                "index_lock_acquired": True,
+                "mode": "explicit_tracked_deletions",
+            },
+        }
+    finally:
+        if lock_open:
+            os.close(lock_fd)
+        lock_path.unlink(missing_ok=True)
+        if candidate_path is not None:
+            candidate_path.unlink(missing_ok=True)
+
+
 @workspace_mutation
 def git_commit(
     message: str,
@@ -1446,12 +1686,12 @@ def git_commit(
 
     disallowed_result = _git_run(
         working_directory,
-        ["diff", "--cached", "--name-only", "-z", "--diff-filter=CDRTUXB", current_head],
+        ["diff", "--cached", "--name-only", "-z", "--diff-filter=CRTUXB", current_head],
     )
     disallowed = [item for item in disallowed_result.stdout.split("\x00") if item]
     if disallowed:
         raise ValueError(
-            "Structured commit supports only explicit regular-file additions or modifications; "
+            "Structured commit supports only explicit regular-file additions, modifications, or deletions; "
             f"unsupported staged paths: {', '.join(disallowed[:10])}"
         )
 
@@ -2583,6 +2823,7 @@ LOCAL_TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "git_log": git_log,
     "git_show": git_show,
     "git_stage": git_stage,
+    "git_remove": git_remove,
     "git_commit": git_commit,
     "git_tag": git_tag,
     "git_push": git_push,

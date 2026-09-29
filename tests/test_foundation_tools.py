@@ -228,6 +228,34 @@ def test_structured_git_stage_and_commit_new_file(workspace):
     assert "+new" in shown["patch"]
 
 
+def test_structured_git_remove_then_commit(workspace):
+    _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+    (workspace / "tracked.txt").unlink()
+
+    staged = local_tools.git_remove(["tracked.txt"], before)
+
+    assert staged["status"] == "completed"
+    assert staged["paths"] == ["tracked.txt"]
+    assert staged["preflight"]["mode"] == "explicit_tracked_deletions"
+    status = local_tools.git_status()
+    removed = {item["path"]: item for item in status["files"]}["tracked.txt"]
+    assert removed["index_status"] == "D"
+
+    committed = local_tools.git_commit("remove tracked file", ["tracked.txt"], before)
+    assert committed["previous_head"] == before
+    assert not (workspace / "tracked.txt").exists()
+
+
+def test_structured_git_remove_rejects_existing_worktree_file(workspace):
+    _init_git_repo(workspace)
+    before = local_tools.git_status()["head"]
+
+    with pytest.raises(ValueError, match="worktree file to be absent"):
+        local_tools.git_remove(["tracked.txt"], before)
+    assert local_tools.git_diff(staged=True)["diff"] == ""
+
+
 def test_structured_git_stage_rejects_ignored_untracked_file(workspace):
     git = _init_git_repo(workspace)
     before = local_tools.git_status()["head"]

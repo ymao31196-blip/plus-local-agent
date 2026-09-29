@@ -61,12 +61,11 @@ Submit the pytest Action with `submit_task`, retain its `task_id`, and call
 `task_result(task_id)` until it reports `completed`, `failed`, or `cancelled`. The server should
 not claim to reason about or repair the failure; ChatGPT decides the next Action.
 
-## Experimental Sampling check
+## Model-execution boundary
 
-`probe_sampling` and `run_agent_task` are retained from v0.5/v0.6 but are no longer
-part of this acceptance path. If testing them separately, first call
-`diagnose_client`. A real ChatGPT client that does not advertise MCP Sampling
-cannot run the server-side experimental loop; do not add an API-key fallback.
+MCP Sampling has been retired. ChatGPT remains the Agent Brain and decides the next
+tool or capability call. PLA does not request model inference from the MCP client
+and does not provide a server-side model loop.
 
 
 ## v0.8 E2E 1: Task cancellation

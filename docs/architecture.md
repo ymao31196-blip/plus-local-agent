@@ -375,12 +375,12 @@ changeset recovery. Cancellation and restart status never imply rolled-back file
   added.
 - Secure MCP Tunnel endpoints and credentials are unchanged.
 
-## Experimental: server-side Agent Loop via MCP Sampling
+## Model-execution boundary
 
-The v0.5/v0.6 `probe_sampling`, `run_agent_task`, `MCPSamplingBackend`,
-`GenericLLMReasoner`, prompt builder, decision parser, Agent Service, and fake
-Sampling client remain unchanged for experiments. This is not the formal v0.8
-mainline. No API-key fallback was added.
+MCP Sampling is retired and is not part of the runtime. PLA does not request model
+inference from the MCP client. ChatGPT remains the Agent Brain and selects the next
+tool or capability call; PLA provides bounded local execution, durable task state,
+and structured observations.
 
 ## Relationship to Engineering Bridge
 

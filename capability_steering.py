@@ -110,13 +110,18 @@ _GIT_SUGGESTIONS = (
         "purpose": "Read a bounded repository diff.",
     },
     {
-        "name": "git_stage",
-        "surface": "mcp_tool",
-        "purpose": "Stage explicit files with HEAD and SHA-256 preconditions.",
+        "name": "core.git_stage",
+        "surface": "capability",
+        "purpose": "Stage explicit file bytes with HEAD and SHA-256 preconditions.",
     },
     {
-        "name": "git_commit",
-        "surface": "mcp_tool",
+        "name": "core.git_remove",
+        "surface": "capability",
+        "purpose": "Stage explicit tracked files that are already absent from the worktree.",
+    },
+    {
+        "name": "core.git_commit",
+        "surface": "capability",
         "purpose": "Commit only the exact staged files on the expected HEAD.",
     },
     {
@@ -134,9 +139,11 @@ _GIT_SUGGESTIONS = (
 _GIT_PREFERRED = {
     "status": "git_status",
     "diff": "git_diff",
-    "add": "git_stage",
-    "stage": "git_stage",
-    "commit": "git_commit",
+    "add": "core.git_stage",
+    "stage": "core.git_stage",
+    "rm": "core.git_remove",
+    "remove": "core.git_remove",
+    "commit": "core.git_commit",
     "tag": "core.git_tag",
     "push": "core.git_push",
 }

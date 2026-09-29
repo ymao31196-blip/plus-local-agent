@@ -6,7 +6,13 @@ capability, create follow-up plans, or bypass target capability policy.
 
 from __future__ import annotations
 
-from artifact_bridge import materialize_artifact as controlled_materialize_artifact
+from artifact_bridge import (
+    artifact_gc as controlled_artifact_gc,
+    artifact_metadata as controlled_artifact_metadata,
+    materialize_artifact as controlled_materialize_artifact,
+    revoke_artifact as controlled_revoke_artifact,
+    verify_artifact_provenance as controlled_verify_artifact_provenance,
+)
 from capability_broker import CapabilityBroker
 from capability_models import CapabilityDescriptor
 from capability_registry import CapabilityRegistry
@@ -19,7 +25,9 @@ from routing_audit import audit_routing
 from event_runtime import EventStore
 from observer_hook_runtime import ObserverHookRuntime
 from gate_hook_runtime import GateHookRuntime
+from internal_tool_executor import INTERNAL_TOOL_SCHEMAS
 from local_tools import (
+    LOCAL_TOOL_FUNCTIONS,
     git_push as controlled_git_push,
     git_tag as controlled_git_tag,
     workspace_root_remove as controlled_workspace_root_remove,
@@ -49,6 +57,55 @@ _STEP_SCHEMA = {
     "required": ["step_id", "title"],
     "additionalProperties": False,
 }
+
+
+_INTERNAL_SCHEMA_BY_NAME = {
+    item["name"]: item
+    for item in INTERNAL_TOOL_SCHEMAS
+}
+
+
+_CORE_LOCAL_TOOL_POLICIES = {
+    "git_log": ("read", ("git", "history", "read")),
+    "git_show": ("read", ("git", "history", "read")),
+    "git_stage": ("write_local", ("git", "stage", "write")),
+    "git_remove": ("write_local", ("git", "remove", "write")),
+    "git_commit": ("write_local", ("git", "commit", "write")),
+    "project_state_init": ("write_local", ("project", "state", "governance")),
+    "project_state_get": ("read", ("project", "state", "governance")),
+    "project_state_update": ("write_local", ("project", "state", "governance")),
+    "project_checkpoint": ("write_local", ("project", "checkpoint", "governance")),
+    "project_decision_record": ("write_local", ("project", "decision", "governance")),
+    "project_decisions_get": ("read", ("project", "decision", "governance")),
+    "project_evidence_record": ("write_local", ("project", "evidence", "governance")),
+    "project_evidence_get": ("read", ("project", "evidence", "governance")),
+    "project_acceptance_set": ("write_local", ("project", "acceptance", "governance")),
+    "project_acceptance_get": ("read", ("project", "acceptance", "governance")),
+    "project_acceptance_evaluate": ("write_local", ("project", "acceptance", "governance")),
+    "project_acceptance_evaluations_get": ("read", ("project", "acceptance", "governance")),
+    "project_verify_acceptance": ("write_local", ("project", "verification", "governance")),
+    "project_verifications_get": ("read", ("project", "verification", "governance")),
+}
+
+
+def core_local_tool_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Mirror low-frequency local tools behind the dynamic core capability surface."""
+
+    descriptors = []
+    for tool_name, (risk_level, tags) in _CORE_LOCAL_TOOL_POLICIES.items():
+        schema = _INTERNAL_SCHEMA_BY_NAME[tool_name]
+        descriptors.append(
+            _descriptor(
+                f"core.{tool_name}",
+                tool_name,
+                tool_name.replace("_", " ").title(),
+                schema["description"],
+                schema["input_schema"],
+                risk_level=risk_level,
+                tags=tags,
+            )
+        )
+    return tuple(descriptors)
 
 
 def _descriptor(
@@ -557,6 +614,83 @@ def core_artifact_descriptors() -> tuple[CapabilityDescriptor, ...]:
             risk_level="write_local",
             tags=("artifact", "materialize", "persistence", "local-write"),
         ),
+        _descriptor(
+            "core.artifact_metadata",
+            "artifact_metadata",
+            "Artifact Metadata",
+            "Read metadata for one live exported artifact without returning payload bytes.",
+            {
+                "type": "object",
+                "properties": {
+                    "artifact_id": {"type": "string", "minLength": 1},
+                },
+                "required": ["artifact_id"],
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("artifact", "metadata", "read"),
+        ),
+        _descriptor(
+            "core.artifact_verify",
+            "artifact_verify",
+            "Verify Artifact",
+            "Verify artifact payload integrity and recorded provenance without returning bytes.",
+            {
+                "type": "object",
+                "properties": {
+                    "artifact_id": {"type": "string", "minLength": 1},
+                    "recursive": {"type": "boolean", "default": True},
+                },
+                "required": ["artifact_id"],
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("artifact", "integrity", "verify", "read"),
+        ),
+        _descriptor(
+            "core.artifact_gc_preview",
+            "artifact_gc_preview",
+            "Preview Artifact Cleanup",
+            "Inspect expired artifact cleanup candidates without deleting anything.",
+            {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("artifact", "gc", "preview", "read"),
+        ),
+        _descriptor(
+            "core.artifact_gc",
+            "artifact_gc",
+            "Cleanup Expired Artifacts",
+            "Delete expired artifact candidates that are not protected by live descendants.",
+            {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            risk_level="destructive",
+            tags=("artifact", "gc", "cleanup", "destructive"),
+            requires_confirmation=True,
+        ),
+        _descriptor(
+            "core.artifact_revoke",
+            "artifact_revoke",
+            "Revoke Artifact",
+            "Revoke one exported artifact and delete its immutable snapshot.",
+            {
+                "type": "object",
+                "properties": {
+                    "artifact_id": {"type": "string", "minLength": 1},
+                },
+                "required": ["artifact_id"],
+                "additionalProperties": False,
+            },
+            risk_level="destructive",
+            tags=("artifact", "revoke", "destructive"),
+            requires_confirmation=True,
+        ),
     )
 
 
@@ -654,6 +788,7 @@ def register_core_transaction_capabilities(
         *core_release_descriptors(),
         *core_artifact_descriptors(),
         *core_workspace_descriptors(),
+        *core_local_tool_descriptors(),
     ]
     if event_store is not None:
         descriptors.extend(core_event_descriptors())
@@ -780,6 +915,29 @@ def register_core_transaction_capabilities(
         ),
     )
     broker.register_internal_handler(
+        "core.artifact_metadata",
+        lambda args: controlled_artifact_metadata(args["artifact_id"]),
+    )
+    broker.register_internal_handler(
+        "core.artifact_verify",
+        lambda args: controlled_verify_artifact_provenance(
+            args["artifact_id"],
+            recursive=args.get("recursive", True),
+        ),
+    )
+    broker.register_internal_handler(
+        "core.artifact_gc_preview",
+        lambda _args: controlled_artifact_gc(dry_run=True),
+    )
+    broker.register_internal_handler(
+        "core.artifact_gc",
+        lambda _args: controlled_artifact_gc(dry_run=False),
+    )
+    broker.register_internal_handler(
+        "core.artifact_revoke",
+        lambda args: controlled_revoke_artifact(args["artifact_id"]),
+    )
+    broker.register_internal_handler(
         "core.workspace_roots_get",
         lambda _args: controlled_workspace_roots_get(),
     )
@@ -801,6 +959,12 @@ def register_core_transaction_capabilities(
             args["expected_sha256"],
         ),
     )
+    for tool_name in _CORE_LOCAL_TOOL_POLICIES:
+        function = LOCAL_TOOL_FUNCTIONS[tool_name]
+        broker.register_internal_handler(
+            f"core.{tool_name}",
+            lambda args, function=function: function(**args),
+        )
     if event_store is not None:
         broker.register_internal_handler(
             "core.event_query",

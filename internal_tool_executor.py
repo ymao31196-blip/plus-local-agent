@@ -15,9 +15,9 @@ from runtime_context import CURRENT, checkpoint, observe
 
 EXECUTABLE_LOCAL_TOOLS = frozenset(LOCAL_TOOL_FUNCTIONS)
 
-# Batch actions and the retained experimental agent use the conservative core
-# set. Structured PowerShell and patching remain individually callable through
-# the same executor (including submit_task) but cannot be composed in a batch.
+# Batch actions use the conservative core set. Structured PowerShell, patching,
+# and governed Git mutations remain individually callable through the same
+# executor (including submit_task) but cannot be composed in a batch.
 ACTION_LOCAL_TOOLS = frozenset({
     "list_directory", "read_text", "extract_document_text", "write_text", "replace_text", "search_text",
     "git_status", "git_diff", "git_log", "git_show",
@@ -123,6 +123,13 @@ INTERNAL_TOOL_SCHEMAS = [
          "root": {"type": "string", "minLength": 1, "default": "workspace"}},
          "required": ["changes", "expected_head"]},
     },
+    {"name": "git_remove", "description": "Stage explicit tracked regular files that have already been removed from the worktree. Requires the full expected HEAD and a clean Git index.",
+     "input_schema": {"type": "object", "properties": {
+         "paths": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string"}},
+         "expected_head": {"type": "string", "minLength": 40, "maxLength": 64},
+         "cwd": {"type": "string", "default": "."},
+         "root": {"type": "string", "minLength": 1, "default": "workspace"}},
+         "required": ["paths", "expected_head"]}},
     {"name": "git_commit", "description": "Create one structured commit from an exact already-staged set of explicit regular files. Requires the full expected HEAD and never stages files, runs hooks, amends, merges, or pushes.",
      "input_schema": {"type": "object", "properties": {
          "message": {"type": "string"},

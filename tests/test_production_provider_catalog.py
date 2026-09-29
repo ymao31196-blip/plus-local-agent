@@ -24,9 +24,11 @@ def test_production_provider_catalog_matches_specs():
         "docx",
         "markitdown",
         "pdf",
+        "skill-library",
         "software-migration",
         "winget",
         "windows-management",
+        "wps-office",
     }
     assert spec_ids == {
         "browser",
@@ -34,12 +36,56 @@ def test_production_provider_catalog_matches_specs():
         "docx",
         "markitdown",
         "pdf",
+        "skill-library",
         "software-migration",
         "windows-management",
     }
     assert manifests["winget"].runtime_kind == "executable_stdio"
     assert manifests["winget"].python_path is None
-    assert all(manifest.autostart for manifest in manifests.values())
+    assert manifests["docx"].autostart is False
+    assert all(
+        manifest.autostart
+        for provider_id, manifest in manifests.items()
+        if provider_id != "docx"
+    )
+
+
+def test_wps_office_provider_is_pinned_source_backed_stdio():
+    manifests = load_provider_manifests(PROJECT_ROOT)
+    provider = manifests["wps-office"]
+
+    assert provider.runtime_kind == "executable_stdio"
+    assert provider.mode == "auto"
+    assert provider.routing_authority == "preferred"
+    assert provider.tool_allowlist is None
+    assert provider.args == ("dist/index.js",)
+
+    source_spec = json.loads(
+        (PROJECT_ROOT / "provider_specs" / "wps-office.source.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert source_spec["kind"] == "git_npm"
+    assert source_spec["repository_url"] == "https://github.com/lc2panda/wps-skills.git"
+    assert len(source_spec["revision"]) == 40
+    assert source_spec["package_subdir"] == "wps-office-mcp"
+    assert source_spec["entrypoint"] == "dist/index.js"
+
+    read_tool = provider.tool_overrides["wps_excel_read_range"]
+    assert read_tool["risk_level"] == "read"
+    assert read_tool["requires_confirmation"] is False
+
+    write_tool = provider.tool_overrides["wps_excel_write_range"]
+    assert write_tool["risk_level"] == "write_local"
+    assert write_tool["requires_confirmation"] is False
+
+    destructive_tool = provider.tool_overrides["wps_excel_delete_sheet"]
+    assert destructive_tool["risk_level"] == "destructive"
+    assert destructive_tool["requires_confirmation"] is True
+
+    raw_tool = provider.tool_overrides["wps_execute_method"]
+    assert raw_tool["risk_level"] == "privileged"
+    assert raw_tool["requires_confirmation"] is True
 
 
 def test_computer_provider_is_semantic_first_and_version_pinned():

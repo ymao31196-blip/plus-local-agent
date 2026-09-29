@@ -14,4 +14,4 @@ python tests/test_client.py
 
 ## 当前验证结果
 
-已在 FastMCP 4.0.3、MCP 2.2.0、Python 3.11.16 下通过。客户端可发现低层工具、批量执行工具、后台任务工具和保留的实验性 Sampling 工具；`write_text` 和 `read_text` 调用及内容验证均成功。
+已在 FastMCP 4.0.3、MCP 2.2.0、Python 3.11.16 下通过。客户端可发现低层工具、批量执行工具和后台任务工具；`write_text` 和 `read_text` 调用及内容验证均成功。MCP Sampling 已退出正式运行时。

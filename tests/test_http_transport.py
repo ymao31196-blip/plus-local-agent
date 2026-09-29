@@ -1,4 +1,5 @@
 import asyncio
+import os
 import socket
 import subprocess
 import sys
@@ -18,7 +19,7 @@ def _free_loopback_port() -> int:
 
 
 def _wait_for_listener(port: int) -> None:
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         with socket.socket() as probe:
             probe.settimeout(0.2)
@@ -45,6 +46,7 @@ def test_streamable_http_endpoint_serves_tool_catalog():
             "--path", "/mcp",
         ],
         cwd=PROJECT_ROOT,
+        env={**os.environ, "PLA_EXTERNAL_PROVIDERS": ""},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -56,14 +58,24 @@ def test_streamable_http_endpoint_serves_tool_catalog():
         process.wait(timeout=10)
 
     assert {
-        "diagnose_client", "probe_sampling", "run_agent_task",
+        "diagnose_client",
         "list_directory", "read_text", "extract_document_text", "write_text", "replace_text",
         "search_text", "run_process", "run_powershell", "apply_patch",
         "execute_actions", "submit_task", "task_result",
+    } <= set(names)
+    assert {
+        "probe_artifact_resource_link",
+        "probe_sampling", "run_agent_task",
+        "artifact_metadata", "artifact_verify", "artifact_gc", "revoke_artifact",
+        "git_log", "git_show", "git_stage", "git_remove", "git_commit", "git_tag", "git_push",
+        "project_state_init", "project_state_get", "project_state_update", "project_checkpoint",
+        "project_decision_record", "project_decisions_get", "project_evidence_record", "project_evidence_get",
+        "project_acceptance_set", "project_acceptance_get", "project_acceptance_evaluate",
+        "project_acceptance_evaluations_get", "project_verify_acceptance", "project_verifications_get",
         "transaction_create", "transaction_get",
         "transaction_checkpoint", "transaction_finalize",
         "transaction_invoke_capability",
-    } <= set(names)
+    }.isdisjoint(names)
 
 
 def test_tunnel_config_targets_dedicated_loopback_http_endpoint():

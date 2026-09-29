@@ -73,6 +73,13 @@ def test_pla_git_push_prefers_release_push_capability():
     assert result["suggested_capabilities"][0]["surface"] == "capability"
 
 
+def test_pla_git_rm_prefers_governed_remove_capability():
+    result = steering.steer_run_process("git", ["rm", "old.txt"], "pla")
+
+    assert result["suggested_capabilities"][0]["name"] == "core.git_remove"
+    assert result["suggested_capabilities"][0]["surface"] == "capability"
+
+
 def test_pla_git_unknown_subcommand_still_returns_governed_surface():
     result = steering.steer_run_process("git", ["rev-parse", "HEAD"], "pla")
 
@@ -80,8 +87,9 @@ def test_pla_git_unknown_subcommand_still_returns_governed_surface():
     assert {item["name"] for item in result["suggested_capabilities"]} == {
         "git_status",
         "git_diff",
-        "git_stage",
-        "git_commit",
+        "core.git_stage",
+        "core.git_remove",
+        "core.git_commit",
         "core.git_tag",
         "core.git_push",
     }
@@ -150,7 +158,7 @@ def test_route_generic_request_reports_specialized_git_route():
     assert result["status"] == "specialized_required"
     assert result["routing_mode"] == "specialized_enforced"
     assert result["steering_rule_id"] == "pla_source_git"
-    assert result["suggested_capabilities"][0]["name"] == "git_commit"
+    assert result["suggested_capabilities"][0]["name"] == "core.git_commit"
 
 
 def test_route_generic_request_reports_generic_allowed_for_gh():

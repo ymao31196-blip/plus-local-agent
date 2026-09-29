@@ -1,27 +1,17 @@
 from __future__ import annotations
 
-import json
 import argparse
 from contextlib import asynccontextmanager
 from pathlib import Path
 from importlib.metadata import version
-from dataclasses import asdict
 from typing import Annotated, Literal
 
 import mcp_types
 from fastmcp import Context, FastMCP
 from pydantic import Field
 
-from agent_service import AgentState, run_agent
-from decision_parser import DecisionParseError, parse_decision
 from e2e_debug import E2EDebugTrace, protocol_mode
-from generic_llm_reasoner import GenericLLMReasoner
-from internal_tool_executor import (
-    INTERNAL_TOOL_SCHEMAS,
-    ActionRequest,
-    InternalToolExecutor,
-    execute_actions_request,
-)
+from internal_tool_executor import ActionRequest, execute_actions_request
 from local_tools import (
     AcceptanceBindingRequest,
     AcceptanceCheckRequest,
@@ -62,12 +52,6 @@ from local_tools import (
     safe_path,
     search_text as internal_search_text,
     write_text as internal_write_text,
-)
-from mcp_sampling_backend import (
-    MCPSamplingBackend,
-    SAMPLING_KEY,
-    SamplingRequired,
-    SamplingUnsupported,
 )
 from task_store import TASK_STORE
 from transaction_runtime import TRANSACTION_STORE
@@ -235,7 +219,6 @@ def transport_probe_resource() -> bytes:
     return target.read_bytes()
 
 
-@mcp.tool
 def probe_artifact_resource_link() -> mcp_types.ResourceLink:
     """Experimental: return a ResourceLink for the v0.9 Phase 0B host handoff probe."""
     target = safe_path(TRANSPORT_PROBE_PATH, "workspace")
@@ -319,13 +302,11 @@ def export_artifact(
     )
 
 
-@mcp.tool
 def artifact_metadata(artifact_id: str) -> dict:
     """Return metadata for a live exported artifact without returning its bytes."""
     return internal_artifact_metadata(artifact_id)
 
 
-@mcp.tool
 def artifact_verify(
     artifact_id: str,
     recursive: bool = True,
@@ -337,7 +318,6 @@ def artifact_verify(
     )
 
 
-@mcp.tool
 def artifact_gc(
     dry_run: bool = True,
     confirmation: Literal["GC"] | None = None,
@@ -350,7 +330,6 @@ def artifact_gc(
     return internal_artifact_gc(dry_run=dry_run)
 
 
-@mcp.tool
 def revoke_artifact(artifact_id: str) -> dict:
     """Revoke an exported artifact and delete its immutable snapshot."""
     return internal_revoke_artifact(artifact_id)
@@ -433,7 +412,6 @@ def git_diff(
     return internal_git_diff(cwd, staged, path, root)
 
 
-@mcp.tool
 def git_log(
     cwd: str = ".", limit: Annotated[int, Field(ge=1, le=100)] = 20, path: str | None = None,
     root: str = "workspace",
@@ -442,7 +420,6 @@ def git_log(
     return internal_git_log(cwd, limit, path, root)
 
 
-@mcp.tool
 def git_show(
     revision: str = "HEAD", cwd: str = ".", path: str | None = None,
     root: str = "workspace",
@@ -450,7 +427,6 @@ def git_show(
     """返回一个已验证 commit 的元数据和受限 patch；禁用 external diff 与 textconv。"""
     return internal_git_show(revision, cwd, path, root)
 
-@mcp.tool
 def git_stage(
     changes: list[GitStageRequest],
     expected_head: str,
@@ -461,7 +437,6 @@ def git_stage(
     return internal_git_stage(changes, expected_head, cwd, root)
 
 
-@mcp.tool
 def git_commit(
     message: str,
     paths: list[str],
@@ -473,7 +448,6 @@ def git_commit(
     return internal_git_commit(message, paths, expected_head, cwd, root)
 
 
-@mcp.tool
 def git_tag(
     tag: str,
     expected_head: str,
@@ -484,7 +458,6 @@ def git_tag(
     return internal_git_tag(tag, expected_head, cwd, root)
 
 
-@mcp.tool
 def git_push(
     remote: str,
     branch: str,
@@ -500,7 +473,6 @@ def git_push(
     )
 
 
-@mcp.tool
 def project_state_init(
     project_path: str = ".",
     project_name: str | None = None,
@@ -511,7 +483,6 @@ def project_state_init(
     return internal_project_state_init(project_path, project_name, objective, root)
 
 
-@mcp.tool
 def project_state_get(
     project_path: str = ".", root: str = "workspace",
 ) -> dict:
@@ -519,7 +490,6 @@ def project_state_get(
     return internal_project_state_get(project_path, root)
 
 
-@mcp.tool
 def project_state_update(
     expected_revision: Annotated[int, Field(ge=1)],
     project_path: str = ".",
@@ -537,7 +507,6 @@ def project_state_update(
     )
 
 
-@mcp.tool
 def project_checkpoint(
     label: str,
     summary: str,
@@ -550,7 +519,6 @@ def project_checkpoint(
     return internal_project_checkpoint(label, summary, expected_revision, project_path, checks, root)
 
 
-@mcp.tool
 def project_decision_record(
     title: str, decision: str, rationale: str,
     expected_revision: Annotated[int, Field(ge=1)],
@@ -560,7 +528,6 @@ def project_decision_record(
     return internal_project_decision_record(title, decision, rationale, expected_revision, project_path, root)
 
 
-@mcp.tool
 def project_decisions_get(
     project_path: str = ".",
     max_chars: Annotated[int, Field(ge=1, le=20000)] = 20000,
@@ -570,7 +537,6 @@ def project_decisions_get(
     return internal_project_decisions_get(project_path, max_chars, root)
 
 
-@mcp.tool
 def project_evidence_record(
     kind: Literal["test", "command", "artifact", "metric", "observation", "manual"],
     status: Literal["pass", "fail", "info"],
@@ -588,7 +554,6 @@ def project_evidence_record(
     )
 
 
-@mcp.tool
 def project_evidence_get(
     project_path: str = ".",
     limit: Annotated[int, Field(ge=1, le=100)] = 20,
@@ -600,7 +565,6 @@ def project_evidence_get(
     return internal_project_evidence_get(project_path, limit, kind, status, root)
 
 
-@mcp.tool
 def project_acceptance_set(
     title: str,
     checks: list[AcceptanceCheckRequest],
@@ -616,7 +580,6 @@ def project_acceptance_set(
     )
 
 
-@mcp.tool
 def project_acceptance_get(
     project_path: str = ".", root: str = "workspace",
 ) -> dict:
@@ -624,7 +587,6 @@ def project_acceptance_get(
     return internal_project_acceptance_get(project_path, root)
 
 
-@mcp.tool
 def project_acceptance_evaluate(
     bindings: list[AcceptanceBindingRequest],
     expected_state_revision: Annotated[int, Field(ge=1)],
@@ -639,7 +601,6 @@ def project_acceptance_evaluate(
     )
 
 
-@mcp.tool
 def project_acceptance_evaluations_get(
     project_path: str = ".",
     limit: Annotated[int, Field(ge=1, le=100)] = 20,
@@ -650,7 +611,6 @@ def project_acceptance_evaluations_get(
 
 
 
-@mcp.tool
 def project_verify_acceptance(
     evaluation_id: str,
     expected_evaluation_sha256: str,
@@ -667,7 +627,6 @@ def project_verify_acceptance(
     )
 
 
-@mcp.tool
 def project_verifications_get(
     project_path: str = ".",
     limit: Annotated[int, Field(ge=1, le=100)] = 20,
@@ -727,7 +686,6 @@ def cancel_task(task_id: str) -> dict:
     return TASK_STORE.cancel(task_id)
 
 
-@mcp.tool
 def transaction_create(
     goal: str,
     steps: list[dict],
@@ -737,13 +695,11 @@ def transaction_create(
     return TRANSACTION_STORE.create(goal, steps, metadata)
 
 
-@mcp.tool
 def transaction_get(transaction_id: str) -> dict:
     """Read one durable action transaction with its bounded event history."""
     return TRANSACTION_STORE.get(transaction_id)
 
 
-@mcp.tool
 def transaction_checkpoint(
     transaction_id: str,
     expected_revision: int,
@@ -765,7 +721,6 @@ def transaction_checkpoint(
     )
 
 
-@mcp.tool
 def transaction_finalize(
     transaction_id: str,
     expected_revision: int,
@@ -781,7 +736,6 @@ def transaction_finalize(
     )
 
 
-@mcp.tool
 async def transaction_invoke_capability(
     transaction_id: str,
     expected_revision: int,
@@ -857,138 +811,19 @@ def task_result(
     return TASK_STORE.get(task_id, cursor, wait_seconds)
 
 
-def _load_state(raw_state: str | None) -> AgentState:
-    if raw_state is None:
-        return AgentState()
-    value = json.loads(raw_state)
-    if not isinstance(value, dict) or value.get("version") != 1:
-        raise ValueError("Invalid agent request state")
-    return AgentState.from_dict(value["agent"])
-
-
-def _dump_state(state: AgentState) -> str:
-    return json.dumps(
-        {"version": 1, "agent": state.to_dict()},
-        ensure_ascii=False, separators=(",", ":"),
-    )
-
-
-def _sampling_supported(ctx: Context) -> bool | str:
-    session = getattr(ctx, "session", None)
-    capabilities = getattr(session, "client_capabilities", None)
-    if capabilities is None:
-        return "unknown"
-    return getattr(capabilities, "sampling", None) is not None
-
-
 @mcp.tool
 async def diagnose_client(ctx: Context) -> dict:
-    """Return read-only MCP protocol and client sampling diagnostics."""
+    """Return read-only MCP protocol and local runtime diagnostics."""
     trace = E2EDebugTrace.start(ctx, "diagnose_client")
-    sampling_supported = _sampling_supported(ctx)
-    mode = protocol_mode(ctx)
     result = {
         "fastmcp_version": version("fastmcp"),
         "mcp_version": version("mcp"),
-        "protocol_mode": mode,
-        "sampling_supported": sampling_supported,
-        # Legacy sampling can be inferred from its declared back-channel. In
-        # MRTR mode, a normal tool call cannot prove that input_required will
-        # be resumed, so probe_sampling is the authoritative readiness check.
-        "agent_sampling_ready": bool(
-            sampling_supported is True and mode == "backchannel"
-        ),
-        "run_agent_task_available": True,
-        "run_agent_task_experimental": True,
+        "protocol_mode": protocol_mode(ctx),
         "mainline": "chatgpt_native_agent_loop",
         "available_roots": available_roots(),
     }
     trace.emit("final_status", status="completed")
     return result
-
-
-PROBE_PROMPT = """Return exactly this JSON object and nothing else:
-{"action":"finish","arguments":{}}"""
-
-
-@mcp.tool
-async def probe_sampling(ctx: Context) -> dict | mcp_types.InputRequiredResult:
-    """Perform one client-provided sampling round without local tool access."""
-    trace = E2EDebugTrace.start(ctx, "probe_sampling")
-    if ctx.request_state is not None:
-        trace.emit("request_state_resumed")
-    backend = MCPSamplingBackend(ctx, max_tokens=100, trace=trace)
-    try:
-        raw = await backend.generate(PROBE_PROMPT)
-        decision = parse_decision(raw)
-        if decision != {"action": "finish", "arguments": {}}:
-            raise DecisionParseError(
-                "Probe decision must be exactly the requested finish decision"
-            )
-        result = {"status": "success", "sampling_calls": 1, "decision": decision}
-        trace.emit("final_status", status="success")
-        return result
-    except SamplingRequired as required:
-        trace.emit("input_required", sampling_sequence=1)
-        return mcp_types.InputRequiredResult(
-            input_requests={SAMPLING_KEY: required.request},
-            request_state=json.dumps(
-                {"version": 1, "kind": "probe_sampling"}, separators=(",", ":")
-            ),
-        )
-    except Exception as exc:
-        trace.emit("final_status", status="error", error_type=type(exc).__name__)
-        return {
-            "status": "error",
-            "sampling_calls": 0 if isinstance(exc, SamplingUnsupported) else 1,
-            "error": {"type": type(exc).__name__, "message": str(exc)},
-        }
-
-
-@mcp.tool
-async def run_agent_task(
-    task: str,
-    ctx: Context,
-    max_steps: int = 10,
-    allowed_actions: list[str] | None = None,
-) -> dict | mcp_types.InputRequiredResult:
-    """Run the local agent using only model sampling supplied by this MCP client."""
-    trace = E2EDebugTrace.start(ctx, "run_agent_task")
-    state = _load_state(ctx.request_state)
-    if ctx.request_state is not None:
-        trace.emit("request_state_resumed")
-    tools = INTERNAL_TOOL_SCHEMAS
-    if allowed_actions is not None:
-        known = {tool["name"] for tool in INTERNAL_TOOL_SCHEMAS}
-        unknown = sorted(set(allowed_actions) - known)
-        if unknown:
-            raise ValueError(f"Unknown allowed_actions: {unknown}")
-        allowed = set(allowed_actions)
-        tools = [tool for tool in INTERNAL_TOOL_SCHEMAS if tool["name"] in allowed]
-    backend = MCPSamplingBackend(
-        ctx,
-        trace=trace,
-        sampling_sequence=state.sampling_calls + 1,
-    )
-    reasoner = GenericLLMReasoner(backend)
-    try:
-        result = await run_agent(
-            task=task,
-            reasoner=reasoner,
-            session=InternalToolExecutor(trace),
-            tools=tools,
-            max_steps=max_steps,
-            state=state,
-            capture_errors=True,
-        )
-        trace.emit("final_status", status=result.status)
-        return asdict(result)
-    except SamplingRequired as required:
-        trace.emit("input_required", sampling_sequence=state.sampling_calls + 1)
-        return mcp_types.InputRequiredResult(
-            input_requests={SAMPLING_KEY: required.request},
-            request_state=_dump_state(state),
-        )
 
 
 def main() -> None:
