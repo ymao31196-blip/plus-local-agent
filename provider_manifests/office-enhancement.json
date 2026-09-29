@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "id": "office-enhancement",
+  "autostart": true,
+  "mode": "auto",
+  "routing_authority": "preferred",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/office-enhancement/Scripts/python.exe",
+    "args": [
+      "providers/office_enhancement_server.py"
+    ],
+    "cwd": ".",
+    "discovery_timeout_seconds": 45,
+    "invoke_timeout_seconds": 240
+  },
+  "tool_allowlist": [
+    "office_enhancement_status",
+    "artifact_build_overlay",
+    "pptx_inspect",
+    "pptx_merge_overlay",
+    "powerpoint_inspect",
+    "powerpoint_render_slide",
+    "powerpoint_render_pdf",
+    "pdf_extract_images",
+    "pdf_render_region"
+  ],
+  "tool_overrides": {
+    "office_enhancement_status": {
+      "title": "Office Enhancement Status",
+      "description": "Check the Office补强 runtime: artifact-tool, PyMuPDF, lxml, pywin32, Node.js and PowerPoint/WPS COM registration.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "pptx", "pdf", "diagnostic"]
+    },
+    "artifact_build_overlay": {
+      "title": "Build Editable PowerPoint Overlay",
+      "description": "Use the installed @oai/artifact-tool through a fixed structured adapter to build one editable PPTX overlay slide containing shapes, text, images and connectors. Does not execute caller-supplied JavaScript.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "pptx", "artifact-tool", "editable", "diagram"]
+    },
+    "pptx_inspect": {
+      "title": "Inspect PPTX Package",
+      "description": "Inspect PPTX slides, shape counts, text previews, masters, layouts and media through ZIP/OpenXML without changing the file.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "pptx", "ooxml", "inspect"]
+    },
+    "pptx_merge_overlay": {
+      "title": "Merge Editable Overlay into PPTX",
+      "description": "Merge editable shapes, connectors and media from an overlay PPTX into a target slide using zipfile+lxml while preserving the original deck package, masters and unrelated slides.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "pptx", "ooxml", "lxml", "merge"]
+    },
+    "powerpoint_inspect": {
+      "title": "Inspect PowerPoint Rendering Geometry",
+      "description": "Open a PPTX with local Microsoft PowerPoint COM and inspect actual shape/text geometry, including likely text overflow.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "com", "inspect", "overflow"]
+    },
+    "powerpoint_render_slide": {
+      "title": "Render PowerPoint Slide",
+      "description": "Render one PPTX slide to PNG with the locally installed Microsoft PowerPoint engine for visual QA.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "com", "render", "png", "qa"]
+    },
+    "powerpoint_render_pdf": {
+      "title": "Render PowerPoint to PDF",
+      "description": "Render a PPTX to PDF with the locally installed Microsoft PowerPoint engine for full-deck QA.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["office", "powerpoint", "com", "render", "pdf", "qa"]
+    },
+    "pdf_extract_images": {
+      "title": "Extract PDF Images",
+      "description": "Extract embedded raster images from selected PDF pages with PyMuPDF.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["office", "pdf", "pymupdf", "image", "extract"]
+    },
+    "pdf_render_region": {
+      "title": "Render PDF Region",
+      "description": "Render a full PDF page or selected clip rectangle to PNG with PyMuPDF, including vector charts that are not embedded raster images.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["office", "pdf", "pymupdf", "render", "figure", "crop"]
+    }
+  }
+}

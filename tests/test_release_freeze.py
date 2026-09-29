@@ -15,6 +15,7 @@ def test_release_version_and_provider_catalog():
         "computer",
         "docx",
         "markitdown",
+        "office-enhancement",
         "pdf",
         "skill-library",
         "software-migration",

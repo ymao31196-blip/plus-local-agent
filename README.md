@@ -472,15 +472,46 @@ The production Provider set includes capabilities for:
 - Windows observation and narrowly controlled application management
 - Software migration workflows
 - WPS Office automation through the reviewed `lc2panda/wps-skills` MCP provider, including documents, spreadsheets, presentations and the broader Office tool surface
+- Office补强 (`office-enhancement`) for artifact-tool editable PPT overlays, ZIP/OpenXML surgical merges, Microsoft PowerPoint COM rendering/overflow inspection, and PyMuPDF figure extraction
 - Skill Library access for advisory reusable `SKILL.md` experience, with cache-first search/read and Git-backed refresh
 
 The WPS Office Provider is installed as a source-backed Node Provider pinned to a reviewed upstream
 commit. PLA applies its tracked Windows COM compatibility patch before build, then exposes the
 upstream MCP tools through the same capability registry. Common spreadsheet reads are classified as
 `read`, ordinary writes/formatting/saves as `write_local`, while destructive worksheet/row/column
-operations and raw method execution remain confirmation-gated. WPS is the primary Office automation
-surface in v1.8.0; the older standalone DOCX Provider remains available in source form but does not
-autostart. Windows use requires WPS Office and Node.js 18+.
+operations and raw method execution remain confirmation-gated. WPS remains the primary Office
+automation surface for ordinary document, spreadsheet and presentation editing; the older standalone
+DOCX Provider remains available in source form but does not autostart. Windows use requires WPS Office
+and Node.js 18+.
+
+### Office补强
+
+`office-enhancement` is the specialist path for presentation work where ordinary Office editing is
+not enough. It keeps four complementary techniques behind one reviewed Provider:
+
+~~~text
+structured artifact-tool overlay
+        ↓
+zipfile + lxml OOXML merge
+        ↓
+Microsoft PowerPoint COM render / inspect
+        ↓
+PyMuPDF PDF image extraction / region rendering
+~~~
+
+The artifact-tool adapter accepts structured shapes, text, images and connectors; it does not execute
+caller-supplied JavaScript. It discovers the installed Codex primary-runtime
+`@oai/artifact-tool` package at invocation time and resolves the package's declared export entry.
+The package is therefore an optional local runtime dependency rather than a vendored PLA dependency.
+
+OOXML merge operations copy only relationships actually referenced by the overlay elements, preserve
+the target deck's existing package/master/layout structure, remap relationship/shape IDs, and copy
+referenced media under new package names. PowerPoint COM is used for actual Microsoft PowerPoint
+rendering and text-geometry inspection, including likely overflow checks. PyMuPDF handles embedded
+image extraction and page/region rendering so vector charts can also be recovered as PNG.
+
+Use WPS for routine Office work. Use Office补强 for surgical PPTX editing, editable technical diagrams,
+format-preserving merge work, real PowerPoint QA, and PDF figure extraction.
 
 The Skill Library Provider is intentionally lighter-weight. Skills are advisory reusable experience
 used to reduce recurring mistakes, preserve stable workflows, and surface easy-to-forget conventions.

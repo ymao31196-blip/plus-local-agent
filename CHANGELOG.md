@@ -4,6 +4,23 @@ All notable PLA release changes are recorded here.
 
 ## Unreleased
 
+### Added
+
+- Office补强 (`office-enhancement`) Provider combining structured `@oai/artifact-tool` editable PPT overlays, `zipfile+lxml` OOXML merge, Microsoft PowerPoint COM rendering/overflow inspection, and PyMuPDF PDF image/region extraction.
+- Reviewed isolated Office补强 dependencies: `lxml==6.1.3`, `PyMuPDF==1.28.2`, and `pywin32==312`.
+- Dedicated [Office补强 architecture and usage guide](docs/office_enhancement.md).
+
+### Changed
+
+- WPS remains the primary Office automation surface for routine edits; Office补强 is routed as the specialist path for surgical PPTX work, real PowerPoint QA, editable technical overlays, and PDF figure extraction.
+- The artifact-tool integration resolves the installed Codex runtime package dynamically and never exposes arbitrary JavaScript or generic Node execution.
+- OOXML overlay merge now copies only relationships actually referenced by merged objects, avoiding unrelated notes/master relationships while preserving the target deck's existing package structure.
+
+### Verified
+
+- Live E2E: artifact-tool editable overlay -> OOXML merge into a PowerPoint-authored base deck -> Microsoft PowerPoint COM overflow inspection/render -> PDF export -> PyMuPDF image extraction and region rendering.
+- The merged deck preserved the original test header, added editable shapes/text/image/connector objects, and reported no likely text overflow in inserted test objects.
+
 ## 1.8.0 - 2026-09-29
 
 ### Added
