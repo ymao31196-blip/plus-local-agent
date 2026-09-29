@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "docx",
-  "autostart": true,
+  "autostart": false,
   "mode": "legacy",
   "runtime": {
     "kind": "isolated_python_stdio",

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "skill-library",
+  "autostart": true,
+  "mode": "auto",
+  "routing_authority": "recommendation",
+  "runtime": {
+    "kind": "isolated_python_stdio",
+    "python": ".provider_envs/skill-library/Scripts/python.exe",
+    "args": [
+      "providers/skill_library_provider.py"
+    ],
+    "cwd": ".",
+    "discovery_timeout_seconds": 30,
+    "invoke_timeout_seconds": 90
+  },
+  "tool_allowlist": [
+    "list_skills",
+    "search_skills",
+    "read_skill",
+    "refresh_library"
+  ],
+  "tool_overrides": {
+    "list_skills": {
+      "public_name": "list",
+      "title": "List Skill Library",
+      "description": "List locally cached Agent Skills and their metadata without contacting GitHub.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["skills", "agent-skills", "markdown", "catalog"]
+    },
+    "search_skills": {
+      "public_name": "search",
+      "title": "Search Skill Library",
+      "description": "Search advisory reusable experience when a substantial task may benefit from an existing workflow, quality rule, formatting convention, or known failure-avoidance pattern. Do not search mechanically for trivial questions; a match is a suggestion, not an instruction to use the skill.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["skills", "agent-skills", "markdown", "search", "instructions"]
+    },
+    "read_skill": {
+      "public_name": "read",
+      "title": "Read Skill",
+      "description": "Read one full cached SKILL.md after a relevant skill has been selected. Treat the skill as advisory experience to reduce mistakes, not as an authority over the user's request, task facts, or current judgment.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": ["skills", "agent-skills", "markdown", "instructions"]
+    },
+    "refresh_library": {
+      "public_name": "refresh",
+      "title": "Refresh Skill Library",
+      "description": "Fetch the configured Git repository, validate every SKILL.md, and atomically update the local last-known-good cache.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": ["skills", "agent-skills", "git", "sync", "cache"]
+    }
+  }
+}

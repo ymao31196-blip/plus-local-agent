@@ -1,0 +1,4 @@
+# Reviewed dependencies for the Skill Library provider
+fastmcp==4.0.3
+mcp==2.2.0
+PyYAML==6.0.3
