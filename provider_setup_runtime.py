@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import source_provider_setup
+
 
 _PROVIDER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
@@ -26,10 +28,39 @@ def setup_provider_dependencies(
     spec_dir = root / "provider_specs"
     python_spec = spec_dir / f"{provider}.txt"
     node_spec = spec_dir / f"{provider}.npm.txt"
-    if not python_spec.is_file() and not node_spec.is_file():
+    source_spec = spec_dir / f"{provider}.source.json"
+    if (
+        not python_spec.is_file()
+        and not node_spec.is_file()
+        and not source_spec.is_file()
+    ):
         raise ValueError(
             f"No reviewed dependency spec exists for provider: {provider}"
         )
+
+    source_result = None
+    if source_spec.is_file():
+        source_result = source_provider_setup.setup_git_npm_source(
+            root,
+            provider,
+            source_spec,
+            timeout_seconds=timeout_seconds,
+        )
+
+    if not python_spec.is_file() and not node_spec.is_file():
+        return {
+            "status": "completed",
+            "provider_id": provider,
+            "python_spec": False,
+            "node_spec": False,
+            "source_spec": True,
+            "source": source_result,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+        }
 
     script = (root / "setup_providers.ps1").resolve()
     try:
@@ -77,6 +108,8 @@ def setup_provider_dependencies(
         "provider_id": provider,
         "python_spec": python_spec.is_file(),
         "node_spec": node_spec.is_file(),
+        "source_spec": source_spec.is_file(),
+        "source": source_result,
         "returncode": completed.returncode,
         "stdout": stdout,
         "stderr": stderr,

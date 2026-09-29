@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "kind": "git_npm",
+  "repository_url": "https://github.com/lc2panda/wps-skills.git",
+  "revision": "a82533662268b3245f93d8685bc45dffede048b6",
+  "package_subdir": "wps-office-mcp",
+  "entrypoint": "dist/index.js",
+  "node_min_major": 18,
+  "patches": [
+    "provider_patches/wps-office/windows-com-compat.patch"
+  ]
+}

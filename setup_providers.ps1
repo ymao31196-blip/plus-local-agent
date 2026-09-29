@@ -63,7 +63,15 @@ $nodeSpecFiles = @(
     Get-ChildItem -LiteralPath $specDir -Filter "*.npm.txt" -File |
         Sort-Object Name
 )
-if ($specFiles.Count -eq 0 -and $nodeSpecFiles.Count -eq 0) {
+$sourceSpecFiles = @(
+    Get-ChildItem -LiteralPath $specDir -Filter "*.source.json" -File |
+        Sort-Object Name
+)
+if (
+    $specFiles.Count -eq 0 -and
+    $nodeSpecFiles.Count -eq 0 -and
+    $sourceSpecFiles.Count -eq 0
+) {
     throw "No provider specs found in: $specDir"
 }
 
@@ -87,6 +95,10 @@ if ($null -ne $Provider -and $Provider.Count -gt 0) {
         $suffix = ".npm.txt"
         $availableProviders += $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
     }
+    foreach ($spec in $sourceSpecFiles) {
+        $suffix = ".source.json"
+        $availableProviders += $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
+    }
     $availableProviders = @($availableProviders | Sort-Object -Unique)
 
     $unknownProviders = @(
@@ -107,6 +119,12 @@ if ($null -ne $Provider -and $Provider.Count -gt 0) {
             $_.Name.Substring(0, $_.Name.Length - $suffix.Length) -in $requestedProviders
         }
     )
+    $sourceSpecFiles = @(
+        $sourceSpecFiles | Where-Object {
+            $suffix = ".source.json"
+            $_.Name.Substring(0, $_.Name.Length - $suffix.Length) -in $requestedProviders
+        }
+    )
 }
 
 $selectedProviders = @()
@@ -115,6 +133,10 @@ foreach ($spec in $specFiles) {
 }
 foreach ($spec in $nodeSpecFiles) {
     $suffix = ".npm.txt"
+    $selectedProviders += $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
+}
+foreach ($spec in $sourceSpecFiles) {
+    $suffix = ".source.json"
     $selectedProviders += $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
 }
 $selectedProviders = @($selectedProviders | Sort-Object -Unique)
@@ -126,6 +148,32 @@ if ($Recreate) {
             Write-Host "Recreating provider environment: $providerId"
             Remove-Item -LiteralPath $envDir -Recurse -Force
         }
+    }
+}
+
+$sourceSetupScript = Join-Path $projectRoot "setup_source_provider.py"
+if ($sourceSpecFiles.Count -gt 0) {
+    if (-not (Test-Path -LiteralPath $sourceSetupScript -PathType Leaf)) {
+        throw "Source Provider setup entrypoint not found: $sourceSetupScript"
+    }
+
+    foreach ($spec in $sourceSpecFiles) {
+        $suffix = ".source.json"
+        $provider = $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
+        if ($provider -notmatch '^[a-z0-9][a-z0-9_-]*$') {
+            throw "Invalid source Provider spec name: $($spec.Name)"
+        }
+
+        Write-Host "Installing source-backed Provider: $provider"
+        Invoke-NativeChecked `
+            -FilePath $basePython `
+            -ArgumentList @(
+                $sourceSetupScript,
+                "--project-root", $projectRoot,
+                "--provider", $provider,
+                "--timeout-seconds", "600"
+            ) `
+            -FailureMessage "Failed to install source-backed Provider: $provider"
     }
 }
 

@@ -1,0 +1,414 @@
+{
+  "schema_version": 1,
+  "id": "wps-office",
+  "autostart": true,
+  "mode": "auto",
+  "routing_authority": "preferred",
+  "runtime": {
+    "kind": "executable_stdio",
+    "command": "node.exe",
+    "args": [
+      "dist/index.js"
+    ],
+    "cwd": ".provider_sources/wps-office/wps-office-mcp",
+    "discovery_timeout_seconds": 90,
+    "invoke_timeout_seconds": 120
+  },
+  "tool_overrides": {
+    "wps_check_connection": {
+      "title": "Check WPS Connection",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "office",
+        "status",
+        "read"
+      ]
+    },
+    "wps_common_ping": {
+      "title": "Ping WPS Office",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "office",
+        "status",
+        "read"
+      ]
+    },
+    "wps_common_get_app_info": {
+      "title": "Read WPS App Info",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "office",
+        "status",
+        "read"
+      ]
+    },
+    "wps_get_active_workbook": {
+      "title": "Read Active WPS Workbook",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "workbook",
+        "read"
+      ]
+    },
+    "wps_excel_get_open_workbooks": {
+      "title": "List Open WPS Workbooks",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "workbook",
+        "read"
+      ]
+    },
+    "wps_excel_get_sheet_list": {
+      "title": "List WPS Workbook Sheets",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "sheet",
+        "read"
+      ]
+    },
+    "wps_excel_read_range": {
+      "title": "Read WPS Spreadsheet Range",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "range",
+        "read"
+      ]
+    },
+    "wps_excel_get_cell_value": {
+      "title": "Read WPS Cell Value",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "cell",
+        "read"
+      ]
+    },
+    "wps_excel_get_cell_info": {
+      "title": "Inspect WPS Cell",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "cell",
+        "format",
+        "read"
+      ]
+    },
+    "wps_excel_get_formula": {
+      "title": "Read WPS Cell Formula",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "formula",
+        "read"
+      ]
+    },
+    "wps_excel_get_selection": {
+      "title": "Read WPS Spreadsheet Selection",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "selection",
+        "read"
+      ]
+    },
+    "wps_excel_open_workbook": {
+      "title": "Open WPS Workbook",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "workbook",
+        "open"
+      ]
+    },
+    "wps_excel_switch_workbook": {
+      "title": "Switch WPS Workbook",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "workbook",
+        "navigation"
+      ]
+    },
+    "wps_excel_switch_sheet": {
+      "title": "Switch WPS Worksheet",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "sheet",
+        "navigation"
+      ]
+    },
+    "wps_excel_create_workbook": {
+      "title": "Create WPS Workbook",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "workbook",
+        "create"
+      ]
+    },
+    "wps_excel_write_range": {
+      "title": "Write WPS Spreadsheet Range",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "range",
+        "write"
+      ]
+    },
+    "wps_excel_set_cell_value": {
+      "title": "Set WPS Cell Value",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "cell",
+        "write"
+      ]
+    },
+    "wps_excel_set_formula": {
+      "title": "Set WPS Cell Formula",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "formula",
+        "write"
+      ]
+    },
+    "wps_excel_set_cell_format": {
+      "title": "Format WPS Spreadsheet Cells",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "format",
+        "write"
+      ]
+    },
+    "wps_excel_set_number_format": {
+      "title": "Set WPS Number Format",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "format",
+        "number",
+        "write"
+      ]
+    },
+    "wps_excel_set_column_width": {
+      "title": "Set WPS Column Width",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "format",
+        "column",
+        "write"
+      ]
+    },
+    "wps_excel_set_row_height": {
+      "title": "Set WPS Row Height",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "format",
+        "row",
+        "write"
+      ]
+    },
+    "wps_excel_merge_cells": {
+      "title": "Merge WPS Cells",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "format",
+        "merge",
+        "write"
+      ]
+    },
+    "wps_excel_unmerge_cells": {
+      "title": "Unmerge WPS Cells",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "format",
+        "merge",
+        "write"
+      ]
+    },
+    "wps_excel_freeze_panes": {
+      "title": "Freeze WPS Panes",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "view",
+        "write"
+      ]
+    },
+    "wps_excel_create_sheet": {
+      "title": "Create WPS Worksheet",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "sheet",
+        "create"
+      ]
+    },
+    "wps_common_save": {
+      "title": "Save WPS Document",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "office",
+        "save",
+        "write"
+      ]
+    },
+    "wps_common_save_as": {
+      "title": "Save WPS Document As",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "wps",
+        "office",
+        "save",
+        "write"
+      ]
+    },
+    "wps_excel_delete_sheet": {
+      "title": "Delete WPS Worksheet",
+      "risk_level": "destructive",
+      "requires_confirmation": true,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "delete",
+        "destructive"
+      ]
+    },
+    "wps_excel_delete_rows": {
+      "title": "Delete WPS Rows",
+      "risk_level": "destructive",
+      "requires_confirmation": true,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "delete",
+        "destructive"
+      ]
+    },
+    "wps_excel_delete_columns": {
+      "title": "Delete WPS Columns",
+      "risk_level": "destructive",
+      "requires_confirmation": true,
+      "tags": [
+        "wps",
+        "spreadsheet",
+        "excel",
+        "delete",
+        "destructive"
+      ]
+    },
+    "wps_macro": {
+      "title": "Run WPS Macro",
+      "risk_level": "privileged",
+      "requires_confirmation": true,
+      "tags": [
+        "wps",
+        "office",
+        "macro",
+        "privileged"
+      ]
+    },
+    "wps_execute_method": {
+      "title": "Execute Raw WPS Method",
+      "risk_level": "privileged",
+      "requires_confirmation": true,
+      "tags": [
+        "wps",
+        "office",
+        "raw",
+        "privileged"
+      ]
+    }
+  }
+}

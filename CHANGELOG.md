@@ -2,6 +2,25 @@
 
 All notable PLA release changes are recorded here.
 
+## Unreleased
+
+### Added
+
+- Source-backed Git/npm Provider installation with exact Git commit pinning, repository-owned compatibility patches, fixed build entrypoints, and fresh-install support through `setup_providers.ps1`.
+- Reviewed WPS Office Provider based on `lc2panda/wps-skills`, exposing the upstream WPS MCP tool surface through PLA's Capability Registry.
+
+### Changed
+
+- Common WPS spreadsheet reads are classified as `read`; ordinary spreadsheet writes, formatting, navigation, and saves are `write_local` without per-call confirmation. Destructive worksheet/row/column operations and raw WPS method execution remain confirmation-gated.
+- PLA applies a tracked Windows COM compatibility patch to WPS Skills before build, fixing active-sheet fallback for omitted sheet arguments and restoring high-level cell-format operations.
+
+### Verified
+
+- Live WPS E2E: create workbook -> write range -> format header -> set formula -> save -> read back. The saved workbook returned the expected data and `SUM(B2:B4)=9`.
+- WPS Provider live probe: healthy, 250 tools discovered.
+- Full PLA regression: **668 / 668 passed**.
+- Python compilation checks passed for the source-backed Provider setup modules.
+
 ## 1.7.0 - 2026-09-21
 
 ### Added

@@ -328,7 +328,10 @@ Provider manifests define tool allowlists, risk levels, confirmation requirement
 requirements, artifact policy, runtime constraints, and dependency setup.
 
 Python Providers run in isolated Provider environments. Reviewed Node and native executable
-Providers can also be integrated without opening arbitrary shell execution.
+Providers can also be integrated without opening arbitrary shell execution. Source-backed Node
+Providers may additionally pin a GitHub repository to an exact commit, apply repository-owned
+compatibility patches, and build through the fixed Provider setup path; runtime execution still
+uses the ordinary manifest and capability-policy boundary.
 
 ## Provider management
 
@@ -461,6 +464,14 @@ The production Provider set includes capabilities for:
 - WinGet package discovery and reviewed installation
 - Windows observation and narrowly controlled application management
 - Software migration workflows
+- WPS Office automation through the reviewed `lc2panda/wps-skills` MCP provider, including WPS spreadsheets and the broader Office tool surface
+
+The WPS Office Provider is installed as a source-backed Node Provider pinned to a reviewed upstream
+commit. PLA applies its tracked Windows COM compatibility patch before build, then exposes the
+upstream MCP tools through the same capability registry. Common spreadsheet reads are classified as
+`read`, ordinary writes/formatting/saves as `write_local`, while destructive worksheet/row/column
+operations and raw method execution remain confirmation-gated. Windows use requires WPS Office and
+Node.js 18+.
 
 The exact loaded Provider set can be inspected at runtime with runtime.provider_status.
 

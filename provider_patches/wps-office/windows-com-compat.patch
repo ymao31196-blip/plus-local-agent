@@ -1,0 +1,112 @@
+--- a/wps-office-mcp/scripts/wps-com.ps1
++++ b/wps-office-mcp/scripts/wps-com.ps1
+@@ -469,8 +469,8 @@
+     "createPresentation" {
+         $ppt = Get-WpsPpt
+         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
+-        $ppt.Presentations.Add() | Out-Null
+-        Output-Json @{ success = $true }
++        $presentation = $ppt.Presentations.Add()
++        Output-Json @{ success = $true; data = @{ name = $presentation.Name } }
+     }
+ 
+     "convertToPDF" {
+@@ -556,7 +556,7 @@
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+         $wb = $excel.ActiveWorkbook
+         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; exit }
+-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
++        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $cell = $sheet.Cells.Item($p.row, $p.col)
+         Output-Json @{ success = $true; data = @{ value = $cell.Value2; text = $cell.Text; formula = $cell.Formula } }
+     }
+@@ -565,7 +565,7 @@
+         $excel = Get-WpsExcel
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+         $wb = $excel.ActiveWorkbook
+-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
++        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $sheet.Cells.Item($p.row, $p.col).Value2 = $p.value
+         Output-Json @{ success = $true }
+     }
+@@ -574,7 +574,7 @@
+         $excel = Get-WpsExcel
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+         $wb = $excel.ActiveWorkbook
+-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
++        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $range = $sheet.Range($p.range)
+         $data = @()
+         for ($r = 1; $r -le $range.Rows.Count; $r++) {
+@@ -589,7 +589,7 @@
+         $excel = Get-WpsExcel
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+         $wb = $excel.ActiveWorkbook
+-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
++        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $range = $sheet.Range($p.range)
+         for ($r = 0; $r -lt $p.data.Count; $r++) {
+             for ($c = 0; $c -lt $p.data[$r].Count; $c++) { $range.Cells.Item($r + 1, $c + 1).Value2 = $p.data[$r][$c] }
+@@ -637,7 +637,7 @@
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+         $wb = $excel.ActiveWorkbook
+         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; exit }
+-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
++        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $range = $sheet.Range($p.range)
+         $opsResult = @()
+         foreach ($op in $p.operations) {
+@@ -809,7 +809,7 @@
+         $excel = Get-WpsExcel
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+         $wb = $excel.ActiveWorkbook
+-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
++        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $range = if ($p.range) { $sheet.Range($p.range) } else { $sheet.Cells.Item($p.row, $p.col) }
+         $range.Formula = $p.formula
+         Output-Json @{ success = $true }
+@@ -818,10 +818,41 @@
+     "setCellFormat" {
+         $excel = Get-WpsExcel
+         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+-        $sheet = $excel.ActiveSheet
++        $sheet = if ($p.sheet) { $excel.ActiveWorkbook.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+         $range = $sheet.Range($p.range)
+-        if ($p.numberFormat) { $range.NumberFormat = $p.numberFormat }
+-        Output-Json @{ success = $true; data = @{ range = $p.range; format = $p.numberFormat } }
++        $fmt = $p.format
++        if ($null -eq $fmt) { $fmt = $p }
++
++        if ($fmt.numberFormat) { $range.NumberFormat = $fmt.numberFormat }
++        if ($null -ne $fmt.bold) { $range.Font.Bold = [bool]$fmt.bold }
++        if ($null -ne $fmt.italic) { $range.Font.Italic = [bool]$fmt.italic }
++        if ($fmt.fontSize) { $range.Font.Size = $fmt.fontSize }
++        if ($fmt.fontName) { $range.Font.Name = $fmt.fontName }
++        if ($fmt.fontColor) {
++            $fontColor = Convert-HexColorToRgbInt([string]$fmt.fontColor)
++            if ($null -ne $fontColor) { $range.Font.Color = $fontColor }
++        }
++        if ($fmt.bgColor) {
++            $bgColor = Convert-HexColorToRgbInt([string]$fmt.bgColor)
++            if ($null -ne $bgColor) { $range.Interior.Color = $bgColor }
++        }
++        if ($null -ne $fmt.underline) {
++            $range.Font.Underline = if ([bool]$fmt.underline) { 2 } else { -4142 }
++        }
++        if ($null -ne $fmt.strikethrough) { $range.Font.Strikethrough = [bool]$fmt.strikethrough }
++        if ($fmt.horizontalAlignment) {
++            $hAlignMap = @{ left = -4131; center = -4108; right = -4152 }
++            $hAlign = $hAlignMap[[string]$fmt.horizontalAlignment]
++            if ($null -ne $hAlign) { $range.HorizontalAlignment = $hAlign }
++        }
++        if ($fmt.verticalAlignment) {
++            $vAlignMap = @{ top = -4160; center = -4108; bottom = -4107 }
++            $vAlign = $vAlignMap[[string]$fmt.verticalAlignment]
++            if ($null -ne $vAlign) { $range.VerticalAlignment = $vAlign }
++        }
++        if ($null -ne $fmt.wrapText) { $range.WrapText = [bool]$fmt.wrapText }
++
++        Output-Json @{ success = $true; data = @{ range = $p.range } }
+     }
+ 
+     "setCellStyle" {
