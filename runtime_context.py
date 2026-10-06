@@ -50,6 +50,7 @@ def terminate_owned_process_tree(process, timeout: float = 5.0) -> None:
 @dataclass
 class ExecutionContext:
     observer: Callable[[str, dict[str, Any]], None]
+    task_id: str | None = None
     cancelled: Event = field(default_factory=Event)
     lock: Any = field(default_factory=Lock)
     processes: set = field(default_factory=set)
@@ -76,7 +77,39 @@ class ExecutionContext:
                     terminate_owned_process_tree(process)
 
 
+@dataclass(frozen=True)
+class InvocationTrace:
+    correlation_id: str
+    causation_id: str | None
+    capability_id: str
+    transaction_id: str | None = None
+
+
 CURRENT: ContextVar[ExecutionContext | None] = ContextVar("local_execution", default=None)
+INVOCATION_TRACE: ContextVar[InvocationTrace | None] = ContextVar(
+    "capability_invocation_trace",
+    default=None,
+)
+
+
+def current_trace() -> dict[str, Any]:
+    """Return the bounded task/capability trace currently active on this call path."""
+
+    trace: dict[str, Any] = {}
+    execution = CURRENT.get()
+    if execution is not None and execution.task_id:
+        trace["task_id"] = execution.task_id
+    invocation = INVOCATION_TRACE.get()
+    if invocation is not None:
+        trace.update(
+            {
+                "correlation_id": invocation.correlation_id,
+                "causation_id": invocation.causation_id,
+                "capability_id": invocation.capability_id,
+                "transaction_id": invocation.transaction_id,
+            }
+        )
+    return trace
 
 
 def checkpoint() -> None:

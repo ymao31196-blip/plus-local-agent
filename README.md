@@ -10,7 +10,9 @@ management, artifacts, and other MCP providers.
 The ChatGPT client does not need to run on the same computer as PLA. With the Secure MCP Tunnel
 running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes on the target PC.
 
-**Installation:** [English](#quick-start) | [中文](#中文安装指南)
+**Language:** English | [简体中文](README.zh-CN.md)
+
+**Installation:** [English](#quick-start) | [中文安装指南](#中文安装指南)
 
 ## Quick start
 
@@ -298,10 +300,12 @@ capability_search / capability_describe / capability_invoke
         v
 PLA on the target Windows PC
         +-- Capability Registry / Broker
-        +-- Local execution boundary
+        +-- Semantic / Execution Policy
+        +-- Production Execution Runner
+        +-- Persistent Session Runtime
         +-- Browser / Computer providers
         +-- Artifact Plane
-        +-- Durable Transaction Store
+        +-- Durable Task / Transaction Store
         +-- Event / Observer / Gate Plane
         +-- Runtime Lifecycle Broker
         +-- Interactive Elevation Broker
@@ -318,7 +322,7 @@ External Provider tool catalogs are not copied wholesale into ChatGPT's MCP sche
 small hot-path surface for common local work and routes specialized or low-frequency operations
 through the Capability Registry.
 
-The v1.8.0 runtime exposes **23 top-level MCP tools**. These cover the capability router itself plus
+The v2.0.0 runtime exposes **23 top-level MCP tools**. These cover the capability router itself plus
 high-frequency file, process, artifact-export, task, Git status/diff, and recovery/diagnostic paths.
 The broader runtime is discovered on demand through:
 
@@ -328,7 +332,7 @@ capability_describe
 capability_invoke
 ~~~
 
-At the v1.8.0 release point, the live registry contains **393 dynamic capabilities**. ChatGPT searches
+At the v2.0.0 release point, the live registry contains **412 dynamic capabilities**. ChatGPT searches
 that registry, inspects the selected capability, and invokes only what is needed for the current
 step instead of receiving every Provider tool schema up front.
 
@@ -411,19 +415,34 @@ Third-party code does not receive authority to silently expand PLA's execution b
 
 ## Runtime lifecycle
 
-PLA uses an independent Runtime Lifecycle Broker for controlled HTTP restart:
+PLA separates the HTTP Control Plane from its default generic one-shot Execution Plane. Normal
+`run_process` execution uses an authenticated out-of-process Execution Runner; persistent process
+sessions and structured PowerShell keep their existing specialized paths. Each one-shot request has
+an exact `execution_request_id`, allowing the Control Plane to reconnect to retained Runner results
+after an HTTP restart without replaying the command.
+
+The production Runner validates its own process identity, protocol version, workspace/root policy,
+program allowlist, environment overrides, and semantic execution policy before spawning a child.
+Task cancellation is forwarded by exact request ID and can terminate only the child tree owned by
+that Runner request; PLA does not expose an arbitrary PID-kill surface.
+
+PLA also uses an independent Runtime Lifecycle Broker for controlled HTTP restart:
 
 ~~~text
 runtime.lifecycle_status
 runtime.restart_http
 runtime.restart_status
+runtime.execution_runner_status
+runtime.execution_runner_result
 ~~~
 
-runtime.restart_http requires explicit **INVOKE**. The broker validates the expected PLA HTTP
-process before restart, while the Secure MCP Tunnel remains separate from the HTTP process.
+`runtime.restart_http` requires explicit **INVOKE**. The broker validates the expected PLA HTTP
+process before restart, while the Secure MCP Tunnel and production Execution Runner remain separate
+from the HTTP process. Normal `start_all.ps1` startup ensures the Runner; `stop_all.ps1` requests a
+graceful Runner shutdown.
 
-A dropped connection is not treated as proof of success; restart status and process identity are
-checked explicitly.
+A dropped connection is not treated as proof of success; restart status, Runner identity, and
+retained execution state are checked explicitly.
 
 ## Interactive elevation
 
@@ -517,8 +536,8 @@ The Skill Library Provider is intentionally lighter-weight. Skills are advisory 
 used to reduce recurring mistakes, preserve stable workflows, and surface easy-to-forget conventions.
 They do not override current user instructions, task facts, or ChatGPT's judgment.
 
-The exact loaded Provider set can be inspected at runtime with `runtime.provider_status`. The v1.8.0
-release point has nine active external Providers; WPS exposes 250 capabilities and Skill Library
+The exact loaded Provider set can be inspected at runtime with `runtime.provider_status`. The v2.0.0
+release point has ten active external Providers; WPS exposes 250 capabilities and Skill Library
 exposes four.
 
 ## Software migration
@@ -627,6 +646,12 @@ python -m pytest -q
 Runtime state, Provider environments, credentials, local Tunnel configuration, logs, IDE state,
 and customer workspace outputs are excluded from Git.
 
+The final v2.0.0 Runtime / Execution Plane regression baseline is:
+
+~~~text
+762 passed
+~~~
+
 ## Design principles
 
 1. **ChatGPT stays the Agent Brain.** PLA does not add a competing autonomous planner.
@@ -637,3 +662,5 @@ and customer workspace outputs are excluded from Git.
 5. **High-risk actions are explicit.** Confirmation, transactions, UAC and Git preconditions remain separate safety layers.
 6. **Providers are extensible without flattening security.** New MCP capabilities still pass through the same runtime policy boundary.
 7. **Keep the top-level tool surface small.** High-frequency recovery paths stay directly visible; specialized, governance and provider-specific operations are discovered through the Capability Registry.
+8. **Separate Control Plane from Execution Plane.** Generic one-shot work runs in the independent production Runner; HTTP restart must not replay already accepted commands. Persistent sessions remain on their specialized runtime until a real need justifies migration.
+9. **Do not pretend wrapper policy is an OS sandbox.** The current filesystem boundary remains PLA wrapper policy and execution metadata records `sandbox_mode=none`. A real OS sandbox is a separate future capability, not a documentation claim.

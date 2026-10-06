@@ -27,6 +27,7 @@ from event_runtime import EventStore
 from observer_hook_runtime import ObserverHookRuntime
 from gate_hook_runtime import GateHookRuntime
 from mcp_client_manager import MCPClientManager
+from runtime_context import INVOCATION_TRACE, InvocationTrace
 
 
 def _jsonable(value: Any) -> Any:
@@ -515,6 +516,14 @@ class CapabilityBroker:
         )
         causation_id = before.get("event_id") if before else None
 
+        trace_token = INVOCATION_TRACE.set(
+            InvocationTrace(
+                correlation_id=correlation_id,
+                causation_id=causation_id,
+                capability_id=capability_id,
+                transaction_id=transaction_id,
+            )
+        )
         try:
             result = await self._invoke_without_events(
                 capability_id,
@@ -540,6 +549,8 @@ class CapabilityBroker:
                 },
             )
             raise
+        finally:
+            INVOCATION_TRACE.reset(trace_token)
 
         semantic_status = _semantic_result_status(result)
         failed = (

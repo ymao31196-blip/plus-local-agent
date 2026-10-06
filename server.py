@@ -54,6 +54,7 @@ from local_tools import (
     write_text as internal_write_text,
 )
 from task_store import TASK_STORE
+from session_runtime import SESSION_STORE
 from transaction_runtime import TRANSACTION_STORE
 from transaction_action_envelope import invoke_capability_in_transaction
 from changeset_manager import ChangeRequest, apply_changeset as internal_apply_changeset
@@ -138,12 +139,13 @@ async def _runtime_lifespan(_server):
     try:
         yield
     finally:
+        SESSION_STORE.close_all()
         await MCP_CLIENT_MANAGER.close_all_persistent_sessions()
 
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="1.8.0",
+    version="2.0.0",
     lifespan=_runtime_lifespan,
 )
 
@@ -646,9 +648,12 @@ def run_process(
     env: dict[str, str] | None = None,
     stdin: str | None = None,
     root: str = "workspace",
+    backend: str = "default",
 ) -> dict:
-    """从指定受控 root 运行受允许的程序。"""
-    return internal_run_process(program, args, cwd, timeout, workdir, env, stdin, root)
+    """从指定受控 root 运行受允许的程序；可显式选择候选独立 Runner。"""
+    return internal_run_process(
+        program, args, cwd, timeout, workdir, env, stdin, root, backend
+    )
 
 
 @mcp.tool

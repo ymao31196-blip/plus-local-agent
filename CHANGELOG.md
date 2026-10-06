@@ -2,24 +2,52 @@
 
 All notable PLA release changes are recorded here.
 
-## Unreleased
+## 2.0.0 - 2026-10-06
 
 ### Added
 
+- Production out-of-process Execution Runner for default generic one-shot `run_process` execution, using authenticated Windows Named Pipes and stable Runner identity.
+- Exact `execution_request_id` ledger with idempotent resubmission, retained results, HTTP-restart recovery and request-ID-scoped cancellation of Runner-owned child trees.
+- Persistent process sessions with pipe and native Windows ConPTY backends, bounded incremental output, stdin/EOF, resize, terminate and close operations.
+- Interactive session input governance and confirmed `runtime.confirmed_session_write` for executable Python REPL input.
+- Unified semantic execution policy for external writes, Python environment mutations and high-risk local Git operations.
+- Runtime trace correlation across Task, Capability, execution, Runner and session identities.
+- Shadow/canary execution validation paths with bounded hash-based parity telemetry for deterministic safe reads.
 - Office补强 (`office-enhancement`) Provider combining structured `@oai/artifact-tool` editable PPT overlays, `zipfile+lxml` OOXML merge, Microsoft PowerPoint COM rendering/overflow inspection, and PyMuPDF PDF image/region extraction.
 - Reviewed isolated Office补强 dependencies: `lxml==6.1.3`, `PyMuPDF==1.28.2`, and `pywin32==312`.
 - Dedicated [Office补强 architecture and usage guide](docs/office_enhancement.md).
+- Complete Simplified Chinese project documentation in [README.zh-CN.md](README.zh-CN.md).
 
 ### Changed
 
+- `run_process(backend="default")` now resolves to the independent production Execution Runner; explicit `backend="in_process"` remains available for diagnostics/emergency rollback.
+- PLA HTTP Control Plane can restart while accepted one-shot work continues in the Runner; the new TaskStore owner reattaches by exact request ID instead of replaying the command.
+- Runner protocol advances to v4 with process-identity validation, PLA-root mutex ownership, asynchronous request ledger and request-scoped cancellation.
+- Execution Permission metadata records semantic policy provenance and explicitly reports the current wrapper boundary as `sandbox_mode=none`.
+- Capability Steering now enforces governed routes for specialized Git mutations, external writes, environment changes and high-risk local Git mutations before backend selection.
 - WPS remains the primary Office automation surface for routine edits; Office补强 is routed as the specialist path for surgical PPTX work, real PowerPoint QA, editable technical overlays, and PDF figure extraction.
 - The artifact-tool integration resolves the installed Codex runtime package dynamically and never exposes arbitrary JavaScript or generic Node execution.
 - OOXML overlay merge now copies only relationships actually referenced by merged objects, avoiding unrelated notes/master relationships while preserving the target deck's existing package structure.
+- Release documentation now describes 23 stable top-level MCP tools, 412 live dynamic capabilities and 10 active external Providers at the v2.0.0 validation point.
+
+### Security
+
+- The production Runner independently revalidates workspace/root execution policy, program allowlist, protected environment overrides and semantic command policy before child creation.
+- Post-submit indeterminate failures do not blindly fall back for arbitrary code or write operations; accepted requests are recovered by the same request ID to avoid duplicate side effects.
+- Production cancellation is request-ID-scoped and only terminates the child tree owned by that Runner request; callers cannot provide arbitrary PIDs.
+- Confirmation-gated `pip install`/environment changes and governed PLA-source Git push remain outside generic Runner authority.
+- PLA does not claim an OS sandbox: workspace path checks remain wrapper policy and runtime metadata records `sandbox_mode=none`.
 
 ### Verified
 
-- Live E2E: artifact-tool editable overlay -> OOXML merge into a PowerPoint-authored base deck -> Microsoft PowerPoint COM overflow inspection/render -> PDF export -> PyMuPDF image extraction and region rendering.
-- The merged deck preserved the original test header, added editable shapes/text/image/connector objects, and reported no likely text overflow in inserted test objects.
+- Phase-S focused production Runner/recovery/cancellation suite: **65 / 65 passed**.
+- Final full repository regression: **762 / 762 passed in 117.71 s**.
+- Live default one-shot execution used production Runner protocol v4 in an independent process.
+- Live HTTP replacement recovered the same running Task and exact request ID from the unchanged Runner without command replay.
+- Live `cancel_task` forwarded the exact production request ID and the cancelled child never produced its post-sleep marker.
+- Live routing checks confirmed `pip install` still requires `runtime.environment_process + INVOKE` and PLA-source `git push` still requires `core.git_push`.
+- Live runtime exposes **412 dynamic capabilities** across **10 active external Providers**; WPS exposes 250 capabilities and Skill Library exposes four.
+- Live Office补强 E2E: artifact-tool editable overlay -> OOXML merge into a PowerPoint-authored base deck -> Microsoft PowerPoint COM overflow inspection/render -> PDF export -> PyMuPDF image extraction and region rendering.
 
 ## 1.8.0 - 2026-09-29
 

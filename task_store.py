@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sqlite3
 from threading import Condition, RLock
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
 from internal_tool_executor import execute_actions_request, execute_local_tool
@@ -80,12 +80,73 @@ class TaskStore:
             db.execute("CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, kind TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL)")
             db.execute("CREATE INDEX IF NOT EXISTS events_by_task ON events(task_id, seq)")
             self._db = db
+            recoveries: list[tuple[str, dict[str, Any], str]] = []
             with db:
-                pending = db.execute("SELECT task_id FROM tasks WHERE status IN ('queued', 'running')").fetchall()
+                pending = db.execute(
+                    "SELECT task_id,status,request FROM tasks WHERE status IN ('queued', 'running')"
+                ).fetchall()
                 for row in pending:
-                    error = {"type": "TaskInterruptedByRestart", "message": "Previous runtime stopped; no replay; prior side effects may exist"}
-                    db.execute("UPDATE tasks SET status='failed', finished_at=?, error=? WHERE task_id=?", (_now(), json.dumps(error), row[0]))
-                    self._event(row[0], "task_failed", {"error": error})
+                    task_id = row["task_id"]
+                    request = json.loads(row["request"])
+                    recovery_request_id = None
+                    if row["status"] == "running" and isinstance(request, dict):
+                        event = db.execute(
+                            "SELECT data FROM events WHERE task_id=? AND kind='execution_started' "
+                            "ORDER BY seq DESC LIMIT 1",
+                            (task_id,),
+                        ).fetchone()
+                        if event:
+                            try:
+                                data = json.loads(event["data"])
+                            except (TypeError, json.JSONDecodeError):
+                                data = {}
+                            candidate = data.get("execution_request_id")
+                            if (
+                                request.get("tool") == "run_process"
+                                and isinstance(request.get("arguments"), dict)
+                                and data.get("backend_preference") == "production_runner"
+                                and isinstance(candidate, str)
+                                and len(candidate) == 32
+                            ):
+                                recovery_request_id = candidate
+                    if recovery_request_id is not None:
+                        self._contexts[task_id] = ExecutionContext(
+                            lambda kind, data, task_id=task_id: self._observe(task_id, kind, data),
+                            task_id=task_id,
+                        )
+                        recoveries.append((task_id, request, recovery_request_id))
+                        self._event(
+                            task_id,
+                            "task_recovery_queued",
+                            {"execution_request_id": recovery_request_id},
+                        )
+                        continue
+                    error = {
+                        "type": "TaskInterruptedByRestart",
+                        "message": "Previous runtime stopped; no replay; prior side effects may exist",
+                    }
+                    db.execute(
+                        "UPDATE tasks SET status='failed', finished_at=?, error=? WHERE task_id=?",
+                        (_now(), json.dumps(error), task_id),
+                    )
+                    self._event(task_id, "task_failed", {"error": error})
+            for task_id, request, request_id in recoveries:
+                try:
+                    self._workers.submit(
+                        self._recover_production_task,
+                        task_id,
+                        request,
+                        request_id,
+                    )
+                except Exception as exc:
+                    self._contexts.pop(task_id, None)
+                    error = {"type": type(exc).__name__, "message": str(exc)[:20_000]}
+                    with db:
+                        db.execute(
+                            "UPDATE tasks SET status='failed', finished_at=?, error=? WHERE task_id=?",
+                            (_now(), json.dumps(error), task_id),
+                        )
+                        self._event(task_id, "task_failed", {"error": error})
             return db
         except Exception:
             self._db = None
@@ -131,7 +192,10 @@ class TaskStore:
                 with db:
                     db.execute("INSERT INTO tasks(task_id,status,created_at,request) VALUES (?, 'queued', ?, ?)", (task_id, _now(), serialized))
                     self._event(task_id, "task_queued", {})
-                self._contexts[task_id] = ExecutionContext(lambda kind, data: self._observe(task_id, kind, data))
+                self._contexts[task_id] = ExecutionContext(
+                    lambda kind, data: self._observe(task_id, kind, data),
+                    task_id=task_id,
+                )
                 try:
                     self._workers.submit(self._run, task_id)
                 except Exception as exc:
@@ -150,6 +214,86 @@ class TaskStore:
             self._db.execute("UPDATE tasks SET status=?,result=?,error=?,finished_at=? WHERE task_id=?",
                              (status, serialized, json.dumps(error), _now(), task_id))
             self._event(task_id, "task_" + status, {"error": error})
+
+    def _recover_production_task(
+        self,
+        task_id: str,
+        request: dict[str, Any],
+        execution_request_id: str,
+    ) -> None:
+        token = None
+        try:
+            context = self._contexts[task_id]
+            token = CURRENT.set(context)
+            arguments = request["arguments"]
+            requested_timeout = arguments.get("timeout", 120)
+            if isinstance(requested_timeout, bool) or not isinstance(requested_timeout, int):
+                requested_timeout = 120
+            requested_timeout = max(1, min(requested_timeout, 300))
+            deadline = monotonic() + requested_timeout + 30
+            from execution_runner_runtime import execution_runner_result
+            from local_tools import recover_run_process_result
+
+            self._observe(
+                task_id,
+                "task_recovery_started",
+                {"execution_request_id": execution_request_id},
+            )
+            while monotonic() < deadline:
+                context.check()
+                response = execution_runner_result(execution_request_id)
+                status = response.get("status")
+                if status == "running":
+                    sleep(0.05)
+                    continue
+                if status == "completed":
+                    run_result = recover_run_process_result(
+                        arguments,
+                        response,
+                        task_id=task_id,
+                        execution_request_id=execution_request_id,
+                    )
+                    result = {
+                        "tool": "run_process",
+                        "ok": True,
+                        "result": run_result,
+                        "error": None,
+                    }
+                    with self._lock:
+                        self._event(
+                            task_id,
+                            "execution_recovered_after_restart",
+                            {
+                                "execution_request_id": execution_request_id,
+                                "runner": response.get("runner", {}),
+                            },
+                        )
+                        self._finish(task_id, "completed", result, None)
+                    return
+                if status == "error":
+                    raise RuntimeError(
+                        "production Runner recovery failed: "
+                        + str(response.get("message") or response.get("error_type") or "unknown error")
+                    )
+                raise RuntimeError("production Runner recovery returned an invalid status")
+            raise TimeoutError(
+                "Timed out recovering production execution result; "
+                f"execution_request_id={execution_request_id}"
+            )
+        except Exception as exc:
+            with self._lock:
+                context = self._contexts.get(task_id)
+                status = "cancelled" if context and context.cancelled.is_set() else "failed"
+                error = {"type": type(exc).__name__, "message": str(exc)[:20_000]}
+                try:
+                    self._finish(task_id, status, None, error)
+                except Exception:
+                    pass
+        finally:
+            if token is not None:
+                CURRENT.reset(token)
+            with self._lock:
+                self._contexts.pop(task_id, None)
 
     def _run(self, task_id: str) -> None:
         token = None
@@ -268,10 +412,50 @@ class TaskStore:
                 context = self._contexts.get(task_id)
                 if context is None:
                     return _error("TaskStoreError", "Task has no active owner", task_id)
+                execution_request_id = None
                 with self._db:
                     self._db.execute("UPDATE tasks SET cancel_requested=1 WHERE task_id=?", (task_id,))
                     if not record["cancel_requested"]:
                         self._event(task_id, "cancellation_requested", {})
+                    event = self._db.execute(
+                        "SELECT data FROM events WHERE task_id=? AND kind='execution_started' "
+                        "ORDER BY seq DESC LIMIT 1",
+                        (task_id,),
+                    ).fetchone()
+                    if event:
+                        try:
+                            data = json.loads(event["data"])
+                        except (TypeError, json.JSONDecodeError):
+                            data = {}
+                        candidate = data.get("execution_request_id")
+                        if (
+                            data.get("backend_preference") == "production_runner"
+                            and isinstance(candidate, str)
+                            and len(candidate) == 32
+                        ):
+                            execution_request_id = candidate
+                if execution_request_id is not None:
+                    try:
+                        from execution_runner_runtime import cancel_execution_runner_request
+
+                        forwarded = cancel_execution_runner_request(execution_request_id)
+                        self._event(
+                            task_id,
+                            "execution_cancellation_forwarded",
+                            {
+                                "execution_request_id": execution_request_id,
+                                "runner_status": forwarded.get("status"),
+                            },
+                        )
+                    except Exception as exc:
+                        self._event(
+                            task_id,
+                            "execution_cancellation_forward_failed",
+                            {
+                                "execution_request_id": execution_request_id,
+                                "error_type": type(exc).__name__,
+                            },
+                        )
                 context.cancel()
                 if record["status"] == "queued":
                     self._finish(task_id, "cancelled", None, {"type": "TaskCancelled", "message": "Cancelled before execution"})

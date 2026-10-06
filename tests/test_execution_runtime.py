@@ -128,6 +128,83 @@ def test_stdout_truncation_is_explicit(tmp_path, monkeypatch):
     assert len(result.result["stdout"]) == 20_000
 
 
+def test_run_process_returns_command_semantics(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+    result = local_tools.run_process("python", ["-c", "print('ok')"])
+
+    assert result["returncode"] == 0
+    assert result["command_semantic"]["domain"] == "python"
+    assert result["command_semantic"]["effect_class"] == "arbitrary_code"
+    assert result["command_semantic"]["risk_level"] == "write_local"
+
+
+def test_workspace_git_commit_is_steered_before_generic_execution(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+    result = local_tools.run_process("git", ["commit", "-m", "x"])
+
+    assert result["status"] == "blocked"
+    assert result["steering_rule_id"] == "governed_git_mutation"
+    assert result["command_semantic"]["action"] == "commit"
+    assert result["suggested_capabilities"][0]["name"] == "core.git_commit"
+
+
+def test_background_process_streams_output_before_completion(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+    store = TaskStore(max_workers=1)
+    submitted = store.submit({
+        "tool": "run_process",
+        "arguments": {
+            "program": "python",
+            "args": [
+                "-u",
+                "-c",
+                (
+                    "import time; "
+                    "print('phase-one', flush=True); "
+                    "time.sleep(3); "
+                    "print('phase-two', flush=True)"
+                ),
+            ],
+        },
+    })
+
+    cursor = 0
+    deadline = time.monotonic() + 1.5
+    saw_stream = False
+    saw_permissions = False
+    while time.monotonic() < deadline and not (saw_stream and saw_permissions):
+        record = store.get(submitted["task_id"], cursor=cursor, wait_seconds=0.25)
+        cursor = record.get("next_cursor", cursor)
+        for event in record.get("events", []):
+            if event["type"] == "execution_started":
+                permissions = event["data"]["permissions"]
+                assert permissions["selected_root"] == "workspace"
+                assert permissions["route"] == "generic_process"
+                assert permissions["program_policy"] == "allowlisted_program"
+                assert permissions["filesystem_boundary"] == "wrapper_policy"
+                assert permissions["network_boundary"] == "inherited_runtime"
+                assert permissions["elevation_boundary"] == "inherited_runtime"
+                assert permissions["sandbox_mode"] == "none"
+                assert permissions["semantic_domain"] == "python"
+                assert permissions["semantic_action"] == "inline_code"
+                assert permissions["semantic_risk_level"] == "write_local"
+                assert permissions["semantic_effect_class"] == "arbitrary_code"
+                assert permissions["network_intent"] == "possible"
+                assert permissions["semantic_confidence"] == "high"
+                assert permissions["execution_policy_id"] == "generic_allowed"
+                assert permissions["execution_policy_version"] == "1"
+                saw_permissions = True
+            if event["type"] == "process_output" and "phase-one" in event["data"]["content"]:
+                assert event["data"]["stream"] == "stdout"
+                assert record["status"] == "running"
+                saw_stream = True
+
+    assert saw_permissions is True
+    assert saw_stream is True
+    assert store.get(submitted["task_id"])["status"] == "running"
+    assert _wait_finished(store, submitted["task_id"])["status"] == "completed"
+
+
 def test_submit_returns_task_id_and_task_completes(tmp_path, monkeypatch):
     monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
     store = TaskStore(max_workers=1)

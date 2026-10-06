@@ -11,6 +11,9 @@ from threading import Event, Thread
 from runtime_context import CURRENT, checkpoint, terminate_owned_process_tree
 
 
+OUTPUT_EVENT_CHUNK_CHARACTERS = 4096
+
+
 class CapturedText(str):
     """A bounded tail carrying the length before truncation."""
     def __new__(cls, value: str, original_length: int):
@@ -59,7 +62,42 @@ def controlled_run(command, *, cwd, timeout, shell=False, env=None,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         tails, lengths, errors = ["", ""], [0, 0], []
+        pending_events = ["", ""]
+        stream_names = ("stdout", "stderr")
         stop = Event()
+
+        def publish_output(index: int, value: str = "", final: bool = False) -> None:
+            if not context:
+                return
+            pending_events[index] += value
+
+            while "\n" in pending_events[index]:
+                newline = pending_events[index].find("\n") + 1
+                chunk = pending_events[index][:newline]
+                pending_events[index] = pending_events[index][newline:]
+                context.observer("process_output", {
+                    "stream": stream_names[index],
+                    "content": chunk,
+                    "final": False,
+                })
+
+            while len(pending_events[index]) >= OUTPUT_EVENT_CHUNK_CHARACTERS:
+                chunk = pending_events[index][:OUTPUT_EVENT_CHUNK_CHARACTERS]
+                pending_events[index] = pending_events[index][OUTPUT_EVENT_CHUNK_CHARACTERS:]
+                context.observer("process_output", {
+                    "stream": stream_names[index],
+                    "content": chunk,
+                    "final": False,
+                })
+
+            if final and pending_events[index]:
+                chunk = pending_events[index]
+                pending_events[index] = ""
+                context.observer("process_output", {
+                    "stream": stream_names[index],
+                    "content": chunk,
+                    "final": True,
+                })
 
         def read_pipe(pipe, index):
             decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -74,7 +112,10 @@ def controlled_run(command, *, cwd, timeout, shell=False, env=None,
                     value = decoder.decode(block, final=not block)
                     tails[index] = (tails[index] + value)[-20_000:]
                     lengths[index] += len(value)
+                    if value:
+                        publish_output(index, value)
                     if not block:
+                        publish_output(index, final=True)
                         return
             except Exception as exc:
                 errors.append(str(exc))

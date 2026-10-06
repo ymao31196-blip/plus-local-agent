@@ -10,6 +10,7 @@ $brokerStatusPath = Join-Path $projectRoot "state\elevation\broker_status.json"
 $lifecycleScript = Join-Path $projectRoot "start_lifecycle_broker.ps1"
 $lifecycleStatusPath = Join-Path $projectRoot "state\lifecycle\broker_status.json"
 $browserScript = Join-Path $projectRoot "start_browser_runtime.ps1"
+$runnerScript = Join-Path $projectRoot "start_execution_runner.ps1"
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
 
 function Get-ListenerPid([int]$Port) {
@@ -106,7 +107,7 @@ function Wait-LifecycleBrokerReady([int]$TimeoutSeconds = 10) {
     throw "Timed out waiting for Runtime Lifecycle Broker."
 }
 
-foreach ($required in @($httpScript, $tunnelScript, $brokerScript, $lifecycleScript, $browserScript)) {
+foreach ($required in @($httpScript, $tunnelScript, $brokerScript, $lifecycleScript, $browserScript, $runnerScript)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing startup script: $required"
     }
@@ -133,6 +134,9 @@ $lifecycleStartArgs = @{
 Start-Process @lifecycleStartArgs | Out-Null
 $lifecyclePid = Wait-LifecycleBrokerReady 10
 Write-Host "Runtime Lifecycle Broker ready (PID $lifecyclePid)."
+
+Write-Host "Ensuring Execution Runner..."
+& $runnerScript
 
 Write-Host "Ensuring Browser Runtime..."
 $browserStartArgs = @{

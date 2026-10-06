@@ -19,9 +19,25 @@ from threading import Timer, RLock
 from functools import wraps
 from xml.etree import ElementTree as ET
 
-from runtime_context import CURRENT, checkpoint
+from runtime_context import CURRENT, checkpoint, current_trace
 from process_controller import controlled_run
+from execution_backend import (
+    execution_result_canary_metadata,
+    execution_result_production_metadata,
+    execution_result_runner_metadata,
+    execution_result_shadow_metadata,
+    runner_metadata,
+)
+from execution_runtime import ExecutionPermissionEnvelope, ExecutionRequest, run_oneshot
+from session_runtime import SESSION_MANAGER
 from capability_steering import steer_run_powershell, steer_run_process
+from command_semantics import classify_command
+from semantic_execution_policy import evaluate_semantic_execution
+from execution_program_policy import (
+    ALLOWED_PROGRAMS,
+    SESSION_ALLOWED_PROGRAMS,
+    validate_env_overrides,
+)
 from typing import Any, Callable, Literal
 from typing_extensions import TypedDict
 from workspace_manager import (
@@ -49,10 +65,6 @@ def workspace_config_path() -> Path:
     return (PLA_ROOT / "config" / "workspaces.local.yaml").resolve()
 
 
-ALLOWED_PROGRAMS = {
-    "python", "python.exe", "pytest", "pytest.exe", "git", "git.exe", "gh", "gh.exe", "latexmk", "latexmk.exe", "xelatex", "xelatex.exe", "wsl", "wsl.exe"
-}
-
 MAX_TEXT_CHARACTERS = 20_000
 MAX_DOCUMENT_CHARACTERS = 100_000
 DOCUMENT_TEXT_EXTENSIONS = {
@@ -60,9 +72,7 @@ DOCUMENT_TEXT_EXTENSIONS = {
     ".yaml", ".yml", ".toml", ".ini", ".cfg", ".tex", ".rst", ".log",
 }
 MAX_SEARCH_RESULTS = 1_000
-MAX_ENV_OVERRIDES = 32
 MAX_PATCH_CHARACTERS = 1_000_000
-ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 HUNK_HEADER_PATTERN = re.compile(
     r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$"
@@ -672,24 +682,9 @@ def search_text(
 
 
 def _validate_process_env(env: dict[str, str] | None) -> dict[str, str]:
-    if env is None:
-        return os.environ.copy()
-    if not isinstance(env, dict):
-        raise TypeError("env must be an object")
-    if len(env) > MAX_ENV_OVERRIDES:
-        raise ValueError(f"env cannot contain more than {MAX_ENV_OVERRIDES} overrides")
+    overrides = validate_env_overrides(env)
     result = os.environ.copy()
-    blocked = {"PATH", "PATHEXT", "COMSPEC", "PYTHONHOME", "PYTHONPATH"}
-    for name, value in env.items():
-        if not isinstance(name, str) or not ENV_NAME_PATTERN.fullmatch(name):
-            raise ValueError(f"Invalid environment variable name: {name!r}")
-        if name.upper() in blocked:
-            raise ValueError(f"Environment variable override is not allowed: {name}")
-        if not isinstance(value, str):
-            raise TypeError(f"Environment variable {name} must have a string value")
-        if len(value) > 32_768:
-            raise ValueError(f"Environment variable {name} value is too long")
-        result[name] = value
+    result.update(overrides)
     return result
 
 
@@ -702,12 +697,30 @@ def run_process(
     env: dict[str, str] | None = None,
     stdin: str | None = None,
     root: str = "workspace",
+    backend: Literal[
+        "default",
+        "in_process",
+        "candidate_runner",
+        "shadow_candidate",
+        "canary_candidate",
+    ] = "default",
 ) -> dict[str, Any]:
     args = [] if args is None else args
     if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
         raise TypeError("args must be an array of strings")
     if stdin is not None and not isinstance(stdin, str):
         raise TypeError("stdin must be null or a string")
+    if backend not in {
+        "default",
+        "in_process",
+        "candidate_runner",
+        "shadow_candidate",
+        "canary_candidate",
+    }:
+        raise ValueError(
+            "backend must be 'default', 'in_process', 'candidate_runner', "
+            "'shadow_candidate', or 'canary_candidate'"
+        )
     if workdir is not None:
         if cwd != "." and cwd != workdir:
             raise ValueError("Provide either cwd or workdir, not conflicting values")
@@ -715,8 +728,10 @@ def run_process(
     program_name = Path(program).name.lower()
     if program_name not in ALLOWED_PROGRAMS:
         raise ValueError(f"Program not allowed: {program}")
+    semantic = classify_command(program, args)
     steering = steer_run_process(program, args, root)
     if steering is not None:
+        steering.setdefault("command_semantic", semantic.to_dict())
         return steering
     working_directory = safe_path(cwd, root, "execute")
     if not working_directory.exists():
@@ -727,18 +742,46 @@ def run_process(
     command = [program, *args]
     if program_name in {"pytest", "pytest.exe"}:
         command = [sys.executable, "-m", "pytest", *args]
+    relative_cwd = _relative_path(working_directory, root)
+    resolved_backend = (
+        "production_runner"
+        if backend == "default"
+        else "default"
+        if backend == "in_process"
+        else backend
+    )
+    permissions = ExecutionPermissionEnvelope(
+        selected_root=root,
+        cwd=relative_cwd,
+        route="generic_process",
+        program_policy="allowlisted_program",
+        semantic_domain=semantic.domain,
+        semantic_action=semantic.action,
+        semantic_risk_level=semantic.risk_level,
+        semantic_effect_class=semantic.effect_class,
+        network_intent=semantic.network_intent,
+        semantic_confidence=semantic.confidence,
+        execution_policy_id="generic_allowed",
+        execution_policy_version="1",
+    )
     try:
-        result = (controlled_run if CURRENT.get() else subprocess.run)(
-            command, cwd=working_directory, capture_output=True, text=True,
-            input=stdin, timeout=timeout, shell=False,
+        result = run_oneshot(ExecutionRequest(
+            command=tuple(command),
+            cwd=working_directory,
+            timeout=timeout,
             env=_validate_process_env(env),
-        )
+            env_overrides=validate_env_overrides(env),
+            stdin=stdin,
+            text=True,
+            backend_preference=resolved_backend,
+            permissions=permissions,
+        ))
         stdout = truncate_text(result.stdout)
         stderr = truncate_text(result.stderr)
-        return {
+        response = {
             "program": program,
             "args": args,
-            "cwd": _relative_path(working_directory, root),
+            "cwd": relative_cwd,
             "returncode": result.returncode,
             "stdout": stdout["content"],
             "stderr": stderr["content"],
@@ -746,11 +789,27 @@ def run_process(
             "stderr_truncated": stderr["truncated"],
             "stdout_original_length": stdout["original_length"],
             "stderr_original_length": stderr["original_length"],
+            "command_semantic": semantic.to_dict(),
+            "execution_trace": current_trace(),
+            "execution_request_id": getattr(result, "_pla_execution_request_id", None),
+            "backend_preference": backend,
+            "resolved_backend_preference": resolved_backend,
+            "runner": execution_result_runner_metadata(result),
         }
+        shadow = execution_result_shadow_metadata(result)
+        if shadow is not None:
+            response["shadow"] = shadow
+        canary = execution_result_canary_metadata(result)
+        if canary is not None:
+            response["canary"] = canary
+        production = execution_result_production_metadata(result)
+        if production is not None:
+            response["production"] = production
+        return response
     except subprocess.TimeoutExpired as exc:
         stdout = truncate_text(_decode_process_output(exc.stdout))
         stderr = truncate_text(_decode_process_output(exc.stderr))
-        return {
+        response = {
             "program": program,
             "args": args,
             "cwd": _relative_path(working_directory, root),
@@ -761,7 +820,407 @@ def run_process(
             "stderr_truncated": stderr["truncated"],
             "stdout_original_length": stdout["original_length"],
             "stderr_original_length": stderr["original_length"],
+            "command_semantic": semantic.to_dict(),
+            "execution_trace": current_trace(),
+            "execution_request_id": getattr(exc, "_pla_execution_request_id", None),
+            "backend_preference": backend,
+            "resolved_backend_preference": resolved_backend,
+            "runner": execution_result_runner_metadata(exc),
         }
+        shadow = execution_result_shadow_metadata(exc)
+        if shadow is not None:
+            response["shadow"] = shadow
+        canary = execution_result_canary_metadata(exc)
+        if canary is not None:
+            response["canary"] = canary
+        production = execution_result_production_metadata(exc)
+        if production is not None:
+            response["production"] = production
+        return response
+
+
+def recover_run_process_result(
+    arguments: dict[str, Any],
+    runner_response: dict[str, Any],
+    *,
+    task_id: str,
+    execution_request_id: str,
+) -> dict[str, Any]:
+    """Rebuild one run_process result from a completed production Runner record.
+
+    This is used only by TaskStore restart recovery. It never submits or replays a
+    command; it formats an already-completed Runner response using the same public
+    shape as run_process.
+    """
+
+    if not isinstance(arguments, dict):
+        raise TypeError("arguments must be an object")
+    program = arguments.get("program")
+    args = arguments.get("args") or []
+    if not isinstance(program, str) or not program:
+        raise ValueError("recovered run_process request has no program")
+    if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
+        raise ValueError("recovered run_process request has invalid args")
+    root = arguments.get("root", "workspace")
+    cwd = arguments.get("cwd", ".")
+    workdir = arguments.get("workdir")
+    if workdir is not None:
+        cwd = workdir
+    working_directory = safe_path(cwd, root, "execute")
+    relative_cwd = _relative_path(working_directory, root)
+    semantic = classify_command(program, args)
+    runner = runner_response.get("runner")
+    if not isinstance(runner, dict):
+        raise ValueError("recovered Runner response omitted runner metadata")
+    stdout_record = runner_response.get("stdout") or {}
+    stderr_record = runner_response.get("stderr") or {}
+    raw_stdout = stdout_record.get("content", "") if isinstance(stdout_record, dict) else ""
+    raw_stderr = stderr_record.get("content", "") if isinstance(stderr_record, dict) else ""
+    stdout = truncate_text(_decode_process_output(raw_stdout))
+    stderr = truncate_text(_decode_process_output(raw_stderr))
+    response: dict[str, Any] = {
+        "program": program,
+        "args": args,
+        "cwd": relative_cwd,
+        "stdout": stdout["content"],
+        "stderr": stderr["content"],
+        "stdout_truncated": stdout["truncated"],
+        "stderr_truncated": stderr["truncated"],
+        "stdout_original_length": stdout["original_length"],
+        "stderr_original_length": stderr["original_length"],
+        "command_semantic": semantic.to_dict(),
+        "execution_trace": {"task_id": task_id},
+        "execution_request_id": execution_request_id,
+        "backend_preference": arguments.get("backend", "default"),
+        "resolved_backend_preference": "production_runner",
+        "runner": dict(runner),
+        "production": {
+            "status": "recovered_after_http_restart",
+            "execution_request_id": execution_request_id,
+            "runner": dict(runner),
+        },
+    }
+    if runner_response.get("timeout") is True:
+        response["timeout"] = True
+    else:
+        returncode = runner_response.get("returncode")
+        if isinstance(returncode, bool) or not isinstance(returncode, int):
+            raise ValueError("recovered Runner response omitted returncode")
+        response["returncode"] = returncode
+    return response
+
+
+def run_confirmed_external_process(
+    program: str,
+    args: list[str] | None = None,
+    cwd: str = ".",
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    stdin: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Execute one confirmed semantic external-write without generic steering."""
+
+    args = [] if args is None else args
+    if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
+        raise TypeError("args must be an array of strings")
+    if stdin is not None and not isinstance(stdin, str):
+        raise TypeError("stdin must be null or a string")
+    program_name = Path(program).name.lower()
+    if program_name not in ALLOWED_PROGRAMS:
+        raise ValueError(f"Program not allowed: {program}")
+    semantic = classify_command(program, args)
+    execution_policy = evaluate_semantic_execution(semantic)
+    if execution_policy is None or execution_policy.policy_id != "semantic_external_write":
+        raise ValueError(
+            "runtime.external_process only accepts commands classified by semantic_external_write policy"
+        )
+    working_directory = safe_path(cwd, root, "execute")
+    if not working_directory.exists() or not working_directory.is_dir():
+        raise ValueError(f"Working directory does not exist or is not a directory: {cwd}")
+    timeout = max(1, min(timeout, 300))
+    command = [program, *args]
+    relative_cwd = _relative_path(working_directory, root)
+    permissions = ExecutionPermissionEnvelope(
+        selected_root=root,
+        cwd=relative_cwd,
+        route="generic_process",
+        program_policy="allowlisted_program",
+        confirmation_required=True,
+        confirmation_supplied=True,
+        semantic_domain=semantic.domain,
+        semantic_action=semantic.action,
+        semantic_risk_level=semantic.risk_level,
+        semantic_effect_class=semantic.effect_class,
+        network_intent=semantic.network_intent,
+        semantic_confidence=semantic.confidence,
+        execution_policy_id=execution_policy.policy_id,
+        execution_policy_version=execution_policy.policy_version,
+    )
+    try:
+        result = run_oneshot(ExecutionRequest(
+            command=tuple(command),
+            cwd=working_directory,
+            timeout=timeout,
+            env=_validate_process_env(env),
+            stdin=stdin,
+            text=True,
+            permissions=permissions,
+        ))
+        stdout = truncate_text(result.stdout)
+        stderr = truncate_text(result.stderr)
+        return {
+            "program": program,
+            "args": args,
+            "cwd": relative_cwd,
+            "returncode": result.returncode,
+            "stdout": stdout["content"],
+            "stderr": stderr["content"],
+            "stdout_truncated": stdout["truncated"],
+            "stderr_truncated": stderr["truncated"],
+            "stdout_original_length": stdout["original_length"],
+            "stderr_original_length": stderr["original_length"],
+            "command_semantic": semantic.to_dict(),
+            "execution_policy": execution_policy.to_dict(),
+            "execution_trace": current_trace(),
+            "runner": runner_metadata(),
+            "confirmation_required": True,
+            "confirmation_supplied": True,
+        }
+    except subprocess.TimeoutExpired as exc:
+        stdout = truncate_text(_decode_process_output(exc.stdout))
+        stderr = truncate_text(_decode_process_output(exc.stderr))
+        return {
+            "program": program,
+            "args": args,
+            "cwd": relative_cwd,
+            "timeout": True,
+            "stdout": stdout["content"],
+            "stderr": stderr["content"],
+            "stdout_truncated": stdout["truncated"],
+            "stderr_truncated": stderr["truncated"],
+            "stdout_original_length": stdout["original_length"],
+            "stderr_original_length": stderr["original_length"],
+            "command_semantic": semantic.to_dict(),
+            "execution_policy": execution_policy.to_dict(),
+            "execution_trace": current_trace(),
+            "runner": runner_metadata(),
+            "confirmation_required": True,
+            "confirmation_supplied": True,
+        }
+
+def _run_confirmed_local_semantic_process(
+    *,
+    capability_name: str,
+    program: str,
+    args: list[str] | None,
+    cwd: str,
+    timeout: int,
+    env: dict[str, str] | None,
+    stdin: str | None,
+    root: str,
+    semantic_kind: str,
+) -> dict[str, Any]:
+    """Execute one confirmed local mutation after a second semantic check."""
+
+    args = [] if args is None else args
+    if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
+        raise TypeError("args must be an array of strings")
+    if stdin is not None and not isinstance(stdin, str):
+        raise TypeError("stdin must be null or a string")
+    program_name = Path(program).name.lower()
+    if program_name not in ALLOWED_PROGRAMS:
+        raise ValueError(f"Program not allowed: {program}")
+
+    semantic = classify_command(program, args)
+    expected_policy_id = {
+        "environment_change": "environment_change",
+        "high_risk_git_local": "high_risk_local_git",
+    }.get(semantic_kind)
+    if expected_policy_id is None:
+        raise ValueError(f"Unsupported confirmed local semantic kind: {semantic_kind}")
+    execution_policy = evaluate_semantic_execution(semantic)
+    if execution_policy is None or execution_policy.policy_id != expected_policy_id:
+        raise ValueError(
+            f"{capability_name} does not accept command semantic "
+            f"{semantic.domain}:{semantic.action}:{semantic.effect_class}:{semantic.risk_level}"
+        )
+
+    working_directory = safe_path(cwd, root, "execute")
+    if not working_directory.exists() or not working_directory.is_dir():
+        raise ValueError(f"Working directory does not exist or is not a directory: {cwd}")
+    timeout = max(1, min(timeout, 300))
+    command = [program, *args]
+    relative_cwd = _relative_path(working_directory, root)
+    permissions = ExecutionPermissionEnvelope(
+        selected_root=root,
+        cwd=relative_cwd,
+        route="generic_process",
+        program_policy="allowlisted_program",
+        confirmation_required=True,
+        confirmation_supplied=True,
+        semantic_domain=semantic.domain,
+        semantic_action=semantic.action,
+        semantic_risk_level=semantic.risk_level,
+        semantic_effect_class=semantic.effect_class,
+        network_intent=semantic.network_intent,
+        semantic_confidence=semantic.confidence,
+        execution_policy_id=execution_policy.policy_id,
+        execution_policy_version=execution_policy.policy_version,
+    )
+    try:
+        result = run_oneshot(ExecutionRequest(
+            command=tuple(command),
+            cwd=working_directory,
+            timeout=timeout,
+            env=_validate_process_env(env),
+            stdin=stdin,
+            text=True,
+            permissions=permissions,
+        ))
+        stdout = truncate_text(result.stdout)
+        stderr = truncate_text(result.stderr)
+        return {
+            "program": program,
+            "args": args,
+            "cwd": relative_cwd,
+            "returncode": result.returncode,
+            "stdout": stdout["content"],
+            "stderr": stderr["content"],
+            "stdout_truncated": stdout["truncated"],
+            "stderr_truncated": stderr["truncated"],
+            "stdout_original_length": stdout["original_length"],
+            "stderr_original_length": stderr["original_length"],
+            "command_semantic": semantic.to_dict(),
+            "execution_policy": execution_policy.to_dict(),
+            "execution_trace": current_trace(),
+            "runner": runner_metadata(),
+            "confirmation_required": True,
+            "confirmation_supplied": True,
+            "confirmation_capability": capability_name,
+        }
+    except subprocess.TimeoutExpired as exc:
+        stdout = truncate_text(_decode_process_output(exc.stdout))
+        stderr = truncate_text(_decode_process_output(exc.stderr))
+        return {
+            "program": program,
+            "args": args,
+            "cwd": relative_cwd,
+            "timeout": True,
+            "stdout": stdout["content"],
+            "stderr": stderr["content"],
+            "stdout_truncated": stdout["truncated"],
+            "stderr_truncated": stderr["truncated"],
+            "stdout_original_length": stdout["original_length"],
+            "stderr_original_length": stderr["original_length"],
+            "command_semantic": semantic.to_dict(),
+            "execution_policy": execution_policy.to_dict(),
+            "execution_trace": current_trace(),
+            "runner": runner_metadata(),
+            "confirmation_required": True,
+            "confirmation_supplied": True,
+            "confirmation_capability": capability_name,
+        }
+
+
+def run_confirmed_environment_process(
+    program: str,
+    args: list[str] | None = None,
+    cwd: str = ".",
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    stdin: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    return _run_confirmed_local_semantic_process(
+        capability_name="runtime.environment_process",
+        program=program,
+        args=args,
+        cwd=cwd,
+        timeout=timeout,
+        env=env,
+        stdin=stdin,
+        root=root,
+        semantic_kind="environment_change",
+    )
+
+
+def run_confirmed_local_mutation_process(
+    program: str,
+    args: list[str] | None = None,
+    cwd: str = ".",
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    stdin: str | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    return _run_confirmed_local_semantic_process(
+        capability_name="runtime.local_mutation_process",
+        program=program,
+        args=args,
+        cwd=cwd,
+        timeout=timeout,
+        env=env,
+        stdin=stdin,
+        root=root,
+        semantic_kind="high_risk_git_local",
+    )
+
+
+def session_open(
+    program: str,
+    args: list[str] | None = None,
+    cwd: str = ".",
+    workdir: str | None = None,
+    env: dict[str, str] | None = None,
+    root: str = "workspace",
+) -> dict[str, Any]:
+    """Compatibility wrapper around the stable persistent-session store."""
+
+    if workdir is not None:
+        if cwd != "." and cwd != workdir:
+            raise ValueError("Provide either cwd or workdir, not conflicting values")
+        cwd = workdir
+    return SESSION_MANAGER.open(
+        program=program,
+        args=args,
+        cwd=cwd,
+        env=env,
+        root=root,
+    )
+
+
+def session_read(
+    session_id: str,
+    cursor: int = 0,
+    wait_seconds: float = 0,
+) -> dict[str, Any]:
+    """Read incremental output and state from one PLA-owned session."""
+
+    return SESSION_MANAGER.read(
+        session_id,
+        cursor=cursor,
+        wait_seconds=wait_seconds,
+    )
+
+
+def session_write(
+    session_id: str,
+    input_text: str,
+    append_newline: bool = False,
+) -> dict[str, Any]:
+    """Write UTF-8 input to one PLA-owned persistent session."""
+
+    if not isinstance(append_newline, bool):
+        raise TypeError("append_newline must be a boolean")
+    payload = input_text + ("\n" if append_newline else "")
+    return SESSION_MANAGER.write(session_id, payload)
+
+
+def session_close(session_id: str) -> dict[str, Any]:
+    """Close one PLA-owned session and terminate its contained process tree."""
+
+    return SESSION_MANAGER.close(session_id)
 
 
 def _git_run(
@@ -2491,11 +2950,22 @@ def run_powershell(
         str(_powershell_executable()), "-NoLogo", "-NoProfile", "-NonInteractive",
         "-ExecutionPolicy", "Restricted", "-EncodedCommand", encoded_script,
     ]
+    relative_cwd = _relative_path(working_directory, root)
+    permissions = ExecutionPermissionEnvelope(
+        selected_root=root,
+        cwd=relative_cwd,
+        route="structured_powershell",
+        program_policy="fixed_system_program",
+    )
     try:
-        completed = (controlled_run if CURRENT.get() else subprocess.run)(
-            process_args, cwd=working_directory, capture_output=True,
-            timeout=timeout, shell=False, env=child_env,
-        )
+        completed = run_oneshot(ExecutionRequest(
+            command=tuple(process_args),
+            cwd=working_directory,
+            timeout=timeout,
+            env=child_env,
+            text=False,
+            permissions=permissions,
+        ))
         raw_stdout = _decode_powershell_output(completed.stdout)
         raw_stderr = _normalize_powershell_stderr(
             _decode_powershell_output(completed.stderr)

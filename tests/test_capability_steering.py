@@ -47,10 +47,18 @@ def test_registry_describes_registered_rules_in_priority_order():
 
     assert {item["id"] for item in rules} == {
         "pla_source_git",
+        "governed_git_mutation",
+        "high_risk_local_git",
+        "semantic_external_write",
+        "environment_change",
         "windows_service_write",
     }
     modes = {item["id"]: item["routing_mode"] for item in rules}
     assert modes["pla_source_git"] == "specialized_enforced"
+    assert modes["governed_git_mutation"] == "specialized_enforced"
+    assert modes["high_risk_local_git"] == "specialized_enforced"
+    assert modes["semantic_external_write"] == "specialized_enforced"
+    assert modes["environment_change"] == "specialized_enforced"
     assert modes["windows_service_write"] == "specialized_enforced"
 
 
@@ -80,10 +88,12 @@ def test_pla_git_rm_prefers_governed_remove_capability():
     assert result["suggested_capabilities"][0]["surface"] == "capability"
 
 
-def test_pla_git_unknown_subcommand_still_returns_governed_surface():
+def test_pla_git_read_subcommand_keeps_governed_surface_and_semantics():
     result = steering.steer_run_process("git", ["rev-parse", "HEAD"], "pla")
 
-    assert result["attempted_route"]["subcommand"] is None
+    assert result["attempted_route"]["subcommand"] == "rev-parse"
+    assert result["command_semantic"]["risk_level"] == "read"
+    assert result["command_semantic"]["effect_class"] == "read_only"
     assert {item["name"] for item in result["suggested_capabilities"]} == {
         "git_status",
         "git_diff",
@@ -95,12 +105,65 @@ def test_pla_git_unknown_subcommand_still_returns_governed_surface():
     }
 
 
-def test_user_workspace_git_is_not_steered():
+def test_user_workspace_git_read_is_not_steered():
     assert steering.steer_run_process("git", ["status"], "workspace") is None
 
 
-def test_gh_is_not_steered_by_git_rule():
+def test_user_workspace_git_commit_uses_governed_capability():
+    result = steering.steer_run_process("git", ["commit", "-m", "x"], "workspace")
+    assert result["steering_rule_id"] == "governed_git_mutation"
+    assert result["command_semantic"]["risk_level"] == "write_local"
+    assert result["suggested_capabilities"][0]["name"] == "core.git_commit"
+
+
+def test_user_workspace_git_push_uses_governed_capability():
+    result = steering.steer_run_process("git", ["push", "origin", "master"], "workspace")
+    assert result["steering_rule_id"] == "governed_git_mutation"
+    assert result["command_semantic"]["risk_level"] == "write_external"
+    assert result["suggested_capabilities"][0]["name"] == "core.git_push"
+
+
+def test_user_workspace_git_reset_requires_confirmed_local_mutation():
+    result = steering.steer_run_process("git", ["reset", "--hard", "HEAD~1"], "workspace")
+    assert result["steering_rule_id"] == "high_risk_local_git"
+    assert result["reason"] == "local_mutation_confirmation_required"
+    assert result["command_semantic"]["action"] == "reset"
+    assert result["suggested_capabilities"][0]["name"] == "runtime.local_mutation_process"
+
+
+def test_python_environment_change_requires_confirmation_but_pip_read_does_not():
+    install = steering.steer_run_process(
+        "python", ["-m", "pip", "install", "example"], "workspace"
+    )
+    assert install["steering_rule_id"] == "environment_change"
+    assert install["reason"] == "environment_change_confirmation_required"
+    assert install["suggested_capabilities"][0]["name"] == "runtime.environment_process"
+
+    assert steering.steer_run_process(
+        "python", ["-m", "pip", "list"], "workspace"
+    ) is None
+
+
+def test_gh_read_is_not_steered():
     assert steering.steer_run_process("gh.exe", ["release", "list"], "pla") is None
+
+
+def test_gh_external_write_requires_confirmation_capability():
+    result = steering.steer_run_process(
+        "gh.exe",
+        ["issue", "create", "--title", "x", "--body", "y"],
+        "workspace",
+    )
+    assert result["steering_rule_id"] == "semantic_external_write"
+    assert result["reason"] == "external_write_confirmation_required"
+    assert result["command_semantic"]["risk_level"] == "write_external"
+    assert result["suggested_capabilities"] == [
+        {
+            "name": "runtime.external_process",
+            "surface": "capability",
+            "purpose": "Run one semantic external-write command behind explicit INVOKE confirmation.",
+        }
+    ]
 
 
 def test_windows_service_restart_is_specialized_enforced():
@@ -159,6 +222,8 @@ def test_route_generic_request_reports_specialized_git_route():
     assert result["routing_mode"] == "specialized_enforced"
     assert result["steering_rule_id"] == "pla_source_git"
     assert result["suggested_capabilities"][0]["name"] == "core.git_commit"
+    assert result["command_semantic"]["action"] == "commit"
+    assert result["command_semantic"]["risk_level"] == "write_local"
 
 
 def test_route_generic_request_reports_generic_allowed_for_gh():
@@ -173,6 +238,28 @@ def test_route_generic_request_reports_generic_allowed_for_gh():
 
     assert result["status"] == "generic_allowed"
     assert result["routing_mode"] == "generic_allowed"
+    assert result["command_semantic"]["action"] == "release.list"
+    assert result["command_semantic"]["risk_level"] == "read"
+    assert result["command_semantic"]["network_intent"] == "read"
+
+
+def test_route_generic_request_reports_external_write_semantics_for_gh():
+    result = steering.route_generic_request(
+        "run_process",
+        {
+            "program": "gh",
+            "args": ["issue", "create", "--title", "x"],
+            "root": "workspace",
+        },
+    )
+
+    assert result["status"] == "specialized_required"
+    assert result["routing_mode"] == "specialized_enforced"
+    assert result["steering_rule_id"] == "semantic_external_write"
+    assert result["suggested_capabilities"][0]["name"] == "runtime.external_process"
+    assert result["command_semantic"]["action"] == "issue.create"
+    assert result["command_semantic"]["risk_level"] == "write_external"
+    assert result["command_semantic"]["effect_class"] == "external_state_change"
 
 
 def test_route_generic_request_reports_windows_service_route():

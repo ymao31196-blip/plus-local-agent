@@ -19,6 +19,22 @@ from browser_runtime_capabilities import (
     browser_runtime_descriptors,
     register_browser_runtime_handlers,
 )
+from session_runtime_capabilities import (
+    register_session_runtime_handlers,
+    session_runtime_descriptors,
+)
+from external_process_capabilities import (
+    external_process_descriptors,
+    register_external_process_handlers,
+)
+from local_mutation_capabilities import (
+    local_mutation_descriptors,
+    register_local_mutation_handlers,
+)
+from execution_runner_capabilities import (
+    execution_runner_descriptors,
+    register_execution_runner_handlers,
+)
 
 
 _OBJECT_OUTPUT = {"type": "object"}
@@ -163,6 +179,10 @@ def register_provider_runtime_capabilities(
         descriptors.extend(external_observer_runtime_descriptors())
     descriptors.extend(runtime_lifecycle_descriptors())
     descriptors.extend(browser_runtime_descriptors())
+    descriptors.extend(session_runtime_descriptors())
+    descriptors.extend(external_process_descriptors())
+    descriptors.extend(local_mutation_descriptors())
+    descriptors.extend(execution_runner_descriptors())
     registry.register_provider(
         "runtime",
         descriptors,
@@ -199,3 +219,7 @@ def register_provider_runtime_capabilities(
         )
     register_runtime_lifecycle_handlers(broker)
     register_browser_runtime_handlers(broker)
+    register_session_runtime_handlers(broker)
+    register_external_process_handlers(broker)
+    register_local_mutation_handlers(broker)
+    register_execution_runner_handlers(broker)

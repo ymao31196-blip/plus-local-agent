@@ -7,6 +7,7 @@ $tunnelConfig = Join-Path $projectRoot "config\tunnel.yaml"
 $brokerStopScript = Join-Path $projectRoot "stop_elevation_broker.ps1"
 $lifecycleStopScript = Join-Path $projectRoot "stop_lifecycle_broker.ps1"
 $browserStopScript = Join-Path $projectRoot "stop_browser_runtime.ps1"
+$runnerStopScript = Join-Path $projectRoot "stop_execution_runner.ps1"
 
 function Get-ListenerPid([int]$Port) {
     $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
@@ -61,6 +62,12 @@ if (Test-Path -LiteralPath $lifecycleStopScript -PathType Leaf) {
     & $lifecycleStopScript
 } else {
     Write-Warning "Runtime Lifecycle Broker stop script is missing: $lifecycleStopScript"
+}
+
+if (Test-Path -LiteralPath $runnerStopScript -PathType Leaf) {
+    & $runnerStopScript
+} else {
+    Write-Warning "Execution Runner stop script is missing: $runnerStopScript"
 }
 
 Stop-OwnedListener 8766 @($projectRoot, "server.py") "PLA HTTP"

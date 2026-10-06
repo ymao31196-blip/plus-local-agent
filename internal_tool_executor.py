@@ -108,9 +108,9 @@ INTERNAL_TOOL_SCHEMAS = [
          "cwd": {"type": "string", "default": "."},
          "path": {"type": ["string", "null"], "default": None},
          "root": {"type": "string", "minLength": 1, "default": "workspace"}}}},
-    {"name": "git_stage", "description": "Stage exact current bytes for explicit already-tracked regular files. Requires full expected HEAD and SHA-256 for every file; repository clean filters are disabled.",
+    {"name": "git_stage", "description": "Stage exact current bytes for explicit tracked or unignored new regular files. Requires full expected HEAD and SHA-256 for every file; repository clean filters are disabled.",
      "input_schema": {"type": "object", "properties": {
-         "changes": {"type": "array", "minItems": 1, "maxItems": 32, "items": {
+         "changes": {"type": "array", "minItems": 1, "maxItems": 64, "items": {
              "type": "object", "properties": {
                  "path": {"type": "string"},
                  "expected_sha256": {"type": "string", "minLength": 64, "maxLength": 64},

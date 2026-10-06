@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "1.8.0"
+    assert server.mcp.version == "2.0.0"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
@@ -32,10 +32,10 @@ def test_release_version_and_provider_catalog():
         "",
         provider_id="runtime",
         include_unavailable=True,
-        limit=20,
+        limit=30,
     )
     runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
-    assert runtime_caps["match_count"] == 18
+    assert runtime_caps["match_count"] == 28
     assert runtime_ids == {
         "runtime.provider_status",
         "runtime.provider_setup",
@@ -51,6 +51,16 @@ def test_release_version_and_provider_catalog():
         "runtime.lifecycle_status",
         "runtime.restart_http",
         "runtime.restart_status",
+        "runtime.process_session",
+        "runtime.confirmed_session_write",
+        "runtime.external_process",
+        "runtime.environment_process",
+        "runtime.local_mutation_process",
+        "runtime.execution_runner_status",
+        "runtime.execution_runner_probe",
+        "runtime.execution_runner_result",
+        "runtime.execution_runner_start",
+        "runtime.execution_runner_stop",
         "runtime.browser_status",
         "runtime.browser_diagnostics",
         "runtime.browser_start",
@@ -109,6 +119,9 @@ def test_release_version_and_provider_catalog():
         "core.gate_status",
         "core.gate_decision_query",
     }
+    git_stage = server.CAPABILITY_REGISTRY.describe("core.git_stage")
+    assert git_stage["input_schema"]["properties"]["changes"]["maxItems"] == 64
+    assert "tracked or unignored new regular files" in git_stage["description"]
 
     windows_caps = server.CAPABILITY_REGISTRY.search(
         "",
@@ -151,6 +164,7 @@ def test_release_version_and_provider_catalog():
 
 def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "README.md").is_file()
+    assert (PROJECT_ROOT / "README.zh-CN.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_overview.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.1.md").is_file()
@@ -165,6 +179,7 @@ def test_release_entrypoint_documents_exist():
     assert (PROJECT_ROOT / "docs" / "release_v1.6.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.7.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "release_v1.8.0.md").is_file()
+    assert (PROJECT_ROOT / "docs" / "release_v2.0.0.md").is_file()
     assert (PROJECT_ROOT / "docs" / "v1_2_threat_model.md").is_file()
     assert (PROJECT_ROOT / "CHANGELOG.md").is_file()
     assert (PROJECT_ROOT / "requirements-core.txt").is_file()

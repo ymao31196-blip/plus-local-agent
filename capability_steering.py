@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from declared_routing import resolve_declared_route
+from command_semantics import classify_command
+from semantic_execution_policy import (
+    HIGH_RISK_LOCAL_GIT_ACTIONS as SEMANTIC_HIGH_RISK_LOCAL_GIT_ACTIONS,
+    SPECIALIZED_GIT_ACTIONS as SEMANTIC_SPECIALIZED_GIT_ACTIONS,
+    evaluate_semantic_execution,
+)
 
 
 ROUTING_MODES = {
@@ -207,9 +213,9 @@ def _build_pla_git_decision(context: dict[str, Any]) -> dict[str, Any]:
     args = context.get("args")
     if not isinstance(args, list):
         args = []
-    subcommand = _git_subcommand(
-        [item for item in args if isinstance(item, str)]
-    )
+    clean_args = [item for item in args if isinstance(item, str)]
+    semantic = classify_command(program, clean_args)
+    subcommand = None if semantic.action == "unknown" else semantic.action
     return {
         "status": "blocked",
         "reason": "specialized_capability_required",
@@ -219,10 +225,200 @@ def _build_pla_git_decision(context: dict[str, Any]) -> dict[str, Any]:
             "root": "pla",
             "subcommand": subcommand,
         },
+        "command_semantic": semantic.to_dict(),
         "suggested_capabilities": _prioritized_git_suggestions(subcommand),
         "message": (
             "Git operations against the PLA source repository must use the "
             "governed Git capability surface."
+        ),
+    }
+
+
+_GOVERNED_GIT_MUTATIONS = SEMANTIC_SPECIALIZED_GIT_ACTIONS
+_EXTERNAL_PROCESS_SUGGESTION = {
+    "name": "runtime.external_process",
+    "surface": "capability",
+    "purpose": "Run one semantic external-write command behind explicit INVOKE confirmation.",
+}
+_ENVIRONMENT_PROCESS_SUGGESTION = {
+    "name": "runtime.environment_process",
+    "surface": "capability",
+    "purpose": "Run one semantic environment-changing command behind explicit INVOKE confirmation.",
+}
+_LOCAL_MUTATION_PROCESS_SUGGESTION = {
+    "name": "runtime.local_mutation_process",
+    "surface": "capability",
+    "purpose": "Run one governed high-risk local Git mutation behind explicit INVOKE confirmation.",
+}
+_HIGH_RISK_LOCAL_GIT_ACTIONS = set(SEMANTIC_HIGH_RISK_LOCAL_GIT_ACTIONS)
+
+
+def _match_governed_git_mutation(context: dict[str, Any]) -> bool:
+    program = context.get("program")
+    root = context.get("root")
+    args = context.get("args")
+    if not isinstance(program, str) or not isinstance(root, str) or root == "pla":
+        return False
+    if Path(program).name.casefold() not in {"git", "git.exe"}:
+        return False
+    if not isinstance(args, list) or any(not isinstance(item, str) for item in args):
+        return False
+    semantic = classify_command(program, args)
+    return semantic.action in _GOVERNED_GIT_MUTATIONS
+
+
+def _build_governed_git_mutation_decision(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    program = Path(str(context["program"])).name.casefold()
+    args = context.get("args")
+    clean_args = [item for item in args if isinstance(item, str)] if isinstance(args, list) else []
+    semantic = classify_command(program, clean_args)
+    return {
+        "status": "blocked",
+        "reason": "specialized_capability_required",
+        "attempted_route": {
+            "tool": "run_process",
+            "program": program,
+            "root": context.get("root"),
+            "subcommand": semantic.action,
+        },
+        "command_semantic": semantic.to_dict(),
+        "suggested_capabilities": _prioritized_git_suggestions(semantic.action),
+        "message": (
+            "This Git mutation has an existing governed Git capability and must use "
+            "that specialized surface instead of generic process execution."
+        ),
+    }
+
+
+def _semantic_policy_for_context(
+    context: dict[str, Any],
+):
+    program = context.get("program")
+    args = context.get("args")
+    if not isinstance(program, str) or not isinstance(args, list):
+        return None, None
+    if any(not isinstance(item, str) for item in args):
+        return None, None
+    semantic = classify_command(program, args)
+    return semantic, evaluate_semantic_execution(semantic)
+
+
+def _match_semantic_external_write(context: dict[str, Any]) -> bool:
+    _semantic, decision = _semantic_policy_for_context(context)
+    return decision is not None and decision.policy_id == "semantic_external_write"
+
+
+def _build_semantic_external_write_decision(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    program = Path(str(context["program"])).name.casefold()
+    args = context.get("args")
+    clean_args = [item for item in args if isinstance(item, str)] if isinstance(args, list) else []
+    semantic = classify_command(program, clean_args)
+    decision = evaluate_semantic_execution(semantic)
+    if decision is None or decision.policy_id != "semantic_external_write":
+        raise ValueError("External-write steering decision no longer matches semantic policy")
+    return {
+        "status": "blocked",
+        "reason": decision.reason,
+        "attempted_route": {
+            "tool": "run_process",
+            "program": program,
+            "root": context.get("root"),
+            "action": semantic.action,
+        },
+        "command_semantic": semantic.to_dict(),
+        "execution_policy": decision.to_dict(),
+        "suggested_capabilities": [{
+            "name": decision.target_capability,
+            "surface": "capability",
+            "purpose": decision.purpose,
+        }],
+        "message": (
+            "Commands classified as external writes must use the confirmation-gated "
+            f"{decision.target_capability} capability instead of generic process execution."
+        ),
+    }
+
+
+def _match_environment_change(context: dict[str, Any]) -> bool:
+    _semantic, decision = _semantic_policy_for_context(context)
+    return decision is not None and decision.policy_id == "environment_change"
+
+
+def _build_environment_change_decision(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    program = Path(str(context["program"])).name.casefold()
+    args = context.get("args")
+    clean_args = [item for item in args if isinstance(item, str)] if isinstance(args, list) else []
+    semantic = classify_command(program, clean_args)
+    decision = evaluate_semantic_execution(semantic)
+    if decision is None or decision.policy_id != "environment_change":
+        raise ValueError("Environment-change steering decision no longer matches semantic policy")
+    return {
+        "status": "blocked",
+        "reason": decision.reason,
+        "attempted_route": {
+            "tool": "run_process",
+            "program": program,
+            "root": context.get("root"),
+            "action": semantic.action,
+        },
+        "command_semantic": semantic.to_dict(),
+        "execution_policy": decision.to_dict(),
+        "suggested_capabilities": [{
+            "name": decision.target_capability,
+            "surface": "capability",
+            "purpose": decision.purpose,
+        }],
+        "message": (
+            "Commands classified as local environment changes must use the "
+            f"confirmation-gated {decision.target_capability} capability instead of "
+            "generic process execution."
+        ),
+    }
+
+
+def _match_high_risk_local_git(context: dict[str, Any]) -> bool:
+    program = context.get("program")
+    if not isinstance(program, str) or Path(program).name.casefold() not in {"git", "git.exe"}:
+        return False
+    _semantic, decision = _semantic_policy_for_context(context)
+    return decision is not None and decision.policy_id == "high_risk_local_git"
+
+
+def _build_high_risk_local_git_decision(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    program = Path(str(context["program"])).name.casefold()
+    args = context.get("args")
+    clean_args = [item for item in args if isinstance(item, str)] if isinstance(args, list) else []
+    semantic = classify_command(program, clean_args)
+    decision = evaluate_semantic_execution(semantic)
+    if decision is None or decision.policy_id != "high_risk_local_git":
+        raise ValueError("High-risk Git steering decision no longer matches semantic policy")
+    return {
+        "status": "blocked",
+        "reason": decision.reason,
+        "attempted_route": {
+            "tool": "run_process",
+            "program": program,
+            "root": context.get("root"),
+            "action": semantic.action,
+        },
+        "command_semantic": semantic.to_dict(),
+        "execution_policy": decision.to_dict(),
+        "suggested_capabilities": [{
+            "name": decision.target_capability,
+            "surface": "capability",
+            "purpose": decision.purpose,
+        }],
+        "message": (
+            "High-risk local Git mutations must use the confirmation-gated "
+            f"{decision.target_capability} capability instead of generic process execution."
         ),
     }
 
@@ -284,6 +480,50 @@ STEERING_REGISTRY.register(
 )
 STEERING_REGISTRY.register(
     SteeringRule(
+        id="governed_git_mutation",
+        tool="run_process",
+        domain="git",
+        routing_mode="specialized_enforced",
+        priority=90,
+        matcher=_match_governed_git_mutation,
+        decision_builder=_build_governed_git_mutation_decision,
+    )
+)
+STEERING_REGISTRY.register(
+    SteeringRule(
+        id="high_risk_local_git",
+        tool="run_process",
+        domain="git",
+        routing_mode="specialized_enforced",
+        priority=85,
+        matcher=_match_high_risk_local_git,
+        decision_builder=_build_high_risk_local_git_decision,
+    )
+)
+STEERING_REGISTRY.register(
+    SteeringRule(
+        id="semantic_external_write",
+        tool="run_process",
+        domain="external_write",
+        routing_mode="specialized_enforced",
+        priority=80,
+        matcher=_match_semantic_external_write,
+        decision_builder=_build_semantic_external_write_decision,
+    )
+)
+STEERING_REGISTRY.register(
+    SteeringRule(
+        id="environment_change",
+        tool="run_process",
+        domain="environment_change",
+        routing_mode="specialized_enforced",
+        priority=75,
+        matcher=_match_environment_change,
+        decision_builder=_build_environment_change_decision,
+    )
+)
+STEERING_REGISTRY.register(
+    SteeringRule(
         id="windows_service_write",
         tool="run_powershell",
         domain="windows_service",
@@ -314,6 +554,73 @@ def routing_catalog() -> list[dict[str, Any]]:
             },
             "targets": [dict(item) for item in _GIT_SUGGESTIONS],
             "mappings": [],
+        },
+        {
+            "id": "governed_git_mutation",
+            "domain": "git",
+            "routing_mode": "specialized_enforced",
+            "source": {
+                "surface": "run_process",
+                "context": {
+                    "roots": "non-pla",
+                    "programs": ["git", "git.exe"],
+                    "actions": sorted(_GOVERNED_GIT_MUTATIONS),
+                },
+            },
+            "targets": [dict(item) for item in _GIT_SUGGESTIONS],
+            "mappings": [
+                {"action": action, "target": _GIT_PREFERRED[action]}
+                for action in sorted(_GOVERNED_GIT_MUTATIONS)
+            ],
+        },
+        {
+            "id": "high_risk_local_git",
+            "domain": "git",
+            "routing_mode": "specialized_enforced",
+            "source": {
+                "surface": "run_process",
+                "context": {
+                    "roots": "non-pla",
+                    "programs": ["git", "git.exe"],
+                    "actions": sorted(_HIGH_RISK_LOCAL_GIT_ACTIONS),
+                },
+            },
+            "targets": [dict(_LOCAL_MUTATION_PROCESS_SUGGESTION)],
+            "mappings": [
+                {"action": action, "target": "runtime.local_mutation_process"}
+                for action in sorted(_HIGH_RISK_LOCAL_GIT_ACTIONS)
+            ],
+        },
+        {
+            "id": "semantic_external_write",
+            "domain": "external_write",
+            "routing_mode": "specialized_enforced",
+            "source": {
+                "surface": "run_process",
+                "context": {
+                    "semantic_risk_level": "write_external",
+                },
+            },
+            "targets": [dict(_EXTERNAL_PROCESS_SUGGESTION)],
+            "mappings": [
+                {"risk_level": "write_external", "target": "runtime.external_process"}
+            ],
+        },
+        {
+            "id": "environment_change",
+            "domain": "environment_change",
+            "routing_mode": "specialized_enforced",
+            "source": {
+                "surface": "run_process",
+                "context": {
+                    "semantic_risk_level": "write_local",
+                    "semantic_effect_class": "environment_change",
+                },
+            },
+            "targets": [dict(_ENVIRONMENT_PROCESS_SUGGESTION)],
+            "mappings": [
+                {"effect_class": "environment_change", "target": "runtime.environment_process"}
+            ],
         },
         {
             "id": "windows_service_write",
@@ -351,6 +658,8 @@ def route_generic_request(
     if not isinstance(arguments, dict):
         raise TypeError("arguments must be an object")
 
+    command_semantic: dict[str, Any] | None = None
+
     if tool == "run_process":
         program = arguments.get("program")
         args = arguments.get("args", [])
@@ -366,6 +675,7 @@ def route_generic_request(
             raise TypeError("run_process args must be an array of strings")
         if not isinstance(root, str) or not root:
             raise ValueError("run_process root must be a non-empty string")
+        command_semantic = classify_command(program, args).to_dict()
         decision = steer_run_process(program, args, root)
         attempted_route = {
             "tool": "run_process",
@@ -422,12 +732,15 @@ def route_generic_request(
         }
 
     if decision is None:
-        return {
+        result = {
             "status": "generic_allowed",
             "reason": "no_specialized_route_required",
             "routing_mode": "generic_allowed",
             "attempted_route": attempted_route,
         }
+        if command_semantic is not None:
+            result["command_semantic"] = command_semantic
+        return result
 
     status_by_mode = {
         "specialized_enforced": "specialized_required",
@@ -448,6 +761,11 @@ def route_generic_request(
         result["steering_rule_id"] = decision["steering_rule_id"]
     if "declared_relation" in decision:
         result["declared_relation"] = decision["declared_relation"]
+    semantic = decision.get("command_semantic", command_semantic)
+    if semantic is not None:
+        result["command_semantic"] = semantic
+    if "execution_policy" in decision:
+        result["execution_policy"] = decision["execution_policy"]
     return result
 
 

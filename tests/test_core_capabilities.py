@@ -273,7 +273,7 @@ def test_core_routing_audit_is_dynamic_read_only_surface():
         data = result["data"]
 
         assert data["registry"]["capability_count"] >= 1
-        assert data["catalog"]["rule_count"] == 2
+        assert data["catalog"]["rule_count"] == 6
         assert data["catalog"]["health"]["healthy"] is False
         assert data["catalog"]["health"]["missing_capabilities"]
         assert data["candidate_count"] >= data["covered_candidate_count"]
