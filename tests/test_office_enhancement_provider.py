@@ -4,7 +4,7 @@ from pathlib import Path
 from lxml import etree
 
 from providers import office_enhancement_server as office
-from provider_manifest import load_provider_manifests
+from provider.provider_manifest import load_provider_manifests
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

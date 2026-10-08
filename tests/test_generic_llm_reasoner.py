@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from decision_parser import DecisionParseError, parse_decision
-from fake_model_backend import FakeModelBackend
-from generic_llm_reasoner import GenericLLMReasoner
+from reasoning.decision_parser import DecisionParseError, parse_decision
+from reasoning.fake_model_backend import FakeModelBackend
+from reasoning.generic_llm_reasoner import GenericLLMReasoner
 
 
 TOOLS = [

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-import artifact_bridge
-import local_tools
-from artifact_runtime import ArtifactInvocation
+from artifacts import artifact_bridge
+from tooling import local_tools
+from artifacts.artifact_runtime import ArtifactInvocation
 
 
 def test_file_uri_staging_and_embedded_reference_sanitization(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
-import local_tools
-import runtime_parity
-from runtime_parity import locate_codex, run_pla_probe_suite
+from tooling import local_tools
+from runtime import runtime_parity
+from runtime.runtime_parity import locate_codex, run_pla_probe_suite
 
 
 def test_runtime_parity_pla_suite_passes(tmp_path, monkeypatch):

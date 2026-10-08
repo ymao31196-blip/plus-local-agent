@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from runner_transport import (
+from execution.runner_transport import (
     RunnerSpikeClient,
     SPIKE_PROTOCOL_VERSION,
     make_pipe_address,
@@ -40,14 +40,23 @@ def test_detached_runner_survives_launcher_and_runs_fixed_probe(tmp_path):
     repo = Path(__file__).resolve().parents[1]
 
     code = (
-        "from pathlib import Path; "
-        "from runner_transport import start_detached_runner; "
+        "import os; from pathlib import Path; "
+        "from execution.runner_transport import start_detached_runner; "
+        "os.environ.pop('PYTHONPATH', None); "
         f"start_detached_runner(address={address!r}, "
         f"auth_file=Path({str(auth_file)!r}), state_file=Path({str(state_file)!r}))"
     )
+    env = os.environ.copy()
+    source_root = str(repo / "src")
+    env["PYTHONPATH"] = (
+        source_root
+        if not env.get("PYTHONPATH")
+        else source_root + os.pathsep + env["PYTHONPATH"]
+    )
     launcher = subprocess.Popen(
         [sys.executable, "-c", code],
-        cwd=repo,
+        cwd=tmp_path,
+        env=env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

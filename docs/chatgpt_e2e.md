@@ -7,7 +7,7 @@ server is only the controlled executor.
 ## Setup
 
 1. Use the `plus-local-agent` Conda environment.
-2. Run `./start_http.ps1`, then `./start_tunnel.ps1`.
+2. Run `./scripts/start_http.ps1`, then `./scripts/start_tunnel.ps1`.
 3. Connect or refresh the existing `plus-local-agent` Secure MCP Tunnel in ChatGPT.
 4. Confirm `diagnose_client`, the filesystem tools, `search_text`, `run_process`,
    `run_powershell`, `apply_patch`, `execute_actions`, `submit_task`, and

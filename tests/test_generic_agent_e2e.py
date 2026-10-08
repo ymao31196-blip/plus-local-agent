@@ -8,16 +8,16 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from agent_loop import run_agent
-from fake_model_backend import FakeModelBackend, FakeModelResponsesExhausted
-from generic_llm_reasoner import GenericLLMReasoner
+from agent.agent_loop import run_agent
+from reasoning.fake_model_backend import FakeModelBackend, FakeModelResponsesExhausted
+from reasoning.generic_llm_reasoner import GenericLLMReasoner
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CALCULATOR = PROJECT_ROOT / "workspace" / "agent_test" / "calculator.py"
 SERVER_PARAMS = StdioServerParameters(
     command=sys.executable,
-    args=[str(PROJECT_ROOT / "server.py")],
+    args=[str(PROJECT_ROOT / "src" / "server.py")],
     cwd=str(PROJECT_ROOT),
 )
 

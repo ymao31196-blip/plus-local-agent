@@ -1,9 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
-import local_tools
+from tooling import local_tools
 import server
-from task_store import TaskStore
+from runtime.task_store import TaskStore
 
 
 def test_task_execution_events_include_task_id_trace(tmp_path, monkeypatch):

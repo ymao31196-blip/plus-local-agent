@@ -3,13 +3,13 @@ import hashlib
 
 import pytest
 
-from capability_broker import CapabilityBroker
-from capability_models import CapabilityDescriptor
-from capability_registry import CapabilityRegistry
-from event_runtime import EventStore
-from gate_hook_runtime import GateDecisionStore, GateHookRuntime
-from mcp_client_manager import MCPClientManager
-from observer_hook_runtime import HookInvocationStore, ObserverHookRuntime, audit_observer
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
+from runtime.event_runtime import EventStore
+from hooks.gate_hook_runtime import GateDecisionStore, GateHookRuntime
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from hooks.observer_hook_runtime import HookInvocationStore, ObserverHookRuntime, audit_observer
 
 
 def _context(**overrides):

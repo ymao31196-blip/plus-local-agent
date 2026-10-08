@@ -1,8 +1,6 @@
 import pytest
 
-import local_tools
-
-
+from tooling import local_tools
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
     root = tmp_path.resolve()

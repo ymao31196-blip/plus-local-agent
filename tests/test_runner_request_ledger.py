@@ -1,8 +1,8 @@
 from pathlib import Path
 import time
 
-import execution_runner_runtime as runtime
-from runner_transport import RunnerSpikeClient, read_auth_file
+from execution import execution_runner_runtime as runtime
+from execution.runner_transport import RunnerSpikeClient, read_auth_file
 
 
 def _redirect_state(tmp_path: Path, monkeypatch) -> None:

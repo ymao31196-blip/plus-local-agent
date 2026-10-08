@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from event_runtime import EVENT_SCHEMA_VERSION, EventStore
+from runtime.event_runtime import EVENT_SCHEMA_VERSION, EventStore
 
 
 def test_event_store_emit_and_query_envelope(tmp_path):

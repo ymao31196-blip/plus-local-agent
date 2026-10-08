@@ -54,7 +54,7 @@ def test_customer_tunnel_is_machine_local_and_secret_free():
 
 def test_customer_workspace_registry_is_machine_local():
     gitignore = _read(".gitignore")
-    local_tools = _read("local_tools.py")
+    local_tools = _read("src/tooling/local_tools.py")
     example = _read("config/workspaces.example.yaml")
 
     assert "config/workspaces.local.yaml" in gitignore
@@ -67,7 +67,7 @@ def test_customer_workspace_registry_is_machine_local():
 
 def test_windows_action_policy_is_machine_local():
     gitignore = _read(".gitignore")
-    actions = _read("windows_action_capabilities.py")
+    actions = _read("src/capabilities/windows_action_capabilities.py")
     example = _read("config/windows_actions.example.json")
 
     assert "config/windows_actions.local.json" in gitignore
@@ -77,14 +77,17 @@ def test_windows_action_policy_is_machine_local():
 
 
 def test_tunnel_startup_prefers_local_or_explicit_config():
-    start_tunnel = _read("start_tunnel.ps1")
+    start_tunnel = _read("scripts/start_tunnel.ps1")
     start_all = _read("start_all.ps1")
+    stop_all = _read("stop_all.ps1")
+    common = _read("scripts/runtime_common.psm1")
 
-    for script in (start_tunnel, start_all):
-        assert "PLA_TUNNEL_CONFIG" in script
-        assert "tunnel.local.yaml" in script
-        assert "Customer Tunnel config is missing" in script
+    for script in (start_tunnel, start_all, stop_all):
+        assert "Resolve-PlaTunnelConfig $projectRoot" in script
         assert "config\\tunnel.yaml" not in script
+    assert "PLA_TUNNEL_CONFIG" in common
+    assert "tunnel.local.yaml" in common
+    assert "Customer Tunnel config not found" in common
 
 
 def test_installer_never_embeds_customer_secret_material():
@@ -108,7 +111,7 @@ def test_customer_installation_doc_routes_codex_through_installer():
 
 
 def test_default_workspace_is_repository_local_and_portable():
-    local_tools = _read("local_tools.py")
+    local_tools = _read("src/tooling/local_tools.py")
 
     assert 'str(PLA_ROOT / "workspace")' in local_tools
     assert r'D:\\AI_Tools\\plus-local-agent\\workspace' not in local_tools

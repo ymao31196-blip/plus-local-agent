@@ -4,9 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import provider_setup_runtime as setup_runtime
-
-
+from provider import provider_setup_runtime as setup_runtime
 def test_setup_provider_requires_reviewed_spec(tmp_path):
     (tmp_path / "provider_specs").mkdir()
 
@@ -219,7 +217,9 @@ def test_setup_script_supports_provider_filter_and_single_recreate_pass():
     assert "No reviewed dependency spec for provider(s)" in script
     assert "$selectedProviders = @()" in script
     assert '"*.source.json"' in script
-    assert 'setup_source_provider.py' in script
+    assert '$env:PYTHONPATH = Join-Path $projectRoot "src"' in script
+    assert '"-m", "provider.setup_source_provider"' in script
+    assert 'setup_source_provider.py' not in script
     assert 'Installing source-backed Provider' in script
     assert '"--provider", $provider' in script
     assert script.count("Remove-Item -LiteralPath $envDir -Recurse -Force") == 1

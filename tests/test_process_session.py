@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-import local_tools
-from session_runtime import InteractiveSessionStore, MAX_INPUT_CHARACTERS
+from tooling import local_tools
+from runtime.session_runtime import InteractiveSessionStore, MAX_INPUT_CHARACTERS
 
 
 @pytest.fixture
@@ -218,7 +218,7 @@ def test_terminate_keeps_session_readable_until_close(workspace):
 
 
 def test_write_rejects_ambiguous_or_invalid_base64_through_dispatch(workspace):
-    from session_runtime import process_session_request
+    from runtime.session_runtime import process_session_request
 
     opened = process_session_request({
         "action": "open",

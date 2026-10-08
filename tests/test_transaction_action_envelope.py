@@ -2,11 +2,11 @@ import asyncio
 
 import pytest
 
-from transaction_action_envelope import (
+from transactions.transaction_action_envelope import (
     complete_external_capability_in_transaction,
     invoke_capability_in_transaction,
 )
-from transaction_runtime import ActionTransactionStore
+from transactions.transaction_runtime import ActionTransactionStore
 
 
 class _Registry:

@@ -626,7 +626,7 @@ def _launch_elevated_uninstaller(
             "elevation_requested": False,
             "message": (
                 "Interactive Elevation Broker is not ready. "
-                "Start PLA through start_all.ps1 or start_elevation_broker.ps1."
+                "Start PLA through start_all.ps1 or scripts/start_elevation_broker.ps1."
             ),
             "broker": broker,
         }

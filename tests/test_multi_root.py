@@ -5,9 +5,9 @@ import time
 
 import pytest
 
-import local_tools
-from internal_tool_executor import INTERNAL_TOOL_SCHEMAS, execute_actions_request, execute_local_tool
-from task_store import TERMINAL, TaskStore
+from tooling import local_tools
+from tooling.internal_tool_executor import INTERNAL_TOOL_SCHEMAS, execute_actions_request, execute_local_tool
+from runtime.task_store import TERMINAL, TaskStore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -171,12 +171,12 @@ def test_symlink_or_junction_escape_is_rejected(roots):
 
 def test_real_pla_root_supports_self_read_list_and_search():
     listing = local_tools.list_directory(root="pla")
-    read = local_tools.read_text("server.py", root="pla")
+    read = local_tools.read_text("src/server.py", root="pla")
     search = local_tools.search_text(
-        "execute_local_tool", root="pla", path=".", glob="*.py",
+        "execute_local_tool", root="pla", path="src", glob="*.py",
     )
-    assert "server.py" in listing
-    assert read["path"] == "server.py" and "FastMCP" in read["content"]
+    assert "src/" in listing
+    assert read["path"] == "src/server.py" and "FastMCP" in read["content"]
     assert search["match_count"] >= 1
 
 

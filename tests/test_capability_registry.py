@@ -1,8 +1,8 @@
 import pytest
 
-from capability_models import CapabilityDescriptor
-from capability_registry import CapabilityRegistry
-from fake_capability_provider import FakeCapabilityProvider
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
+from provider.fake_capability_provider import FakeCapabilityProvider
 
 
 def make_capability(provider: str, name: str, *, title: str | None = None):

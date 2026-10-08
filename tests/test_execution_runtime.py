@@ -2,16 +2,16 @@ import asyncio
 import time
 from threading import Event
 
-import local_tools
-import task_store as task_store_module
+from tooling import local_tools
+from runtime import task_store as task_store_module
 from fastmcp import Client
-from internal_tool_executor import (
+from tooling.internal_tool_executor import (
     EXECUTABLE_LOCAL_TOOLS,
     LocalToolResult,
     execute_actions_request,
     execute_local_tool,
 )
-from task_store import TaskStore
+from runtime.task_store import TaskStore
 from server import mcp
 
 

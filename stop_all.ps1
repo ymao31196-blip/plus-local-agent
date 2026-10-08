@@ -3,11 +3,12 @@ param()
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$tunnelConfig = Join-Path $projectRoot "config\tunnel.yaml"
-$brokerStopScript = Join-Path $projectRoot "stop_elevation_broker.ps1"
-$lifecycleStopScript = Join-Path $projectRoot "stop_lifecycle_broker.ps1"
-$browserStopScript = Join-Path $projectRoot "stop_browser_runtime.ps1"
-$runnerStopScript = Join-Path $projectRoot "stop_execution_runner.ps1"
+Import-Module (Join-Path $projectRoot "scripts\runtime_common.psm1") -Force
+$tunnelConfig = Resolve-PlaTunnelConfig $projectRoot
+$brokerStopScript = Join-Path $projectRoot "scripts\stop_elevation_broker.ps1"
+$lifecycleStopScript = Join-Path $projectRoot "scripts\stop_lifecycle_broker.ps1"
+$browserStopScript = Join-Path $projectRoot "scripts\stop_browser_runtime.ps1"
+$runnerStopScript = Join-Path $projectRoot "scripts\stop_execution_runner.ps1"
 
 function Get-ListenerPid([int]$Port) {
     $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
@@ -41,7 +42,11 @@ function Stop-OwnedListener([int]$Port, [string[]]$RequiredFragments, [string]$N
             throw ("$Name port $Port belongs to PID $pidValue, but it is not the expected PLA process. Refusing to stop it. CommandLine: " + $commandLine)
         }
     }
-    Stop-Process -Id $pidValue -Force
+    # HTTP owns provider subprocesses; stop the verified owner's entire tree.
+    & "$env:SystemRoot\System32\taskkill.exe" /PID $pidValue /T /F | Out-Null
+    if ($LASTEXITCODE -ne 0 -and (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)) {
+        throw "$Name process tree could not be stopped (PID $pidValue)."
+    }
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     do {
         if ($null -eq (Get-ListenerPid $Port)) {
@@ -70,7 +75,8 @@ if (Test-Path -LiteralPath $runnerStopScript -PathType Leaf) {
     Write-Warning "Execution Runner stop script is missing: $runnerStopScript"
 }
 
-Stop-OwnedListener 8766 @($projectRoot, "server.py") "PLA HTTP"
+Stop-OwnedListener 8766 @((Join-Path $projectRoot "src\server.py")) "PLA HTTP"
+Set-PlaStoppedStatus (Join-Path $projectRoot "state\lifecycle\http_runtime_status.json")
 
 if (Test-Path -LiteralPath $browserStopScript -PathType Leaf) {
     & $browserStopScript

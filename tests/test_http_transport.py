@@ -39,7 +39,7 @@ def test_streamable_http_endpoint_serves_tool_catalog():
     process = subprocess.Popen(
         [
             sys.executable,
-            str(PROJECT_ROOT / "server.py"),
+            str(PROJECT_ROOT / "src" / "server.py"),
             "--http",
             "--host", "127.0.0.1",
             "--port", str(port),

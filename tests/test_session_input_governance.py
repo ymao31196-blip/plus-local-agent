@@ -5,9 +5,9 @@ import time
 
 import pytest
 
-import local_tools
+from tooling import local_tools
 import server
-from session_runtime import InteractiveSessionStore
+from runtime.session_runtime import InteractiveSessionStore
 
 
 def _open_python(store: InteractiveSessionStore, args: list[str], tmp_path):

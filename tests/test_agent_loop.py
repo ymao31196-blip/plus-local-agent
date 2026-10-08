@@ -1,6 +1,6 @@
 import pytest
 
-from agent_loop import validate_decision
+from agent.agent_loop import validate_decision
 
 
 TOOLS = [

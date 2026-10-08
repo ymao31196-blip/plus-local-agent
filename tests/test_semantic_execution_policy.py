@@ -1,6 +1,6 @@
-import command_semantics as semantics
-import capability_steering as steering
-from semantic_execution_policy import (
+from execution import command_semantics as semantics
+from routing import capability_steering as steering
+from execution.semantic_execution_policy import (
     HIGH_RISK_LOCAL_GIT_ACTIONS,
     POLICY_VERSION,
     evaluate_semantic_execution,

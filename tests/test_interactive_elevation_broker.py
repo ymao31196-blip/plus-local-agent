@@ -3,9 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import interactive_elevation_broker as broker
-
-
+from host import interactive_elevation_broker as broker
 def _winget_request(executable: Path) -> dict:
     target = r"D:\Apps\Example App"
     return {

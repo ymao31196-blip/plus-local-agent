@@ -1,12 +1,12 @@
 import asyncio
 import hashlib
 
-from capability_broker import CapabilityBroker
-from capability_models import CapabilityDescriptor
-from capability_registry import CapabilityRegistry
-from event_runtime import EventStore
-from mcp_client_manager import MCPClientManager
-from observer_hook_runtime import (
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
+from runtime.event_runtime import EventStore
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from hooks.observer_hook_runtime import (
     HookInvocationStore,
     ObserverHookRuntime,
     audit_observer,

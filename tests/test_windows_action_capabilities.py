@@ -5,12 +5,12 @@ import subprocess
 import pytest
 
 import server
-import windows_action_capabilities as actions
-from transaction_action_envelope import (
+from capabilities import windows_action_capabilities as actions
+from transactions.transaction_action_envelope import (
     complete_external_capability_in_transaction,
     invoke_capability_in_transaction,
 )
-from transaction_runtime import ActionTransactionStore
+from transactions.transaction_runtime import ActionTransactionStore
 
 
 def _safe_service(name: str = "Spooler") -> dict:

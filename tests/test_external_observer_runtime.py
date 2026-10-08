@@ -4,16 +4,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from capability_broker import CapabilityBroker
-from capability_registry import CapabilityRegistry
-from event_runtime import EventStore
-from external_observer_runtime import ExternalObserverRuntime, invoke_external_observer
-from mcp_client_manager import MCPClientManager
-from observer_hook_runtime import HookInvocationStore, ObserverHookRuntime
-from observer_plugin_manifest import (
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_registry import CapabilityRegistry
+from runtime.event_runtime import EventStore
+from hooks.external_observer_runtime import ExternalObserverRuntime, invoke_external_observer
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from hooks.observer_hook_runtime import HookInvocationStore, ObserverHookRuntime
+from hooks.observer_plugin_manifest import (
     load_external_observer_manifest,
 )
-from provider_runtime_capabilities import register_provider_runtime_capabilities
+from capabilities.provider_runtime_capabilities import register_provider_runtime_capabilities
 
 
 def _event(event_type="capability.succeeded", sequence=1):
@@ -254,7 +254,7 @@ def test_external_observer_process_boundary_is_bounded(tmp_path, monkeypatch):
             stderr="",
         )
 
-    monkeypatch.setattr("external_observer_runtime.subprocess.run", fake_run)
+    monkeypatch.setattr("hooks.external_observer_runtime.subprocess.run", fake_run)
 
     result = invoke_external_observer(manifest, _event())
 

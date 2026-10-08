@@ -1,6 +1,4 @@
-import command_semantics as semantics
-
-
+from execution import command_semantics as semantics
 def _classify(program, args):
     return semantics.classify_command(program, args).to_dict()
 

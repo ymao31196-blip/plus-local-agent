@@ -4,14 +4,14 @@ from pathlib import Path
 import pytest
 from fastmcp.client.transports import PythonStdioTransport
 
-import artifact_bridge
-import capability_broker as broker_module
-import local_tools
-from capability_broker import CapabilityBroker
-from capability_models import CapabilityDescriptor
-from capability_registry import CapabilityRegistry
-from event_runtime import EventStore
-from mcp_client_manager import MCPClientManager
+from artifacts import artifact_bridge
+from capabilities import capability_broker as broker_module
+from tooling import local_tools
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
+from runtime.event_runtime import EventStore
+from mcp_runtime.mcp_client_manager import MCPClientManager
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -598,7 +598,7 @@ def test_browser_download_recovers_completed_pdf_without_second_click(
         return {"ready": True}
 
     monkeypatch.setattr(
-        "browser_runtime.start_browser_runtime",
+        "browser.browser_runtime.start_browser_runtime",
         fake_start_browser_runtime,
     )
 
@@ -692,7 +692,7 @@ def test_browser_download_does_not_recover_incomplete_pdf(
         return {"ready": True}
 
     monkeypatch.setattr(
-        "browser_runtime.start_browser_runtime",
+        "browser.browser_runtime.start_browser_runtime",
         fake_start_browser_runtime,
     )
 
@@ -756,7 +756,7 @@ def test_browser_click_business_error_does_not_restart_provider(
         raise AssertionError("browser runtime should not restart")
 
     monkeypatch.setattr(
-        "browser_runtime.start_browser_runtime",
+        "browser.browser_runtime.start_browser_runtime",
         forbidden_start,
     )
 

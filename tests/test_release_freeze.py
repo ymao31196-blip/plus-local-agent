@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import server
-from provider_manifest import load_provider_manifests
+from provider.provider_manifest import load_provider_manifests
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

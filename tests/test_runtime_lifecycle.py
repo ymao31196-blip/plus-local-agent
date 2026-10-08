@@ -8,12 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import runtime_lifecycle
-import runtime_lifecycle_broker
-from capability_broker import CapabilityBroker
-from capability_registry import CapabilityRegistry
-from mcp_client_manager import MCPClientManager
-from runtime_lifecycle_capabilities import runtime_lifecycle_descriptors
+from runtime import runtime_lifecycle
+from runtime import runtime_lifecycle_broker
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_registry import CapabilityRegistry
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from capabilities.runtime_lifecycle_capabilities import runtime_lifecycle_descriptors
 
 
 def test_lifecycle_status_absent_broker(monkeypatch, tmp_path):

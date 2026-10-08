@@ -1,6 +1,8 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
+from pathlib import Path
 import sqlite3
 import subprocess
 import sys
@@ -9,10 +11,10 @@ import time
 
 from fastmcp import Client
 import pytest
-import local_tools
-import task_store
-from task_store import TaskStore
-from internal_tool_executor import ACTION_LOCAL_TOOLS, INTERNAL_TOOL_SCHEMAS, LocalToolResult, execute_actions_request, EXECUTABLE_LOCAL_TOOLS
+from tooling import local_tools
+from runtime import task_store
+from runtime.task_store import TaskStore
+from tooling.internal_tool_executor import ACTION_LOCAL_TOOLS, INTERNAL_TOOL_SCHEMAS, LocalToolResult, execute_actions_request, EXECUTABLE_LOCAL_TOOLS
 from server import mcp
 
 
@@ -344,8 +346,8 @@ def test_actual_runtime_process_restart(tmp_path):
     path = tmp_path / "restart.sqlite3"
     code = """
 import os, sys, time
-import task_store
-from internal_tool_executor import LocalToolResult
+from runtime import task_store
+from tooling.internal_tool_executor import LocalToolResult
 def blocked(tool, arguments):
     time.sleep(30)
     return LocalToolResult(tool, True)
@@ -357,7 +359,20 @@ while store.get(first)['status'] != 'running':
     time.sleep(.01)
 os._exit(0)
 """
-    completed = subprocess.run([sys.executable, "-c", code, str(path)], timeout=10, capture_output=True)
+    repo = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    source_root = str(repo / "src")
+    env["PYTHONPATH"] = (
+        source_root
+        if not env.get("PYTHONPATH")
+        else source_root + os.pathsep + env["PYTHONPATH"]
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(path)],
+        timeout=10,
+        capture_output=True,
+        env=env,
+    )
     assert completed.returncode == 0, completed.stderr
     with sqlite3.connect(path) as db:
         assert {r[0] for r in db.execute("SELECT status FROM tasks")} == {"queued", "running"}

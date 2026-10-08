@@ -2,9 +2,7 @@ from pathlib import Path
 
 import pytest
 
-import browser_runtime as runtime
-
-
+from browser import browser_runtime as runtime
 def test_browser_runtime_requires_reviewed_provider_environment(tmp_path, monkeypatch):
     node = tmp_path / "node.exe"
     node.write_bytes(b"node")

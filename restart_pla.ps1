@@ -9,7 +9,7 @@ if ($Json) {
     [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
 }
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$httpScript = Join-Path $projectRoot "start_http.ps1"
+$httpScript = Join-Path $projectRoot "scripts\start_http.ps1"
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
 
 function Get-ListenerPid([int]$Port) {
@@ -34,7 +34,7 @@ function Assert-OwnedHttp([int]$ProcessId) {
     if ([string]::IsNullOrWhiteSpace($commandLine)) {
         throw "PLA HTTP PID $ProcessId could not be verified. Refusing to stop it."
     }
-    foreach ($fragment in @($projectRoot, "server.py")) {
+    foreach ($fragment in @((Join-Path $projectRoot "src\server.py"))) {
         if (-not $commandLine.Contains($fragment)) {
             throw "Port 8766 belongs to PID $ProcessId, but it is not the expected PLA HTTP process. Refusing to stop it. CommandLine: $commandLine"
         }
@@ -72,7 +72,10 @@ if ($null -ne $oldPid) {
     if (-not $Json) {
         Write-Host "Stopping PLA HTTP (PID $oldPid)..."
     }
-    Stop-Process -Id $oldPid -Force
+    & "$env:SystemRoot\System32\taskkill.exe" /PID $oldPid /T /F | Out-Null
+    if ($LASTEXITCODE -ne 0 -and (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) {
+        throw "PLA HTTP process tree could not be stopped (PID $oldPid)."
+    }
     Wait-PortState 8766 $false 10 | Out-Null
 } elseif (-not $Json) {
     Write-Host "PLA HTTP is not currently running; starting it."
@@ -99,6 +102,6 @@ if ($Json) {
     Write-Host "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid); tunnel remains running (PID $tunnelPid)."
     Write-Host "PLA HTTP RESTARTED"
 } else {
-    Write-Warning "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid), but tunnel health port 18081 is not listening. Run .\start_tunnel.ps1 or .\start_all.ps1."
+    Write-Warning "PLA HTTP restarted on 127.0.0.1:8766 (PID $newPid), but tunnel health port 18081 is not listening. Run .\scripts\start_tunnel.ps1 or .\start_all.ps1."
     Write-Host "PLA HTTP RESTARTED"
 }

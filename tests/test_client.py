@@ -7,7 +7,7 @@ from mcp.client.stdio import stdio_client
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SERVER_PATH = PROJECT_ROOT / "server.py"
+SERVER_PATH = PROJECT_ROOT / "src" / "server.py"
 EXPECTED_CONTENT = 'print("Agent execution successful.")'
 
 

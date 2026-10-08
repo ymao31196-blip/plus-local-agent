@@ -1,8 +1,8 @@
 import pytest
 
-import artifact_bridge
-import local_tools
-from artifact_runtime import ArtifactInvocation
+from artifacts import artifact_bridge
+from tooling import local_tools
+from artifacts.artifact_runtime import ArtifactInvocation
 
 
 def test_input_size_policy_blocks_before_staging(tmp_path, monkeypatch):

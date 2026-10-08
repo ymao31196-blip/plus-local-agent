@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-import execution_runner_capabilities as runner_caps
-import execution_runner_runtime as runtime
+from execution import execution_runner_capabilities as runner_caps
+from execution import execution_runner_runtime as runtime
 import server
 
 
@@ -59,7 +59,7 @@ def test_execution_runner_capabilities_have_explicit_lifecycle_policy():
     for item in (start, stop):
         assert item["risk_level"] == "privileged"
         assert item["requires_confirmation"] is True
-        assert "candidate" in item["tags"]
+        assert "production" in item["tags"]
 
 
 def test_execution_runner_start_is_rejected_before_handler_without_invoke(monkeypatch):
@@ -186,8 +186,7 @@ def test_stale_live_state_fails_closed_instead_of_overwriting_ownership(tmp_path
 
 def test_runner_mutex_rejects_second_owner_on_windows():
     import os
-    import execution_runner_service as service
-
+    from execution import execution_runner_service as service
     if os.name != "nt":
         pytest.skip("Windows named mutex")
     first = service._acquire_runner_mutex()

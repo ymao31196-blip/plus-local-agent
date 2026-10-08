@@ -2,11 +2,11 @@ from pathlib import Path
 import subprocess
 import time
 
-import local_tools
-import execution_runner_runtime as runner_runtime
-from command_semantics import classify_command
-from shadow_execution_policy import evaluate_shadow_execution
-from task_store import TaskStore
+from tooling import local_tools
+from execution import execution_runner_runtime as runner_runtime
+from execution.command_semantics import classify_command
+from execution.shadow_execution_policy import evaluate_shadow_execution
+from runtime.task_store import TaskStore
 
 
 def _init_git_repo(path: Path) -> None:

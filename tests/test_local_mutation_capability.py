@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import local_tools
+from tooling import local_tools
 import server
 
 

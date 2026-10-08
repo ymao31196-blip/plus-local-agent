@@ -4,10 +4,10 @@ import subprocess
 
 import pytest
 
-import execution_backend
-import execution_runner_runtime as runner_runtime
-import local_tools
-from runner_transport import RunnerSpikeClient
+from execution import execution_backend
+from execution import execution_runner_runtime as runner_runtime
+from tooling import local_tools
+from execution.runner_transport import RunnerSpikeClient
 
 
 def _redirect_runner_state(tmp_path: Path, monkeypatch) -> None:

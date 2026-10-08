@@ -1,7 +1,7 @@
-import local_tools
-from execution_backend import runner_metadata
-from session_runtime import InteractiveSessionStore
-from task_store import TaskStore
+from tooling import local_tools
+from execution.execution_backend import runner_metadata
+from runtime.session_runtime import InteractiveSessionStore
+from runtime.task_store import TaskStore
 
 
 def test_runner_metadata_is_stable_and_truthful():

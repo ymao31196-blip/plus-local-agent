@@ -1,4 +1,4 @@
-from declared_routing import (
+from routing.declared_routing import (
     collect_declared_relations,
     resolve_declared_route,
 )

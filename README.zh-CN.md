@@ -405,6 +405,8 @@ python -m pytest -q
 
 Runtime state、Provider环境、credential、本地Tunnel配置、log、IDE state和customer workspace输出都不会进入Git。
 
+源码目录约束与各模块职责见`docs/source_layout.md`。仓库根目录不再放Python实现文件，低层Runtime启停脚本统一位于`scripts/`；`tests/test_source_layout.py`负责防止目录结构回退。
+
 v2.0.0 Runtime/Execution Plane主线的最终全仓基线为：
 
 ~~~text

@@ -3,10 +3,8 @@ from pathlib import Path
 
 import pytest
 
-import execution_runner_runtime as runner_runtime
-import local_tools
-
-
+from execution import execution_runner_runtime as runner_runtime
+from tooling import local_tools
 def _redirect_runner_state(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(runner_runtime, "STATE_DIR", tmp_path)
     monkeypatch.setattr(runner_runtime, "STATE_PATH", tmp_path / "runtime.json")

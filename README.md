@@ -646,6 +646,8 @@ python -m pytest -q
 Runtime state, Provider environments, credentials, local Tunnel configuration, logs, IDE state,
 and customer workspace outputs are excluded from Git.
 
+Source layout rules and module responsibility boundaries are documented in `docs/source_layout.md`. Python implementation modules no longer live at the repository root, low-level runtime start/stop helpers live under `scripts/`, and `tests/test_source_layout.py` guards the layout against regression.
+
 The final v2.0.0 Runtime / Execution Plane regression baseline is:
 
 ~~~text

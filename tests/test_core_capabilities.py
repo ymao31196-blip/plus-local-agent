@@ -2,21 +2,21 @@ import asyncio
 
 import pytest
 
-import artifact_bridge
-import local_tools
-from capability_broker import CapabilityBroker
-from capability_models import CapabilityDescriptor
-from capability_registry import CapabilityRegistry
-import core_capabilities
-from core_capabilities import register_core_transaction_capabilities
-from event_runtime import EventStore
-from mcp_client_manager import MCPClientManager
-from observer_hook_runtime import (
+from artifacts import artifact_bridge
+from tooling import local_tools
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
+from capabilities import core_capabilities
+from capabilities.core_capabilities import register_core_transaction_capabilities
+from runtime.event_runtime import EventStore
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from hooks.observer_hook_runtime import (
     HookInvocationStore,
     ObserverHookRuntime,
     audit_observer,
 )
-from transaction_runtime import ActionTransactionStore
+from transactions.transaction_runtime import ActionTransactionStore
 
 
 def _runtime():

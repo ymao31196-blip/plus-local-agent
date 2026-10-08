@@ -151,12 +151,7 @@ if ($Recreate) {
     }
 }
 
-$sourceSetupScript = Join-Path $projectRoot "setup_source_provider.py"
 if ($sourceSpecFiles.Count -gt 0) {
-    if (-not (Test-Path -LiteralPath $sourceSetupScript -PathType Leaf)) {
-        throw "Source Provider setup entrypoint not found: $sourceSetupScript"
-    }
-
     foreach ($spec in $sourceSpecFiles) {
         $suffix = ".source.json"
         $provider = $spec.Name.Substring(0, $spec.Name.Length - $suffix.Length)
@@ -165,15 +160,21 @@ if ($sourceSpecFiles.Count -gt 0) {
         }
 
         Write-Host "Installing source-backed Provider: $provider"
-        Invoke-NativeChecked `
-            -FilePath $basePython `
-            -ArgumentList @(
-                $sourceSetupScript,
-                "--project-root", $projectRoot,
-                "--provider", $provider,
-                "--timeout-seconds", "600"
-            ) `
-            -FailureMessage "Failed to install source-backed Provider: $provider"
+        $previousPythonPath = $env:PYTHONPATH
+        try {
+            $env:PYTHONPATH = Join-Path $projectRoot "src"
+            Invoke-NativeChecked `
+                -FilePath $basePython `
+                -ArgumentList @(
+                    "-m", "provider.setup_source_provider",
+                    "--project-root", $projectRoot,
+                    "--provider", $provider,
+                    "--timeout-seconds", "600"
+                ) `
+                -FailureMessage "Failed to install source-backed Provider: $provider"
+        } finally {
+            $env:PYTHONPATH = $previousPythonPath
+        }
     }
 }
 

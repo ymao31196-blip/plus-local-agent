@@ -3,10 +3,8 @@ from pathlib import Path
 
 import pytest
 
-import artifact_bridge
-import local_tools
-
-
+from artifacts import artifact_bridge
+from tooling import local_tools
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
     root = tmp_path.resolve()

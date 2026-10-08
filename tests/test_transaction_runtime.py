@@ -1,6 +1,6 @@
 import pytest
 
-from transaction_runtime import ActionTransactionStore
+from transactions.transaction_runtime import ActionTransactionStore
 
 
 def _steps():

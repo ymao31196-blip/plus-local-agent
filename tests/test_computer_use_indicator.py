@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import json
 
-import computer_use_indicator as indicator
-
-
+from host import computer_use_indicator as indicator
 def _event(event_type: str, *, risk_level: str | None = None, correlation_id: str = "c1") -> dict:
     payload = {}
     if risk_level is not None:

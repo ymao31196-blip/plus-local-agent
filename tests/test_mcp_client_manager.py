@@ -4,8 +4,8 @@ import pytest
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
-from capability_registry import CapabilityRegistry
-from mcp_client_manager import MCPClientManager, _capability_suffix
+from capabilities.capability_registry import CapabilityRegistry
+from mcp_runtime.mcp_client_manager import MCPClientManager, _capability_suffix
 
 
 def build_external_mcp():

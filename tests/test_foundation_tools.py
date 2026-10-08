@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-import local_tools
-from internal_tool_executor import execute_actions_request, execute_local_tool
+from tooling import local_tools
+from tooling.internal_tool_executor import execute_actions_request, execute_local_tool
 
 
 @pytest.fixture

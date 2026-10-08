@@ -20,9 +20,9 @@ from fastmcp import FastMCP
 from lxml import etree
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from local_tools import safe_path  # noqa: E402
+from tooling.local_tools import safe_path  # noqa: E402
 
 
 mcp = FastMCP("Office Enhancement", version="0.1.0")

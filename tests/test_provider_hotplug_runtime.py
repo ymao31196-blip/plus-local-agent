@@ -6,14 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from capability_broker import CapabilityBroker
-from capability_models import CapabilityDescriptor
-from capability_registry import CapabilityRegistry
-from core_capabilities import register_core_transaction_capabilities
-from external_provider_runtime import ExternalProviderRuntime
-from mcp_client_manager import MCPClientManager
-from provider_runtime_capabilities import register_provider_runtime_capabilities
-from transaction_runtime import ActionTransactionStore
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
+from capabilities.core_capabilities import register_core_transaction_capabilities
+from provider.external_provider_runtime import ExternalProviderRuntime
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from capabilities.provider_runtime_capabilities import register_provider_runtime_capabilities
+from transactions.transaction_runtime import ActionTransactionStore
 
 
 def _tool(name: str):

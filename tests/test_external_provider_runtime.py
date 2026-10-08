@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from capability_registry import CapabilityRegistry
-from external_provider_runtime import configure_external_providers
-from mcp_client_manager import MCPClientManager
+from capabilities.capability_registry import CapabilityRegistry
+from provider.external_provider_runtime import configure_external_providers
+from mcp_runtime.mcp_client_manager import MCPClientManager
 
 
 def write_manifest(

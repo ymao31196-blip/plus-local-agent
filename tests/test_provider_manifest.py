@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-import provider_manifest as manifest_module
-from provider_manifest import load_provider_manifest, load_provider_manifests
+from provider import provider_manifest as manifest_module
+from provider.provider_manifest import load_provider_manifest, load_provider_manifests
 
 
 def write_manifest(root: Path, provider_id: str = "demo", **updates):

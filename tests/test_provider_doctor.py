@@ -4,10 +4,10 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-import provider_doctor as doctor_module
-from capability_registry import CapabilityRegistry
-from mcp_client_manager import MCPClientManager
-from provider_doctor import provider_doctor
+from provider import provider_doctor as doctor_module
+from capabilities.capability_registry import CapabilityRegistry
+from mcp_runtime.mcp_client_manager import MCPClientManager
+from provider.provider_doctor import provider_doctor
 
 
 def _write_provider_layout(root: Path, *, version: str = "1.2.3") -> None:

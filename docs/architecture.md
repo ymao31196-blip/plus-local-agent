@@ -32,8 +32,8 @@ primitive, not as an arbitrary scripting interface.
 
 ## Unified local execution boundary
 
-`local_tools.py` owns every filesystem, search, process, PowerShell, and patch
-implementation. `internal_tool_executor.execute_local_tool(tool_name,
+`src/tooling/local_tools.py` owns every filesystem, search, process, PowerShell, and patch
+implementation. `tooling.internal_tool_executor.execute_local_tool(tool_name,
 arguments)` is the shared structured boundary used by batch actions, background
 workers, and the retained experimental agent. MCP wrappers call the same
 implementations and do not maintain a second copy of tool behavior.
@@ -66,7 +66,7 @@ Root Policy
   └── pla        (explicit; read/write/execute with protected paths)
 ```
 
-`workspace_manager.RootPolicy` is the single named-root registry and path
+`host.workspace_manager.RootPolicy` is the single named-root registry and path
 resolver. Every filesystem, search, process workdir, PowerShell `LiteralPath`,
 patch, and changeset path goes through it. Omitting `root` preserves the original
 `workspace` behavior. `root="pla"` explicitly selects the PLA project root;

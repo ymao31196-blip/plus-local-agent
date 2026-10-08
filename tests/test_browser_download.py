@@ -5,9 +5,7 @@ from urllib import parse as urllib_parse
 
 import pytest
 
-import browser_download
-
-
+from browser import browser_download
 def test_fixed_metadata_code_accepts_only_semantic_refs():
     code = browser_download._fixed_metadata_code("f2e172")
     assert 'const target = "f2e172";' in code
@@ -307,7 +305,7 @@ def test_download_browser_target_uses_only_fixed_hidden_helper(
     monkeypatch.setattr(browser_download, "OUTPUT_ROOT", tmp_path)
     monkeypatch.setattr(browser_download, "_download_file_sync", fake_download)
 
-    import local_tools
+    from tooling import local_tools
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setattr(local_tools, "WORKSPACE", workspace)

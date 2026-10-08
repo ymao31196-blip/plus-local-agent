@@ -1,6 +1,4 @@
-import capability_steering as steering
-
-
+from routing import capability_steering as steering
 def _browser_snapshot(
     source="computer.click",
     target="browser.click",

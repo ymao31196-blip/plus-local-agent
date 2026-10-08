@@ -1,6 +1,6 @@
 import pytest
 
-from artifact_policy import (
+from artifacts.artifact_policy import (
     HARD_MAX_INPUT_BYTES,
     mime_matches,
     normalize_artifact_policy,

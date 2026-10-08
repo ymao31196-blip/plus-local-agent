@@ -2,9 +2,9 @@ import hashlib
 from pathlib import Path
 
 import pytest
-import changeset_manager as manager
-import local_tools
-from internal_tool_executor import execute_local_tool
+from project import changeset_manager as manager
+from tooling import local_tools
+from tooling.internal_tool_executor import execute_local_tool
 
 
 @pytest.fixture

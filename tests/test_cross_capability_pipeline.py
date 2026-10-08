@@ -5,11 +5,11 @@ import pytest
 from fastmcp.client.transports import PythonStdioTransport
 from fastmcp.exceptions import ToolError
 
-import artifact_bridge
-import local_tools
-from capability_broker import CapabilityBroker
-from capability_registry import CapabilityRegistry
-from mcp_client_manager import MCPClientManager
+from artifacts import artifact_bridge
+from tooling import local_tools
+from capabilities.capability_broker import CapabilityBroker
+from capabilities.capability_registry import CapabilityRegistry
+from mcp_runtime.mcp_client_manager import MCPClientManager
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

@@ -6,7 +6,7 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from tool_schema import normalize_mcp_tools
+from tooling.tool_schema import normalize_mcp_tools
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 async def discover_tools():
     params = StdioServerParameters(
         command=sys.executable,
-        args=[str(PROJECT_ROOT / "server.py")],
+        args=[str(PROJECT_ROOT / "src" / "server.py")],
         cwd=str(PROJECT_ROOT),
         env={"AGENT_TASK_DB": os.environ["AGENT_TASK_DB"]},
     )

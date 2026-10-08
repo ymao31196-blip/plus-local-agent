@@ -3,8 +3,8 @@ from ctypes import wintypes
 import re
 import time
 
-import local_tools
-from session_runtime import InteractiveSessionStore
+from tooling import local_tools
+from runtime.session_runtime import InteractiveSessionStore
 
 
 def _output_text(result):

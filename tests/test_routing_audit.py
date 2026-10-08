@@ -1,4 +1,4 @@
-from routing_audit import audit_routing
+from routing.routing_audit import audit_routing
 
 
 def _capability(
