@@ -145,7 +145,7 @@ async def _runtime_lifespan(_server):
 
 mcp = FastMCP(
     "Local Agent Tools",
-    version="2.0.0",
+    version="2.0.1",
     lifespan=_runtime_lifespan,
 )
 

@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_provider_catalog():
-    assert server.mcp.version == "2.0.0"
+    assert server.mcp.version == "2.0.1"
     manifests = load_provider_manifests(PROJECT_ROOT)
     assert set(manifests) == {
         "browser",
