@@ -481,7 +481,7 @@ def test_git_diff_rejects_path_outside_selected_repository(workspace):
 
 def test_run_process_default_workdir(workspace):
     result = local_tools.run_process(
-        "python", ["-c", "import os; print(os.getcwd())"]
+        "python", ["-c", "import os; print(os.getcwd())"], backend="in_process"
     )
     assert result["returncode"] == 0
     assert Path(result["stdout"].strip()).resolve() == workspace
@@ -509,7 +509,7 @@ def test_run_process_custom_workdir(workspace):
     child.mkdir()
     result = local_tools.run_process(
         "python", ["-c", "import os; print(os.path.basename(os.getcwd()))"],
-        workdir="child",
+        workdir="child", backend="in_process",
     )
     assert result["returncode"] == 0
     assert result["stdout"].strip() == "child"
@@ -554,7 +554,7 @@ def test_run_process_timeout(workspace):
 
 def test_run_process_stderr_truncation(workspace):
     result = local_tools.run_process(
-        "python", ["-c", "import sys; sys.stderr.write('e' * 21001)"],
+        "python", ["-c", "import sys; sys.stderr.write('e' * 21001)"], backend="in_process",
     )
     assert result["stderr_truncated"] is True
     assert result["stderr_original_length"] == 21001

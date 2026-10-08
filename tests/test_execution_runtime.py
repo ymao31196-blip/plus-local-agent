@@ -120,6 +120,7 @@ def test_stdout_truncation_is_explicit(tmp_path, monkeypatch):
     monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
     result = execute_local_tool("run_process", {
         "program": "python", "args": ["-c", "print('x' * 21000)"],
+        "backend": "in_process",
     })
 
     assert result.ok is True
@@ -155,6 +156,7 @@ def test_background_process_streams_output_before_completion(tmp_path, monkeypat
         "tool": "run_process",
         "arguments": {
             "program": "python",
+            "backend": "in_process",
             "args": [
                 "-u",
                 "-c",

@@ -272,7 +272,7 @@ def test_manual_two_file_fixture_through_mcp(workspace):
         async with Client(mcp) as client:
             async def call(name, arguments):
                 return (await client.call_tool_mcp(name, arguments)).structured_content
-            before = await call("run_process", {"program": "pytest", "args": ["changeset_demo", "-q"]})
+            before = await call("run_process", {"program": "pytest", "args": ["changeset_demo", "-q"], "backend": "in_process"})
             assert before["returncode"] != 0 and "2 failed" in before["stdout"]
             changes = []
             for path, old, new in [("math_a.py", "a - b", "a + b"), ("math_b.py", "value + 2", "value * 2")]:
@@ -283,6 +283,6 @@ def test_manual_two_file_fixture_through_mcp(workspace):
             transaction = await call("apply_changeset", {"changes": changes})
             assert transaction["status"] == "completed"
             assert transaction["files_applied"] == 2
-            after = await call("run_process", {"program": "pytest", "args": ["changeset_demo", "-q"]})
+            after = await call("run_process", {"program": "pytest", "args": ["changeset_demo", "-q"], "backend": "in_process"})
             assert after["returncode"] == 0 and "2 passed" in after["stdout"]
     asyncio.run(run())

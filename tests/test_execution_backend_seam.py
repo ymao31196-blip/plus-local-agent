@@ -20,6 +20,7 @@ def test_oneshot_result_and_session_share_runner_instance(tmp_path, monkeypatch)
         program="python",
         args=["-c", "print('runner-one')"],
         root="workspace",
+        backend="in_process",
     )
     store = InteractiveSessionStore(max_sessions=1)
     opened = store.open(
@@ -39,6 +40,12 @@ def test_oneshot_result_and_session_share_runner_instance(tmp_path, monkeypatch)
 
 def test_task_execution_event_exposes_runner_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(local_tools, "WORKSPACE", tmp_path.resolve())
+    # The default backend must fall back before submit when this test owns no Runner.
+    # Do not point the test at the live production Runner.
+    from execution import execution_runner_runtime as runner_runtime
+    monkeypatch.setattr(runner_runtime, "STATE_DIR", tmp_path / "runner-state")
+    monkeypatch.setattr(runner_runtime, "STATE_PATH", tmp_path / "runner-state" / "runtime.json")
+    monkeypatch.setattr(runner_runtime, "AUTH_PATH", tmp_path / "runner-state" / "runner.auth")
     store = TaskStore(max_workers=1)
     try:
         submitted = store.submit(

@@ -184,14 +184,41 @@ def test_stale_live_state_fails_closed_instead_of_overwriting_ownership(tmp_path
     assert runtime.STATE_PATH.exists()
 
 
-def test_runner_mutex_rejects_second_owner_on_windows():
+def test_runner_mutex_rejects_second_owner_on_windows(tmp_path):
     import os
     from execution import execution_runner_service as service
     if os.name != "nt":
         pytest.skip("Windows named mutex")
-    first = service._acquire_runner_mutex()
+    state = tmp_path / "owned" / "runtime.json"
+    alternate = tmp_path / "isolated" / "runtime.json"
+    assert service._runner_mutex_name(state) == service._runner_mutex_name(state)
+    assert service._runner_mutex_name(state) != service._runner_mutex_name(alternate)
+    first = service._acquire_runner_mutex(state)
     try:
         with pytest.raises(RuntimeError, match="already owns the runtime mutex"):
-            service._acquire_runner_mutex()
+            service._acquire_runner_mutex(state)
+        second = service._acquire_runner_mutex(alternate)
+        service._release_runner_mutex(second)
     finally:
         service._release_runner_mutex(first)
+
+
+def test_isolated_runner_does_not_replace_production_owner(tmp_path, monkeypatch):
+    """A temporary test Runner must not take over the configured production owner."""
+    before = runtime.execution_runner_status()
+    production_id = (before.get("runner") or {}).get("runner_instance_id")
+    with monkeypatch.context() as isolated:
+        _redirect_state(tmp_path / "isolated-runner", isolated)
+        started = runtime.start_execution_runner()
+        try:
+            assert started["status"] == "started"
+            assert started["runner"]["runner_instance_id"] != production_id
+            assert runtime.execution_runner_status()["production_ready"] is True
+        finally:
+            assert runtime.stop_execution_runner()["status"] in {"stopped", "already_stopped"}
+
+    after = runtime.execution_runner_status()
+    assert after["running"] == before["running"]
+    if before["running"]:
+        assert after["production_ready"] is True
+        assert after["runner"]["runner_instance_id"] == production_id

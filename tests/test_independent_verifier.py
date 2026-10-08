@@ -68,7 +68,24 @@ def test_independent_file_sha256_verifier_promotes_frozen_state(workspace):
     assert history["verifications"][0]["verification_status"] == "verified"
 
 
-def test_independent_pytest_verifier_reruns_test(workspace):
+@pytest.fixture
+def isolated_verifier_runner(workspace, tmp_path, monkeypatch):
+    """Run acceptance verification against this test's own workspace Runner."""
+    from execution import execution_runner_runtime as runner_runtime
+
+    state_dir = tmp_path / "verification-runner"
+    monkeypatch.setenv("AGENT_WORKSPACE", str(workspace))
+    monkeypatch.setattr(runner_runtime, "STATE_DIR", state_dir)
+    monkeypatch.setattr(runner_runtime, "STATE_PATH", state_dir / "runtime.json")
+    monkeypatch.setattr(runner_runtime, "AUTH_PATH", state_dir / "runner.auth")
+    runner_runtime.start_execution_runner()
+    try:
+        yield
+    finally:
+        runner_runtime.stop_execution_runner()
+
+
+def test_independent_pytest_verifier_reruns_test(workspace, isolated_verifier_runner):
     revision = _freeze("Pytest verifier")
     (workspace / "test_sample.py").write_text(
         "def test_ok():\n    assert 2 + 2 == 4\n",

@@ -137,7 +137,7 @@ def test_cancel_queued_prevents_execution(tmp_path, monkeypatch):
 def test_cancel_real_long_process_and_preserve_unrelated_process(store, tmp_path):
     unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     task_id = store.submit({"tool": "run_process", "arguments": {
-        "program": sys.executable, "args": ["-c", "import pathlib,time; pathlib.Path('started').write_text('ok'); time.sleep(30); pathlib.Path('too-late').write_text('bad')"]}})["task_id"]
+        "program": sys.executable, "backend": "in_process", "args": ["-c", "import pathlib,time; pathlib.Path('started').write_text('ok'); time.sleep(30); pathlib.Path('too-late').write_text('bad')"]}})["task_id"]
     try:
         deadline = time.monotonic() + 5
         while not (tmp_path / "started").exists() and time.monotonic() < deadline:
@@ -175,7 +175,7 @@ def test_cancel_real_process_kills_owned_descendants(store, tmp_path):
         "time.sleep(30)"
     )
     task_id = store.submit({"tool": "run_process", "arguments": {
-        "program": sys.executable, "args": ["-c", parent_script],
+        "program": sys.executable, "backend": "in_process", "args": ["-c", parent_script],
     }})["task_id"]
     deadline = time.monotonic() + 5
     while not (tmp_path / "descendant-started").exists() and time.monotonic() < deadline:
@@ -198,7 +198,7 @@ def test_terminal_cancel_idempotent_and_missing(store):
 
 def test_cursor_output_stderr_truncation_and_no_repeat(store):
     task_id = store.submit({"tool": "run_process", "arguments": {
-        "program": sys.executable, "args": ["-c", "import sys;sys.stdout.write('x'*25001);sys.stderr.write('e'*23002)"]}})["task_id"]
+        "program": sys.executable, "backend": "in_process", "args": ["-c", "import sys;sys.stdout.write('x'*25001);sys.stderr.write('e'*23002)"]}})["task_id"]
     record = finish(store, task_id)
     assert record["status"] == "completed"
     result = record["result"]["result"]
@@ -391,7 +391,7 @@ os._exit(0)
 def test_cancel_batch_retains_prior_results(store, tmp_path):
     task_id = store.submit({"actions": [
         {"tool": "write_text", "arguments": {"path": "prior", "content": "kept"}},
-        {"tool": "run_process", "arguments": {"program": sys.executable, "args": ["-c", "import pathlib,time;pathlib.Path('ready').write_text('ok');time.sleep(30)"]}},
+        {"tool": "run_process", "arguments": {"program": sys.executable, "backend": "in_process", "args": ["-c", "import pathlib,time;pathlib.Path('ready').write_text('ok');time.sleep(30)"]}},
         {"tool": "write_text", "arguments": {"path": "never", "content": "no"}},
     ], "stop_on_error": False})["task_id"]
     deadline = time.monotonic() + 5
@@ -429,7 +429,7 @@ def test_task_powershell_uses_controlled_capture(store, tmp_path):
 
 def test_task_text_capture_counts_normalized_unicode(store):
     task_id = store.submit({"tool": "run_process", "arguments": {
-        "program": sys.executable, "args": ["-c", "import sys;sys.stdout.buffer.write(('你好\\r\\n'*8000).encode('utf-8'))"]}})["task_id"]
+        "program": sys.executable, "backend": "in_process", "args": ["-c", "import sys;sys.stdout.buffer.write(('你好\\r\\n'*8000).encode('utf-8'))"]}})["task_id"]
     record = finish(store, task_id)
     result = record["result"]["result"]
     assert record["status"] == "completed"

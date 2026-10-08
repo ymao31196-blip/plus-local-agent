@@ -41,12 +41,18 @@ MAX_ARG_CHARACTERS = 32_768
 MAX_STDIN_CHARACTERS = 100_000
 
 
-def _runner_mutex_name() -> str:
-    digest = hashlib.sha256(str(PROJECT_ROOT).casefold().encode("utf-8")).hexdigest()[:24]
+def _runner_mutex_name(state_file: Path) -> str:
+    """Bind ownership to the durable state location, not just the source tree.
+
+    Production uses its fixed state file; isolated tests use distinct state files.
+    The same state file always resolves to the same OS mutex.
+    """
+    normalized = str(state_file.resolve()).casefold()
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
     return f"Local\\PLAExecutionRunner-{digest}"
 
 
-def _acquire_runner_mutex():
+def _acquire_runner_mutex(state_file: Path):
     if os.name != "nt":
         return None
     import ctypes
@@ -59,7 +65,7 @@ def _acquire_runner_mutex():
     kernel32.CreateMutexW.restype = wintypes.HANDLE
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
-    handle = kernel32.CreateMutexW(None, False, _runner_mutex_name())
+    handle = kernel32.CreateMutexW(None, False, _runner_mutex_name(state_file))
     if not handle:
         raise OSError(ctypes.get_last_error(), "CreateMutexW failed")
     if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
@@ -449,7 +455,7 @@ def _write_state(path: Path, data: dict[str, object]) -> None:
 
 
 def serve(address: str, auth_file: Path, state_file: Path) -> int:
-    mutex = _acquire_runner_mutex()
+    mutex = _acquire_runner_mutex(state_file)
     listener = None
     runner = None
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="execution-runner")

@@ -281,7 +281,7 @@ def test_process_uses_pla_workdir_and_rejects_escape(roots):
     (pla / "src").mkdir()
     result = local_tools.run_process(
         "python", ["-c", "import os;print(os.getcwd())"],
-        root="pla", workdir="src",
+        root="pla", workdir="src", backend="in_process",
     )
     assert result["returncode"] == 0 and result["cwd"] == "src"
     assert str(pla / "src").casefold() in result["stdout"].strip().casefold()
