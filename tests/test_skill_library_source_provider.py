@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 
 from provider.provider_manifest import load_provider_manifests
+from capabilities.capability_models import CapabilityDescriptor
+from capabilities.capability_registry import CapabilityRegistry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,8 +23,13 @@ MANAGED = {
 
 def test_skill_library_managed_tools_are_explicitly_reviewed() -> None:
     provider = load_provider_manifests(ROOT)["skill-library"]
-    assert set(provider.tool_allowlist or []) == LEGACY | MANAGED
-    assert set(provider.tool_overrides) == LEGACY | MANAGED
+    assert set(provider.tool_allowlist or []) == MANAGED
+    assert not (LEGACY & set(provider.tool_allowlist or []))
+    assert set(provider.tool_overrides) == MANAGED
+    assert "Preferred Skill discovery entrypoint" in provider.tool_overrides["skill_search"]["description"]
+    assert "source-qualified ref" in provider.tool_overrides["skill_read"]["description"]
+    assert "DO NOT call skill-library.load again for the same ref" in provider.tool_overrides["skill_search"]["description"]
+    assert "DO NOT reload that same ref" in provider.tool_overrides["skill_read"]["description"]
     for tool in MANAGED - {"source_manage", "source_sync", "skill_prepare", "skill_apply_local", "skill_toggle", "skill_apply_change", "skill_restore_local", "skill_publication_apply", "skill_publication_prepare"}:
         override = provider.tool_overrides[tool]
         assert override["risk_level"] == "read"
@@ -38,6 +45,54 @@ def test_skill_library_managed_tools_are_explicitly_reviewed() -> None:
     assert provider.tool_overrides["skill_publication_prepare"]["requires_confirmation"] is False
     assert provider.tool_overrides["skill_plan_change"]["risk_level"] == "read"
     assert provider.tool_overrides["skill_prepare"]["requires_confirmation"] is False
+
+
+def test_task_language_discovers_skill_entrypoint_without_skill_keyword() -> None:
+    manifest = load_provider_manifests(ROOT)["skill-library"]
+    rule = manifest.tool_overrides["skill_search"]
+    registry = CapabilityRegistry()
+    registry.register_provider(
+        "skill-library",
+        [
+            CapabilityDescriptor(
+                id="skill-library.find",
+                provider_id="skill-library",
+                remote_name="skill_search",
+                title="Find Skills",
+                description=rule["description"],
+                tags=tuple(rule["tags"]),
+                risk_level="read",
+                input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+            )
+        ],
+    )
+    registry.register_provider(
+        "wps",
+        [
+            CapabilityDescriptor(
+                id="wps.beautify",
+                provider_id="wps",
+                remote_name="beautify",
+                title="PPT Optimize",
+                description="优化PPT版式和文字表达。",
+                input_schema={"type": "object"},
+            )
+        ],
+    )
+    for utterance in (
+        "帮我润色这个论文",
+        "改写论文摘要",
+        "优化这篇学术论文的表达",
+        "整理Word里的图片作为论文配图",
+        "按GitHub格式修复公式",
+    ):
+        matches = registry.search(utterance, limit=10)["capabilities"]
+        assert matches and matches[0]["id"] == "skill-library.find", utterance
+    for utterance in ("介绍什么是PCA", "天气预报", "创建一个空文件"):
+        assert not any(
+            match["id"] == "skill-library.find"
+            for match in registry.search(utterance, limit=10)["capabilities"]
+        )
 
 
 def test_local_source_roots_are_explicit_and_within_project() -> None:

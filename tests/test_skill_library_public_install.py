@@ -40,7 +40,7 @@ def test_public_config_and_manifest_fail_closed() -> None:
     manifest = json.loads(
         (ROOT / "provider_manifests" / "skill-library.json").read_text(encoding="utf-8")
     )
-    assert len(manifest["tool_allowlist"]) == 21
+    assert len(manifest["tool_allowlist"]) == 17
     assert manifest["tool_overrides"]["skill_apply_local"]["requires_confirmation"] is True
     assert manifest["tool_overrides"]["skill_prepare"]["requires_confirmation"] is False
 
@@ -48,6 +48,6 @@ def test_public_config_and_manifest_fail_closed() -> None:
 def test_docs_describe_install_and_write_permission_boundary() -> None:
     text = (ROOT / "docs" / "skill_library_provider.md").read_text(encoding="utf-8")
     assert "setup_skill_library.ps1" in text
-    assert "21项工具" in text
+    assert "17项工具" in text
     assert "writable_roots" in text
     assert "skill-library.apply-local" in text

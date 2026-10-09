@@ -185,3 +185,22 @@ def test_unknown_provider_and_capability_are_errors():
         registry.search("", provider_id="missing")
     with pytest.raises(ValueError, match="Unknown capability"):
         registry.describe("missing.tool")
+
+
+def test_chinese_capability_search_filters_instead_of_matching_everything():
+    registry = CapabilityRegistry()
+    registry.register_provider("skill-library", [
+        CapabilityDescriptor(
+            id="skill-library.find", provider_id="skill-library",
+            remote_name="skill_search", title="Find Skills",
+            description="检索可用于论文语言优化和学术写作的Skill",
+            input_schema={"type": "object", "properties": {}},
+            tags=("论文", "润色", "academic"),
+        )
+    ])
+    registry.register_provider("unrelated", [make_capability("unrelated", "weather")])
+
+    result = registry.search("论文语言优化")
+    assert [item["id"] for item in result["capabilities"]] == ["skill-library.find"]
+    assert registry.search("天气预报")["capabilities"] == []
+    assert registry.search("论文 academic")["capabilities"][0]["id"] == "skill-library.find"

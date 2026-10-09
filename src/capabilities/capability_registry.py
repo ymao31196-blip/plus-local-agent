@@ -10,6 +10,17 @@ from capabilities.capability_models import CapabilityDescriptor
 
 
 TOKEN_RE = re.compile(r"[a-z0-9_\-\.]+", re.IGNORECASE)
+_CJK_RE = re.compile(r"[\u3400-\u9fff]+")
+
+
+def _cjk_query_terms(query: str) -> set[str]:
+    """Extract searchable Chinese bigrams, avoiding empty-token match-all."""
+    chunks = _CJK_RE.findall(query)
+    return {
+        chunk[i : i + 2]
+        for chunk in chunks
+        for i in range(max(0, len(chunk) - 1))
+    } | {chunk for chunk in chunks if len(chunk) == 1}
 
 
 class CapabilityRegistry:
@@ -92,6 +103,7 @@ class CapabilityRegistry:
             raise ValueError(f"Unknown provider: {provider_id}")
 
         tokens = [token.casefold() for token in TOKEN_RE.findall(query)]
+        cjk_terms = _cjk_query_terms(query)
         ranked: list[tuple[int, str, CapabilityDescriptor, bool]] = []
         for descriptor in self._capabilities.values():
             if provider_id is not None and descriptor.provider_id != provider_id:
@@ -112,8 +124,11 @@ class CapabilityRegistry:
             )).casefold()
             if tokens and not all(token in haystack for token in tokens):
                 continue
+            cjk_matches = [term for term in cjk_terms if term in haystack]
+            if cjk_terms and not cjk_matches:
+                continue
 
-            score = 0
+            score = len(cjk_matches) * 2
             for token in tokens:
                 if token in descriptor.id.casefold():
                     score += 8
