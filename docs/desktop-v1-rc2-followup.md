@@ -1,6 +1,6 @@
 # PLA Desktop 1.0.0-rc.2 — 用户安装后的复测
 
-2026-10-09。用户提供独立测试 Tunnel 信息并授权操作软件。本次通过 Windows Computer Use 实际操作已安装的 Tauri 界面；未使用原开发连接凭据。
+2026-10-09–10。用户提供独立测试 Tunnel 信息并授权操作软件。本次通过 Windows Computer Use 实际操作已安装的 Tauri 界面；未使用原开发连接凭据。
 
 ## 已定位并修复
 
@@ -22,8 +22,8 @@
 | 用户实际安装后的 MCP 工具 | PASS | 23 项目录；在私有独立测试目录真实读、创建、修改文件；独立 runner 执行 bundled Python 3.11.9；SHA 校验事务修改，共 4 项 |
 | 原开发服务保持 | PASS | 8766 / 8931 / 18081 原 PID 30744 / 19464 / 20620 保持不变 |
 | 新增原生 UI 自动脚本断言 | NOT TESTED | 已加入 native-ui.cjs；本次同等关键行为用 Computer Use 实际验证，未重跑整个 CDP 自动套件 |
-| 真实 ChatGPT MCP 调用 | BLOCKED | 用户已填写 PLA-TEST 创建窗口；新增持久连接的最后提交等待操作时确认，未点击创建，未发送测试聊天 |
-| 经 Tunnel 的正向工具调用 | NOT TESTED | 成功控制面轮询仅证明远端连接；本地 MCP 工具调用不等同于 Tunnel 遍历 |
+| 真实 ChatGPT MCP 调用 | PASS | 2026-10-10 用户完成连接；通过 ChatGPT 网页 PLA-TEST 实际创建、读取、替换文件，独立 runner 执行 Python --version exit 0，再执行 SHA 校验事务修改及最终读取 |
+| 经 Tunnel 的正向工具调用 | PASS | 真实 ChatGPT → 用户独立 Secure MCP Tunnel → 已安装 Runtime → 文件、独立 runner、事务修改 → ChatGPT 返回；本地最终文件内容及哈希独立核对一致 |
 | 干净 Windows / 系统重启 | BLOCKED | 本机仍是开发机，未提供独立环境或安全重启条件 |
 
 ## 产物
@@ -36,3 +36,11 @@
 - Authenticode：未签名测试候选；自动更新禁用。
 
 证据位于 `.desktop-build/user-evidence/` 及交付目录 `evidence/rc2/`。RC.1 的 825 源码回归、完整安装卸载和生命周期测试属于此前基线，详见原验收报告，不作为本次重新执行的结果。
+
+## 2026-10-10 真实 ChatGPT 验收证据
+
+用户自行完成 PLA-TEST 连接并先实际诊断和列目录。随后在同一测试聊天发送限定新建私有测试目录的验收请求；未操作已有 work 文件或密钥。ChatGPT 返回创建/读取、FIRST → SECOND 替换、named_pipe_candidate 的 Python 3.11.9、带 expected_sha256 的 apply_changeset 和最终读取全部通过。
+
+最终文件：`C:\Users\26286\AppData\Local\io.pla.desktop\workspace\desktop-chatgpt-e2e-20261010-001\result.txt`。内容：`PLA_CHATGPT_E2E_VERIFIED`。SHA-256：`55c2da4072cda0c73e1e29b8732992ebd9219f9bfdd806aa2df127ba0d83a8ed`；以只读文件工具独立计算，与 ChatGPT 返回完全一致。独立 runner 状态记录的镜像是 `D:\PLA Desktop\resources\runtime\pla-runtime.exe`。
+
+聊天：https://chatgpt.com/g/g-p-6911c6442f2481918141137a81e3c2da-dui-chatgptde-tan-suo/c/6ac911d1-aaf4-83ea-b152-e94f4e32501c 。截图、限定本次结果的 DOM 文本和报告已交付到 `evidence/rc2/chatgpt-e2e-*`。没有将此通过等同于干净 Windows、系统重启、Office/Skills 或完整正式发行验收。
