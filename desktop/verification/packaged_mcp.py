@@ -80,10 +80,14 @@ async def exercise(port, browser=False, data=None):
                     raise
         results.append({'test': 'frozen traversal/program/private-path rejection', 'status': 'PASS'})
         if data:
-            value = await call('capability_invoke', {'capability_id': 'core.workspace_root_upsert',
+            try:
+                value = await call('capability_invoke', {'capability_id': 'core.workspace_root_upsert',
                                'arguments': {'name': 'private', 'path': str(data), 'read': True, 'write': True,
                                              'execute': True, 'expected_sha256': None}, 'confirmation': 'INVOKE'})
-            assert value['status'] == 'error' and 'private desktop data' in json.dumps(value), value
+                assert value['status'] == 'error' and 'private desktop data' in json.dumps(value), value
+            except Exception as exc:
+                from fastmcp.exceptions import ToolError
+                assert isinstance(exc, ToolError) and 'private desktop data' in str(exc), exc
             results.append({'test': 'frozen MCP workspace registration rejects private data even with confirmation', 'status': 'PASS'})
     return results
 

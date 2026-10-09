@@ -65,6 +65,7 @@ desktop/browser-component/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/resources/
 desktop/src-tauri/native/
+desktop/src-tauri/gen/
 *.egg-info/
 
 # Runtime workspace output; preserve only the reproducible ChatGPT E2E fixture.
