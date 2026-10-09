@@ -1,5 +1,18 @@
 # plus-local-agent
 
+## PLA Desktop V1 测试候选
+
+Windows 桌面候选安装包在本地构建输出 `dist/desktop-v1` 中。安装包包含 Runtime、Python
+执行组件和官方 Tunnel 客户端；普通用户无需安装 Python、Node 或 Rust，也无需运行开发脚本。
+首次图形配置向导会初始化独立用户数据目录、使用 Windows DPAPI 加密保存 runtime API key、
+管理工作区读写执行权限，并进行真实本地 MCP 诊断调用。用户需配置自己的 Tunnel，并在
+ChatGPT 侧完成账户授权和端到端验收。浏览器组件默认关闭，可在界面启用；此候选未包含
+Office 与 Skills 的独立外部环境。
+
+当前为**未签名测试候选**，自动更新已禁用，尚不能宣称已经满足正式可信分发或完整人工验收。
+参阅[最终验收手册](docs/desktop-v1-acceptance.md)、[架构及权限边界](docs/desktop-v1-architecture.md)
+和[实施证据](docs/desktop-v1-progress.md)。下文原有源码与无界面安装方式继续支持。
+
 **ChatGPT是界面；PLA是运行时。**
 
 [English](README.md) | **简体中文**

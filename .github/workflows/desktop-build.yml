@@ -1,0 +1,39 @@
+name: PLA Desktop candidate
+on:
+  workflow_dispatch:
+  push:
+    branches: ["codex/pla-desktop-v1"]
+    paths: ["desktop/**", "src/**", "tests/**", "requirements-core.txt", ".github/workflows/desktop-build.yml"]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pin Rust build compiler
+        shell: pwsh
+        run: rustup toolchain install 1.90.0 --profile minimal; rustup default 1.90.0
+      - name: Source regression
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pytest -q --tb=short
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Freeze, verify packaged tools and build NSIS
+        shell: pwsh
+        run: ./desktop/packaging/build.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pla-desktop-candidate-and-evidence
+          path: |
+            dist/desktop-v1/*
+            .desktop-build/*.log
+            .desktop-build/*report.json

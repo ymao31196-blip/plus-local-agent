@@ -16,6 +16,22 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 
 ## Quick start
 
+### PLA Desktop V1 test candidate
+
+For the Windows desktop candidate, use the locally built NSIS installer in
+`dist/desktop-v1`. It bundles the Runtime, Python execution interpreter and official
+Tunnel client. Users do not need to install Python, Node or Rust. The GUI wizard
+initializes private user data, saves a Windows DPAPI-protected runtime key, manages
+workspace permissions, and performs a real local MCP diagnostic call. Configure your
+own Tunnel and complete ChatGPT authorization separately. Browser support is opt-in;
+Office and Skills external environments are not included in this candidate.
+
+This is an **unsigned test candidate**, not a publicly approved stable release.
+Automatic updates are disabled. See the [desktop acceptance handbook](docs/desktop-v1-acceptance.md),
+[architecture and boundaries](docs/desktop-v1-architecture.md), and
+[implementation evidence](docs/desktop-v1-progress.md). The source installation below
+remains supported.
+
 ### Requirements
 
 - Windows 10/11 x64
