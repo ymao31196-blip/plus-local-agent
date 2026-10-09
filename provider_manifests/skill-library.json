@@ -25,7 +25,9 @@
     "skill_search",
     "skill_read",
     "skill_resource",
-    "skill_validate"
+    "skill_validate",
+    "skill_prepare",
+    "skill_apply_local"
   ],
   "tool_overrides": {
     "list_skills": {
@@ -160,6 +162,32 @@
       "tags": [
         "skills",
         "validation"
+      ]
+    },
+    "skill_prepare": {
+      "public_name": "prepare",
+      "title": "Prepare Skill Draft",
+      "description": "Validate and persist an immutable SKILL.md draft for a separately authorized writable local source. Does not change repository files.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "authoring",
+        "draft",
+        "preview"
+      ]
+    },
+    "skill_apply_local": {
+      "public_name": "apply-local",
+      "title": "Apply Reviewed Local Skill",
+      "description": "Write a reviewed Skill draft only to a separately allowlisted local source, requiring confirm=true and an exact expected file version. No Git commit or push.",
+      "risk_level": "write_local",
+      "requires_confirmation": true,
+      "tags": [
+        "skills",
+        "authoring",
+        "write",
+        "confirmation"
       ]
     }
   }

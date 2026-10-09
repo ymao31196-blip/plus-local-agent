@@ -1,4 +1,5 @@
 {
   "data_dir": "state/skill-library",
-  "local_roots": []
+  "local_roots": [],
+  "writable_roots": []
 }

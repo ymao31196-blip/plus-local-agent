@@ -14,7 +14,7 @@ config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 if LOCAL_CONFIG_PATH.is_file():
     local_config = json.loads(LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))
     if not isinstance(local_config, dict) or set(local_config) - {
-        "repo", "branch", "transport", "data_dir", "local_roots"
+        "repo", "branch", "transport", "data_dir", "local_roots", "writable_roots"
     }:
         raise ValueError("Unrecognized fields in skill-library.local.json")
     config.update(local_config)
@@ -36,6 +36,28 @@ for relative_root in local_roots:
     approved_roots.append(str(resolved))
 if approved_roots:
     os.environ["SKILL_LIBRARY_LOCAL_ROOTS"] = os.pathsep.join(approved_roots)
+else:
+    os.environ.pop("SKILL_LIBRARY_LOCAL_ROOTS", None)
+
+writable_roots = config.get("writable_roots", [])
+if not isinstance(writable_roots, list) or not all(
+    isinstance(root, str) and root.strip() for root in writable_roots
+):
+    raise ValueError("skill-library.writable_roots must be a list of paths")
+approved_write_roots = []
+for relative_root in writable_roots:
+    raw_root = Path(relative_root)
+    resolved = (PROJECT_ROOT / raw_root).resolve()
+    if raw_root.is_absolute() or not resolved.is_relative_to(PROJECT_ROOT):
+        raise ValueError("skill-library.writable_roots must stay inside PLA root")
+    if not any(resolved == read_root or read_root in resolved.parents
+               for read_root in map(Path, approved_roots)):
+        raise ValueError("skill-library.writable_roots must be inside local_roots")
+    approved_write_roots.append(str(resolved))
+if approved_write_roots:
+    os.environ["SKILL_LIBRARY_WRITE_ROOTS"] = os.pathsep.join(approved_write_roots)
+else:
+    os.environ.pop("SKILL_LIBRARY_WRITE_ROOTS", None)
 
 source_package = SKILL_LIBRARY_ROOT / "src" / "skill_library"
 if source_package.is_dir():
@@ -51,7 +73,7 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name == "skill_library":
         raise RuntimeError(
-            "Skill Library is not installed. Install chatgpt-skill-library==0.2.0 "
+            "Skill Library is not installed. Install chatgpt-skill-library>=0.3.0 "
             "in the provider environment or supply a checkout under workspace/skill-library."
         ) from exc
     raise

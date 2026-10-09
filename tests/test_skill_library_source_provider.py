@@ -12,6 +12,7 @@ LEGACY = {"list_skills", "search_skills", "read_skill", "refresh_library"}
 MANAGED = {
     "source_manage", "source_list", "source_sync", "skill_search",
     "skill_read", "skill_resource", "skill_validate",
+    "skill_prepare", "skill_apply_local",
 }
 
 
@@ -19,13 +20,15 @@ def test_skill_library_managed_tools_are_explicitly_reviewed() -> None:
     provider = load_provider_manifests(ROOT)["skill-library"]
     assert set(provider.tool_allowlist or []) == LEGACY | MANAGED
     assert set(provider.tool_overrides) == LEGACY | MANAGED
-    for tool in MANAGED - {"source_manage", "source_sync"}:
+    for tool in MANAGED - {"source_manage", "source_sync", "skill_prepare", "skill_apply_local"}:
         override = provider.tool_overrides[tool]
         assert override["risk_level"] == "read"
         assert override["requires_confirmation"] is False
-    for tool in {"source_manage", "source_sync"}:
+    for tool in {"source_manage", "source_sync", "skill_prepare", "skill_apply_local"}:
         override = provider.tool_overrides[tool]
         assert override["risk_level"] == "write_local"
+    assert provider.tool_overrides["skill_apply_local"]["requires_confirmation"] is True
+    assert provider.tool_overrides["skill_prepare"]["requires_confirmation"] is False
 
 
 def test_local_source_roots_are_explicit_and_within_project() -> None:
@@ -46,6 +49,7 @@ def test_operator_private_source_config_is_ignored_by_git() -> None:
     config = json.loads((ROOT / "config" / "skill-library.json").read_text(encoding="utf-8"))
     assert "repo" not in config
     assert config["local_roots"] == []
+    assert config.get("writable_roots", []) == []
 
 
 def test_provider_accepts_checkout_or_installed_skill_library() -> None:
@@ -54,3 +58,5 @@ def test_provider_accepts_checkout_or_installed_skill_library() -> None:
     assert 'if LOCAL_CONFIG_PATH.is_file():' in entrypoint
     assert 'if config.get("repo"):' in entrypoint
     assert 'from skill_library.server import main' in entrypoint
+    assert 'SKILL_LIBRARY_WRITE_ROOTS' in entrypoint
+    assert 'skill-library.writable_roots must be inside local_roots' in entrypoint

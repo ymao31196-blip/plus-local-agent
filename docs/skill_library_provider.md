@@ -15,12 +15,13 @@ PLA的`setup_providers.ps1 -Provider skill-library`负责安装该Provider的Pyt
 
 ## 配置
 
-公共`config/skill-library.json`只定义数据目录和默认空白的本地文件访问范围：
+公共`config/skill-library.json`只定义数据目录和默认空白的本地文件访问范围（读取、写入分别授权）：
 
 ```json
 {
   "data_dir": "state/skill-library",
-  "local_roots": []
+  "local_roots": [],
+  "writable_roots": []
 }
 ```
 
@@ -29,6 +30,7 @@ PLA的`setup_providers.ps1 -Provider skill-library`负责安装该Provider的Pyt
 ```json
 {
   "local_roots": ["workspace/skill-library"],
+  "writable_roots": [],
   "repo": "your-account/your-legacy-skill-repository",
   "branch": "main",
   "transport": "git"
@@ -52,6 +54,8 @@ skill-library.sources → 查看所有来源和缓存状态
 ```
 
 Source Registry配置和缓存保存在服务端`state/skill-library`，按来源隔离；不允许Skill自行执行脚本或扩展PLA的权限。
+
+如果用户需要直接维护自己的SKILL.md，可另行在本机私有配置中将**受控的Skill仓库目录**加入`writable_roots`（必须位于`local_roots`允许范围内），重载Provider后使用`skill-library.prepare`预览草稿、`skill-library.apply-local`在明确确认后写入。写入仅限已登记本地Source的`skills/<name>/SKILL.md`，并以文件SHA避免覆盖并发修改；Git提交/推送仍由PLA受控Git能力处理。参见Skill Library的`docs/authoring_v03.md`。
 
 ## 升级与验证
 
