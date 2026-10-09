@@ -9,7 +9,7 @@ PLA Desktop manages the existing ChatGPT-native execution environment. ChatGPT c
 - A private management process connected to the Tauri parent by anonymous stdin/stdout pipes. It accepts only fixed commands for status, configuration, lifecycle, workspace registration, logs and diagnostics. There is no management HTTP listener, user-selected executable or frontend Shell plugin.
 - The unchanged public MCP tool wrappers and capability broker serve tools over a separately configured loopback endpoint. Workspaces reuse the existing root validator and config hash mechanism. Command allowlists, semantic routing, confirmation and gate mechanisms remain in force.
 - Fixed-version Python 3.11.9 embeddable distribution provides controlled `python` execution without a system interpreter. The frozen Runtime's Python is independently bundled. This minimal execution interpreter does not include pip or third-party Python packages.
-- Checksum-verified official Secure MCP Tunnel v0.0.14 release, including its cloudflared runtime and license/SBOM files. It is launched only after the user supplies their own Tunnel ID and runtime key.
+- Checksum-verified official Secure MCP Tunnel v0.0.16 **runtime-cloudflared** release, including its cloudflared runtime and license/SBOM files. The narrow runtime retains the required `run`, health, metrics and MCP forwarding surfaces without bundling the full CLI's Codex assistant/plugin-management features. Its executable is renamed to the stable local resource name `tunnel-client.exe`. It is launched only after the user supplies their own Tunnel ID and runtime key.
 - Opt-in reviewed Playwright MCP 0.0.82 and Node 22.16.0 resources. They use system Microsoft Edge, an independent browser port, and private profiles. The existing Browser Runtime identity and ownership checks are retained.
 
 ## Native permissions and process ownership
@@ -36,7 +36,7 @@ The wizard can inspect a user-selected existing source directory for the expecte
 
 - Runtime readiness requires a successful real MCP tool catalog request, including the expected diagnostic tool. The current protocol's catalog works across MRTR/backchannel modes; a TCP listener or PID alone is insufficient.
 - Local verification invokes `diagnose_client`; it does not assert Tunnel traversal or ChatGPT authorization.
-- Tunnel readiness is read from the owned Tunnel's loopback `/readyz`. It does not establish ChatGPT account authorization or a remote tool call.
+- Tunnel connectivity requires the owned client's `/readyz` **and** a fresh `commands_poll_last_successful_timestamp_seconds` observation from `/metrics`. A newly observed poll error clears the connected state until a later successful poll; a stale success expires after 60 seconds. Local readiness alone remains explicitly unverified. This does not establish ChatGPT account authorization or a remote tool call.
 - Browser readiness requires capability discovery by Runtime; Node's PID alone is insufficient. Missing Edge must be diagnosed by an actual browser invocation before browser execution acceptance.
 - ChatGPT authorization is not observable locally. ChatGPT end-to-end status remains unverified until human acceptance is recorded separately.
 - Office and Skills external provider environments are not bundled in this candidate. Their state is explicitly unavailable. Existing source deployments can continue using their reviewed provider setup flow; the desktop does not silently borrow developer environments.

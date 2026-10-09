@@ -16,10 +16,13 @@ function renderWorkspaces(){const list=$('workspace-list');list.replaceChildren(
 $('refresh').onclick=()=>action(refresh);
 $('save-browser').onclick=()=>action(async()=>{await rpc('configure',{browser_enabled:$('browser-enabled').checked,browser_port:Number($('browser-port').value)});await refresh();notice('浏览器偏好已保存。启动 Runtime 后会检查真实 Provider 状态。');});
 const refreshBase=refresh;
+const tunnelText={ready:'已连接远端服务',stopped:'已停止',exited:'异常退出',starting_or_disconnected:'启动中或未连接',disconnected:'连接失败或中断',local_ready_waiting_control_plane:'本地就绪，远端连接待确认'};
 refresh=async()=>{await refreshBase();$('browser-enabled').checked=snapshot.config.browser_enabled;$('browser-port').value=snapshot.config.browser_port;$('browser').textContent=({disabled:'未启用',component_missing:'组件缺失',starting_or_unavailable:'启动中或暂不可用',unavailable:'暂不可用，请查看诊断',edge_missing:'未检测到 Microsoft Edge',provider_ready:'组件已连接，浏览器调用需另行验证'})[snapshot.browser]||'暂不可用';$('optional').textContent='Office：组件未安装 · Skills：组件未安装';if(snapshot.runtime==='exited')$('runtime').textContent='异常退出';if(snapshot.last_error)notice(snapshot.last_error,true);};
 for(const command of ['start','stop','restart','connect'])$(command).onclick=()=>action(async()=>{await rpc(command);await refresh();notice(command==='connect'?'Tunnel 已启动，等待真实连接检测。':'服务操作已完成。');});
 $('save-connection').onclick=()=>action(async()=>{await rpc('configure',{runtime_port:Number($('runtime-port').value),health_port:Number($('health-port').value),tunnel_id:$('tunnel-id').value.trim()});const secret=$('secret').value;if(secret){await rpc('credential',{secret});$('secret').value='';}await refresh();notice('连接配置已保存。');});
 $('save-workspace').onclick=()=>action(async()=>{await rpc('workspace_save',{name:$('workspace-name').value.trim(),path:$('workspace-path').value.trim(),read:$('allow-read').checked,write:$('allow-write').checked,execute:$('allow-execute').checked,expected_sha256:snapshot.workspaces.config_sha256});await refresh();notice('工作区授权已保存。');});
+const refreshWithComponents=refresh;
+refresh=async()=>{await refreshWithComponents();$('tunnel').textContent=tunnelText[snapshot.tunnel]||'连接待确认';};
 $('verify').onclick=()=>action(async()=>{const result=await rpc('verify');await refresh();notice(`真实本地 MCP 调用：${result.local_mcp}。Tunnel 链路及 ChatGPT 调用需分别验收。`);});
 $('complete-setup').onclick=()=>action(async()=>{if(!snapshot.local_mcp_verified)throw '请先完成真实本地工具验证。';await rpc('stop');await rpc('configure',{onboarding_complete:true});await refresh();view('overview');notice('本地配置向导已完成。请继续在 ChatGPT 侧完成授权和端到端验收。');});
 $('load-logs').onclick=()=>action(async()=>{$('log-output').textContent=(await rpc('logs')).lines.join('\n')||'暂无日志';});

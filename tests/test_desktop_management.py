@@ -108,3 +108,17 @@ def test_legacy_detection_only_reads_layout_and_does_not_import_credentials(tmp_
     assert 'PRIVATE_EXISTING_INSTALLATION_SENTINEL' not in json.dumps(result)
     assert not manager.config.secret_path.exists()
     assert (source / 'config/tunnel.local.yaml').read_text() == 'PRIVATE_EXISTING_INSTALLATION_SENTINEL'
+
+
+def test_tunnel_readiness_requires_fresh_remote_success_and_recovers_after_errors():
+    from desktop_runtime.health import TunnelReadiness
+    state = TunnelReadiness()
+    def metrics(success, errors=0):
+        return f'commands_poll_last_successful_timestamp_seconds {success}\ncommands_poll_errors_total{{error_kind="other"}} {errors}\n'
+    assert state.observe(True, metrics(0), 100) == 'local_ready_waiting_control_plane'
+    assert state.observe(True, metrics(100), 101) == 'ready'
+    assert state.observe(True, metrics(100, 1), 102) == 'disconnected'
+    assert state.observe(True, metrics(103, 1), 104) == 'ready'
+    assert state.observe(True, metrics(103, 1), 170) == 'disconnected'
+    assert state.observe(False, metrics(171, 1), 172) == 'starting_or_disconnected'
+    assert TunnelReadiness().observe(True, 'unknown_metric 100\n', 100) != 'ready'

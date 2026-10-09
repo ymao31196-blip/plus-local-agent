@@ -15,6 +15,7 @@ import time
 import urllib.request
 
 from desktop_runtime.config import DesktopConfig, atomic_write, redact
+from desktop_runtime.health import TunnelReadiness
 from host.workspace_manager import workspace_registry_status, workspace_registry_upsert, workspace_registry_remove
 from runtime.runtime_context import terminate_owned_process_tree
 
@@ -34,6 +35,7 @@ class Manager:
         self.last_error = ""
         self._secret = ""
         self.readers = {}
+        self.tunnel_readiness = TunnelReadiness()
 
     def _record(self, text):
         clean = redact(text, self._secret)[:4000]
@@ -153,6 +155,7 @@ class Manager:
         self._secret = self.config.secret()
         env = self._environment()
         env["CONTROL_PLANE_API_KEY"] = self._secret
+        self.tunnel_readiness = TunnelReadiness()
         self._spawn("tunnel", [str(tunnel), "run", "--control-plane.api-key", "env:CONTROL_PLANE_API_KEY",
                               "--control-plane.tunnel-id", cfg["tunnel_id"],
                               "--mcp.server-url", f"http://127.0.0.1:{cfg['runtime_port']}/mcp",
@@ -189,8 +192,10 @@ class Manager:
             try:
                 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
                 with opener.open(f"http://127.0.0.1:{self.config.value['health_port']}/readyz", timeout=2) as response:
-                    if response.status == 200:
-                        tunnel = "ready"
+                    local_ready = response.status == 200
+                with opener.open(f"http://127.0.0.1:{self.config.value['health_port']}/metrics", timeout=2) as response:
+                    metrics = response.read(2_000_000).decode("utf-8", errors="replace")
+                tunnel = self.tunnel_readiness.observe(local_ready, metrics, time.time())
             except Exception:
                 pass
         elif "tunnel" in self.children:
@@ -206,6 +211,7 @@ class Manager:
         return {"config": self.config.public(), "runtime": "ready" if ready else "starting" if alive else "exited" if "runtime" in self.children else "stopped",
                 "owned_processes": {role: {"pid": process.pid, "exit_code": process.poll()} for role, process in self.children.items()},
                 "tunnel": tunnel, "chatgpt_authorization": "not_observable_locally",
+                "tunnel_last_successful_poll": self.tunnel_readiness.last_success,
                 "chatgpt_e2e": "not_verified", "local_mcp_verified": self.local_verified,
                 "browser": browser, "office": "optional_component_not_installed",
                 "skills": "optional_component_not_installed", "last_error": self.last_error,

@@ -48,8 +48,12 @@ try {
     }
     $pythonArchive = Get-VerifiedArchive "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip" "python-embed.zip" "009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b"
     Expand-Archive -LiteralPath $pythonArchive -DestinationPath (Join-Path $resources "python") -Force
-    $tunnelArchive = Get-VerifiedArchive "https://github.com/openai/tunnel-client/releases/download/v0.0.14/tunnel-client-v0.0.14-windows-amd64.zip" "tunnel-v0.0.14.zip" "784ab8da7b5a88f0109f1fd8aaf0a1c86067430b896dddf307ef7e3cc49fa1a5"
-    Expand-Archive -LiteralPath $tunnelArchive -DestinationPath (Join-Path $resources "tunnel") -Force
+    $tunnelArchive = Get-VerifiedArchive "https://github.com/openai/tunnel-client/releases/download/v0.0.16/tunnel-client-runtime-cloudflared-v0.0.16-windows-amd64.zip" "tunnel16.zip" "02346814ccd0a9a7a4e6d3d494e225c2befb095ede0c46cbe8d71a8d952acfcc"
+    $tunnelDirectory = [IO.Path]::GetFullPath((Join-Path $resources "tunnel"))
+    if (-not $tunnelDirectory.StartsWith($resources + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe generated Tunnel target" }
+    if (Test-Path -LiteralPath $tunnelDirectory) { Remove-Item -LiteralPath $tunnelDirectory -Recurse -Force }
+    Expand-Archive -LiteralPath $tunnelArchive -DestinationPath $tunnelDirectory
+    Move-Item -LiteralPath (Join-Path $tunnelDirectory "tunnel-client-runtime-cloudflared.exe") -Destination (Join-Path $tunnelDirectory "tunnel-client.exe")
     $node = Join-Path $resources "node.exe"
     if (-not (Test-Path -LiteralPath $node)) { Invoke-WebRequest "https://nodejs.org/dist/v22.16.0/win-x64/node.exe" -OutFile $node }
     if ((Get-FileHash -LiteralPath $node).Hash -ne "c5ff4c736112dd483c750fd4149d30c8a116db1a49b8b3ec88be4b65e6c86c19") { throw "Node component checksum mismatch" }
