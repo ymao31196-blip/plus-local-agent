@@ -89,6 +89,21 @@ def main():
         tests.append({'test': 'frozen Tunnel unexpected exit observed', 'status': 'PASS'})
         rpc('stop')
         tests.append({'test': 'network interruption on dedicated test network', 'status': 'NOT TESTED'})
+        empty_resources = Path(tempfile.mkdtemp(prefix='pla-missing-components-'))
+        missing_data = Path(tempfile.mkdtemp(prefix='pla-missing-data-'))
+        missing = subprocess.Popen([str(resources / 'runtime/pla-runtime.exe'), 'manager', '--data-dir', str(missing_data),
+                                    '--resources', str(empty_resources)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, encoding='utf-8')
+        try:
+            missing.stdin.write(json.dumps({'command': 'configure', 'args': {'runtime_port': free_port()}})+'\n');missing.stdin.flush()
+            assert json.loads(missing.stdout.readline())['ok']
+            missing.stdin.write(json.dumps({'command': 'start', 'args': {}})+'\n');missing.stdin.flush()
+            failure = json.loads(missing.stdout.readline())
+            assert failure['ok'] is False and 'Required bundled component is missing' in failure['error'], failure
+            tests.append({'test': 'real frozen manager refuses missing mandatory components without borrowing developer Python', 'status': 'PASS'})
+        finally:
+            missing.stdin.close()
+            missing.wait(timeout=20)
     except Exception as exc:
         tests.append({'test': 'packaged fault acceptance', 'status': 'FAIL', 'error': str(exc)})
         raise

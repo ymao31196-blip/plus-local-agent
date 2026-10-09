@@ -135,6 +135,10 @@ class Manager:
             return self.status()
         port = self.config.value["runtime_port"]
         self._free_port(port)  # Refuse any existing listener; never reuse or kill it.
+        if getattr(sys, "frozen", False):
+            for relative in ("runtime/pla-runtime.exe", "python/python.exe", "python/python311.dll"):
+                if not (self.resources / relative).is_file():
+                    raise RuntimeError(f"Required bundled component is missing: {relative}; repair the installation")
         if self.config.value["browser_enabled"] and not self._alive("browser"):
             self._free_port(self.config.value["browser_port"])
             self._spawn("browser", self._command("browser"), self._environment())
