@@ -99,7 +99,14 @@ try {
     $digest = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText((Join-Path $releaseRoot "SHA256SUMS.txt"), "$digest  $($installers[0].Name)`n")
     $revision = & git rev-parse HEAD
-    [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = [bool](& git status --porcelain); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
+    # Git status can retain a stat-only change after Tauri rewrites CRLF/LF.
+    # Compare actual tracked content (staged and unstaged) and non-ignored new files.
+    & git diff --quiet HEAD --
+    if ($LASTEXITCODE -notin 0,1) { throw "Unable to verify build source content" }
+    $trackedContentDirty = $LASTEXITCODE -eq 1
+    $untrackedSource = @(& git ls-files --others --exclude-standard)
+    Assert-Exit "Untracked source inventory"
+    [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = ($trackedContentDirty -or $untrackedSource.Count -gt 0); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
     Write-Output "Installer: $installer"
     Write-Output "SHA-256: $digest"
 } finally {
