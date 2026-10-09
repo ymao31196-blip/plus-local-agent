@@ -55,3 +55,8 @@ PASS means actually executed successfully. FAIL means executed unsuccessfully. B
 - https://raw.githubusercontent.com/openai/tunnel-client/main/LICENSE
 - https://v2.tauri.app/distribute/windows-installer/
 - https://v2.tauri.app/start/prerequisites/
+# 2026-10-09 用户安装后的真实连接复测
+
+用户提供桌面 `test.txt` 中的独立测试 Tunnel ID / Runtime key，并授权操作已安装 GUI。Computer Use 实测发现已有 Runtime 已就绪，但 Tunnel ID 为空；填写时保存被运行状态拒绝，英文错误缺少配置页直接停止入口。停止本应用服务后，GUI 保存测试凭据成功（DPAPI），启动 Runtime / Tunnel 后远端元数据获取及成功控制面轮询通过，界面显示「已连接远端服务」。GUI 发起真实本地 MCP 诊断返回 PASS。测试过程中未读取或修改原开发连接凭据。
+
+修复配置页服务控制入口及常见错误中文提示；修复完成向导时停止服务、丢失已验证状态并断开 Tunnel 的问题。新增原生 UI 回归断言：完成向导后 Runtime PID 不变，仍 ready，本地验证仍通过。ChatGPT 新增 PLA-TEST 连接最后一步等待用户确认；真实 ChatGPT 文件/进程调用尚未通过。
