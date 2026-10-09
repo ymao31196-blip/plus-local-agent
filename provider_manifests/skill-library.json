@@ -33,7 +33,9 @@
     "skill_plan_change",
     "skill_apply_change",
     "skill_publish_plan",
-    "skill_restore_local"
+    "skill_restore_local",
+    "skill_publication_prepare",
+    "skill_publication_apply"
   ],
   "tool_overrides": {
     "list_skills": {
@@ -267,6 +269,32 @@
         "skills",
         "restore",
         "lifecycle",
+        "confirmation"
+      ]
+    },
+    "skill_publication_prepare": {
+      "public_name": "publication-prepare",
+      "title": "Preview Personal Skill Transfer",
+      "description": "Persist a per-file SHA-256 preview plan in the local Skill Library state for copying into a separately authorized new Git checkout; never alters source repositories.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "publication",
+        "preview",
+        "files"
+      ]
+    },
+    "skill_publication_apply": {
+      "public_name": "publication-apply",
+      "title": "Apply Reviewed Skill Transfer",
+      "description": "Confirm SHA-256-checked local Skill copy into a separately authorized empty skills/ destination of an existing Git checkout. No commit or push.",
+      "risk_level": "write_local",
+      "requires_confirmation": true,
+      "tags": [
+        "skills",
+        "publication",
+        "transfer",
         "confirmation"
       ]
     }

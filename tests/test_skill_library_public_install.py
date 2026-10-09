@@ -7,17 +7,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_optional_v04_installer_supports_local_reviewed_package_only() -> None:
+def test_optional_v05_installer_supports_local_reviewed_package_only() -> None:
     installer = (ROOT / "setup_skill_library.ps1").read_text(encoding="utf-8")
     assert "[switch]$ValidateOnly" in installer
     assert "[string]$SourcePath" in installer
     assert 'Join-Path $projectRoot "workspace\\skill-library"' in installer
-    assert "chatgpt_skill_library-0\\.4\\.0-" in installer
+    assert "chatgpt_skill_library-0\\.5\\.0-" in installer
     assert "chatgpt-skill-library" in installer
     assert "pyproject.toml" in installer
-    assert r"0\.4\.0" in installer  # Source and Wheel checks must match version
+    assert r"0\.5\.0" in installer  # Source and Wheel checks must match version
     assert '"-m", "pip", "install", "--no-deps", $package' in installer
-    assert "SKILL_LIBRARY_PACKAGE_READY 0.4.0" in installer
+    assert "SKILL_LIBRARY_PACKAGE_READY 0.5.0" in installer
     assert 'git clone' not in installer
     assert "SKILL_LIBRARY_WRITE_ROOTS" not in installer
 
@@ -40,7 +40,7 @@ def test_public_config_and_manifest_fail_closed() -> None:
     manifest = json.loads(
         (ROOT / "provider_manifests" / "skill-library.json").read_text(encoding="utf-8")
     )
-    assert len(manifest["tool_allowlist"]) == 19
+    assert len(manifest["tool_allowlist"]) == 21
     assert manifest["tool_overrides"]["skill_apply_local"]["requires_confirmation"] is True
     assert manifest["tool_overrides"]["skill_prepare"]["requires_confirmation"] is False
 
@@ -48,6 +48,6 @@ def test_public_config_and_manifest_fail_closed() -> None:
 def test_docs_describe_install_and_write_permission_boundary() -> None:
     text = (ROOT / "docs" / "skill_library_provider.md").read_text(encoding="utf-8")
     assert "setup_skill_library.ps1" in text
-    assert "19项工具" in text
+    assert "21项工具" in text
     assert "writable_roots" in text
     assert "skill-library.apply-local" in text

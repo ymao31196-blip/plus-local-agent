@@ -18,7 +18,7 @@ function Assert-Source {
     }
     $resolved = Resolve-Path -LiteralPath $InputPath -ErrorAction SilentlyContinue
     if ($null -eq $resolved) {
-        throw "Skill Library source was not found: $InputPath. Clone or download the reviewed Skill Library v0.4.0 source, or pass -SourcePath to a local wheel."
+        throw "Skill Library source was not found: $InputPath. Clone or download the reviewed Skill Library v0.5.0 source, or pass -SourcePath to a local wheel."
     }
     $path = [string]$resolved.ProviderPath
     if (Test-Path -LiteralPath $path -PathType Container) {
@@ -28,13 +28,13 @@ function Assert-Source {
         }
         $sourceToml = Get-Content -LiteralPath $metadata -Raw -Encoding UTF8
         if ($sourceToml -notmatch '(?m)^name\s*=\s*"chatgpt-skill-library"\s*$' -or
-            $sourceToml -notmatch '(?m)^version\s*=\s*"0\.4\.0"\s*$') {
-            throw "The source directory must contain the reviewed chatgpt-skill-library v0.4.0 project."
+            $sourceToml -notmatch '(?m)^version\s*=\s*"0\.5\.0"\s*$') {
+            throw "The source directory must contain the reviewed chatgpt-skill-library v0.5.0 project."
         }
         return $path
     }
-    if (-not ($path -match 'chatgpt_skill_library-0\.4\.0-.*\.whl$')) {
-        throw "Only the reviewed chatgpt_skill_library-0.4.0 wheel is accepted: $path"
+    if (-not ($path -match 'chatgpt_skill_library-0\.5\.0-.*\.whl$')) {
+        throw "Only the reviewed chatgpt_skill_library-0.5.0 wheel is accepted: $path"
     }
     return $path
 }
@@ -79,17 +79,17 @@ if (-not (Test-Path -LiteralPath $envPython -PathType Leaf)) {
 }
 Invoke-Checked -Program $envPython -Arguments @(
     "-m", "pip", "install", "--no-deps", $package
-) -Step "Install reviewed Skill Library v0.4.0 server package"
+) -Step "Install reviewed Skill Library v0.5.0 server package"
 
 $verify = @'
 from importlib.metadata import version
 from skill_library.authoring import SkillAuthor
 from skill_library.server import mcp
-assert version("chatgpt-skill-library") == "0.4.0"
+assert version("chatgpt-skill-library") == "0.5.0"
 assert mcp.name == "Skill Library"
-print("SKILL_LIBRARY_PACKAGE_READY 0.4.0")
+print("SKILL_LIBRARY_PACKAGE_READY 0.5.0")
 '@
 Invoke-Checked -Program $envPython -Arguments @(
     "-I", "-c", $verify
 ) -Step "Verify installed Skill Library package"
-Write-Host "[PLA Skill Library] READY. Run the approved provider reload to expose 19 tools."
+Write-Host "[PLA Skill Library] READY. Run the approved provider reload to expose 21 tools."
