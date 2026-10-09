@@ -12,8 +12,8 @@ Automatic verification passed 825 source tests, actual frozen/installed MCP file
 
 This package is unsigned. Windows Authenticode and Tauri updater signing are separate concerns; neither is configured. Automatic updating is disabled. Manual upgrade requires verifying source and SHA-256, exiting the app, and running the reviewed installer while retaining user data. No public push, Release or public hosting is authorized or performed.
 
-Installer: `PLA Desktop_1.0.0-rc.2_x64-setup.exe` (89,755,283 bytes).
+Installer: `PLA Desktop_1.0.0-rc.2_x64-setup.exe` (89,749,305 bytes).
 
-SHA-256: `9db98b5a3ab4559e80dc5fceaf0313aa56dd4dbb19c969f4f376f8fa3f7db148`.
+SHA-256: `5ed26e86cf57e3d0a8905abaed24a1a4fc80582a3eacbbf6385f411141c4fb2f`.
 
-Build source: `685f38ef2071369af770c73548f959d1b4a56b17` on `codex/pla-desktop-v1`. The manifest records source_dirty=true from a Cargo.toml line-ending rewrite; no content diff remained. See the RC.2 follow-up for the exact build and test limits.
+Build source: `3a6e9b7855683b4c299297ae80d1f40d3f1b878c`, source_dirty=false. The user-installed initial RC.2 package and its E2E evidence are archived separately; see the follow-up report for exact artifact/test correspondence.

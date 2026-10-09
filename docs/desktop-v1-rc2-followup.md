@@ -29,10 +29,11 @@
 ## 产物
 
 - 安装包：`dist/desktop-v1/PLA Desktop_1.0.0-rc.2_x64-setup.exe`
-- 大小：89,755,283 bytes
-- SHA-256：`9db98b5a3ab4559e80dc5fceaf0313aa56dd4dbb19c969f4f376f8fa3f7db148`
-- 源码：`685f38ef2071369af770c73548f959d1b4a56b17`，分支 `codex/pla-desktop-v1`
-- 构建 manifest 的 `source_dirty=true` 原样保留：Tauri 写回 Cargo.toml 的换行格式触发 Git 状态；Git 内容 diff 为空，重新索引后工作区干净。构建过程中 UI 草稿修复提交后，本次已安装产物通过实际草稿保留验收。未将该构建声明为 clean-source build。
+- 大小：89,749,305 bytes
+- SHA-256：`5ed26e86cf57e3d0a8905abaed24a1a4fc80582a3eacbbf6385f411141c4fb2f`
+- 源码：`3a6e9b7855683b4c299297ae80d1f40d3f1b878c`，分支 `codex/pla-desktop-v1`
+- 最新构建 manifest 的 `source_dirty=false`。构建逻辑已改为比较实际 Git 内容及非忽略的新文件，避免 Tauri 写回换行格式造成仅 stat 状态的误判。最新构建复用已冻结 RC.2 Runtime；冻结后 Runtime 源码未改动，打包 MCP / 浏览器 10 项重新通过。
+- 用户当前安装及真实 ChatGPT E2E 对应首次 RC.2 产物：89,755,283 bytes，SHA-256 `9db98b5a3ab4559e80dc5fceaf0313aa56dd4dbb19c969f4f376f8fa3f7db148`，源码 `685f38ef2071369af770c73548f959d1b4a56b17`。首次安装包/manifest/hash 原样保存在 `archive/rc2-initial/`。最新重构建仅修改构建记录逻辑，应用源码无功能变化；未将此前实际安装证据误记为最新二进制的安装重测。
 - Authenticode：未签名测试候选；自动更新禁用。
 
 证据位于 `.desktop-build/user-evidence/` 及交付目录 `evidence/rc2/`。RC.1 的 825 源码回归、完整安装卸载和生命周期测试属于此前基线，详见原验收报告，不作为本次重新执行的结果。
@@ -44,3 +45,7 @@
 最终文件：`C:\Users\26286\AppData\Local\io.pla.desktop\workspace\desktop-chatgpt-e2e-20261010-001\result.txt`。内容：`PLA_CHATGPT_E2E_VERIFIED`。SHA-256：`55c2da4072cda0c73e1e29b8732992ebd9219f9bfdd806aa2df127ba0d83a8ed`；以只读文件工具独立计算，与 ChatGPT 返回完全一致。独立 runner 状态记录的镜像是 `D:\PLA Desktop\resources\runtime\pla-runtime.exe`。
 
 聊天：https://chatgpt.com/g/g-p-6911c6442f2481918141137a81e3c2da-dui-chatgptde-tan-suo/c/6ac911d1-aaf4-83ea-b152-e94f4e32501c 。截图、限定本次结果的 DOM 文本和报告已交付到 `evidence/rc2/chatgpt-e2e-*`。没有将此通过等同于干净 Windows、系统重启、Office/Skills 或完整正式发行验收。
+
+## 2026-10-10 后续构建及回归收尾
+
+最新 clean-source 重构建退出 0，manifest SHA-256 与实际安装包一致。当前源码全量测试 `825 passed in 163.17s`。用户已安装 RC.2 的七项 headless 异常测试通过；专用网络中断仍为 NOT TESTED。完整 CDP 套件及最新重构建二进制的安装生命周期未在本轮重跑，用户实装原 RC.2 的 Computer Use 及 ChatGPT E2E 证据保留。用户新反馈工作区单路径体验与多 root 能力不符，该问题进入下一项复现与修复，不宣称整体发行已完成。

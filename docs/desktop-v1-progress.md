@@ -1,3 +1,7 @@
+## 2026-10-10 构建与回归收尾
+
+RC.2 当前源码全量 825 项通过；用户安装包异常 7 项通过，专用网络中断尚未测。clean-source 重构建退出 0，源码 3a6e9b7，SHA-256 5ed26e86cf57e3d0a8905abaed24a1a4fc80582a3eacbbf6385f411141c4fb2f。原实装及 ChatGPT 验收对应的 RC.2 首次包已归档；最新版重构建未混用旧二进制的安装测试证据。用户反馈的多 root 界面问题待复现处理。
+
 # PLA Desktop V1 implementation and evidence
 
 This file records the Desktop V1 implementation against the owner's unchanged acceptance criteria.
