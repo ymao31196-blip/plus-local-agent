@@ -36,6 +36,14 @@ This file records the Desktop V1 implementation against the owner's unchanged ac
 - No Windows Sandbox executable or configured VM runtime was found on this host. A clean Windows test environment and reboot validation need an external test machine/VM.
 - Windows signing certificate and trusted update-signing/release infrastructure were not supplied; only an unsigned local test candidate is authorized.
 
+## Final local checkpoint — 2026-10-09
+
+All executed final automatic suites passed: 825 source tests; 10 frozen/installed MCP checks including an explicitly authorized external directory, independent runner, transaction and real browser calls; 10 installed UI/lifecycle checks; 7 installation/uninstall checks; 7 packaged fault checks. The dedicated authenticated-network interruption remains NOT TESTED. The frozen manager also refused a missing mandatory-component payload. The final installer was installed and uninstalled, user data and the MCP-created authorized workspace file survived, and the exact three original developer listener PIDs were unchanged.
+
+Build source: `e711724528a05cf459ea6f2d0903ac0633fddcf2` (clean). Package: `dist/desktop-v1/PLA Desktop_1.0.0-rc.1_x64-setup.exe`, 89,738,878 bytes, SHA-256 `854392e35310134d5e079961435e81630ca391176b615df9d11668234139b437`, Authenticode `NotSigned`.
+
+Stages 1–4 are complete for this local test candidate; automatic portions of stage 5 passed; stage 6 delivery documentation/evidence is assembled. Full acceptance remains BLOCKED by legitimate test Tunnel credentials, personal ChatGPT authorization and a clean, safely rebootable Windows environment. No overall P0/public-release qualification is claimed. See `desktop-v1-test-report.md`, `desktop-v1-release-notes.md` and the acceptance handbook for precise grades and continuation.
+
 ## Evidence rules
 
 PASS means actually executed successfully. FAIL means executed unsuccessfully. BLOCKED requires a real unavailable dependency/action. NOT TESTED means no execution evidence. Local MCP does not establish Tunnel traversal, account authorization or ChatGPT acceptance. Developer-machine installation is not a clean Windows environment. No public push/release is authorized. Automatic updates stay disabled without signing infrastructure.
