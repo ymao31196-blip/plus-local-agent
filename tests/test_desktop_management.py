@@ -69,6 +69,27 @@ def test_workspace_permissions_reuse_policy_and_preserve_user_files(tmp_path):
     assert marker.read_text() == 'keep'
 
 
+def test_multiple_roots_addition_never_overwrites_without_explicit_edit(tmp_path):
+    manager = Manager(tmp_path / 'data', tmp_path / 'resources')
+    first, second = tmp_path / 'first', tmp_path / 'second'
+    first.mkdir(); second.mkdir()
+    fields = {'read': True, 'write': False, 'execute': False, 'mode': 'create'}
+    one = manager.dispatch('workspace_save', {**fields, 'name': 'first', 'path': str(first), 'expected_sha256': None})
+    two = manager.dispatch('workspace_save', {**fields, 'name': 'second', 'path': str(second), 'expected_sha256': one['config_sha256']})
+    assert two['roots']['first']['path'] == str(first)
+    assert two['roots']['second']['path'] == str(second)
+    before = manager.config.workspace_path.read_bytes()
+    with pytest.raises(ValueError, match='Root name already exists'):
+        manager.dispatch('workspace_save', {**fields, 'name': 'first', 'path': str(second), 'expected_sha256': two['config_sha256']})
+    assert manager.config.workspace_path.read_bytes() == before
+    edited = manager.dispatch('workspace_save', {**fields, 'mode': 'update', 'name': 'first', 'path': str(second), 'expected_sha256': two['config_sha256']})
+    assert edited['roots']['first']['path'] == str(second)
+    assert edited['roots']['second'] == two['roots']['second']
+    assert edited['config_sha256'] != two['config_sha256']
+    with pytest.raises(ValueError, match='Root no longer exists'):
+        manager.dispatch('workspace_save', {**fields, 'mode': 'update', 'name': 'missing', 'path': str(first), 'expected_sha256': edited['config_sha256']})
+
+
 def test_developer_overrides_and_keys_are_not_inherited(tmp_path, monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-not-for-desktop')
     monkeypatch.setenv('PLA_EXTERNAL_PROVIDERS', '*')

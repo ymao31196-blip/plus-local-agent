@@ -293,12 +293,22 @@ class Manager:
             if self._alive("runtime"):
                 raise ValueError("Stop Runtime before changing workspace permissions")
             if command == "workspace_save":
+                fields = dict(args)
+                mode = fields.pop("mode", "upsert")
+                if mode not in {"create", "update", "upsert"}:
+                    raise ValueError("Invalid workspace save mode")
+                existing = workspace_registry_status(self.config.workspace_path, self.resources)["roots"]
+                name = fields.get("name")
+                if mode == "create" and name in existing:
+                    raise ValueError("Root name already exists; choose a different name or edit the existing root")
+                if mode == "update" and name not in existing:
+                    raise ValueError("Root no longer exists; refresh the workspace list")
                 target = Path(args.get("path", "")).resolve()
                 if not target.is_dir():
                     raise ValueError("Select an existing directory")
                 if target == self.config.root or target in self.config.root.parents or self.config.root in target.parents:
                     raise ValueError("Workspace must not overlap private application data")
-                return workspace_registry_upsert(self.config.workspace_path, self.resources, **args)
+                return workspace_registry_upsert(self.config.workspace_path, self.resources, **fields)
             return workspace_registry_remove(self.config.workspace_path, self.resources, **args)
         if command == "verify":
             if not self._alive("runtime"):

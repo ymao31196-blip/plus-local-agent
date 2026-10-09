@@ -104,7 +104,7 @@ try {
     & git diff --quiet HEAD --
     if ($LASTEXITCODE -notin 0,1) { throw "Unable to verify build source content" }
     $trackedContentDirty = $LASTEXITCODE -eq 1
-    $untrackedSource = @(& git ls-files --others --exclude-standard)
+    $untrackedSource = @(& git -C $projectRoot ls-files --others --exclude-standard)
     Assert-Exit "Untracked source inventory"
     [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = ($trackedContentDirty -or $untrackedSource.Count -gt 0); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
     Write-Output "Installer: $installer"
