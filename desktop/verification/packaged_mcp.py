@@ -26,10 +26,14 @@ async def exercise(port, browser=False, data=None):
         await call('replace_text', {'path': 'a.txt', 'old': 'first', 'new': 'second'})
         assert 'second' in (await call('read_text', {'path': 'a.txt'}))['content']
         results.append({'test': 'frozen file read/create/modify', 'status': 'PASS'})
+        await call('write_text', {'root': 'approved', 'path': 'approved.txt', 'content': 'approved-one\n'})
+        await call('replace_text', {'root': 'approved', 'path': 'approved.txt', 'old': 'approved-one', 'new': 'approved-two'})
+        assert 'approved-two' in (await call('read_text', {'root': 'approved', 'path': 'approved.txt'}))['content']
+        results.append({'test': 'frozen MCP file creation/read/modification in explicitly authorized external directory', 'status': 'PASS'})
         value = await call('run_process', {'program': 'python', 'args': ['-c', "print('PLA_PACKAGED_EXECUTION_OK')"]})
         assert value['returncode'] == 0 and 'PLA_PACKAGED_EXECUTION_OK' in value['stdout'], value
         results.append({'test': 'bundled Python controlled process', 'status': 'PASS', 'runner': value.get('runner')})
-        value = await call('run_process', {'program': 'python', 'args': ['--version'], 'backend': 'candidate_runner'})
+        value = await call('run_process', {'program': 'python', 'args': ['--version'], 'root': 'approved', 'backend': 'candidate_runner'})
         assert value['returncode'] == 0 and value['runner']['process_isolation'] == 'separate_process', value
         results.append({'test': 'frozen named-pipe execution runner', 'status': 'PASS'})
         await call('write_text', {'path': 'b.txt', 'content': 'before\n'})
@@ -80,10 +84,13 @@ async def exercise(port, browser=False, data=None):
                     raise
         results.append({'test': 'frozen traversal/program/private-path rejection', 'status': 'PASS'})
         if data:
+            registry = await call('capability_invoke', {'capability_id': 'core.workspace_roots_get', 'arguments': {}})
+            expected_sha = registry['data']['config_sha256']
+            assert expected_sha
             try:
                 value = await call('capability_invoke', {'capability_id': 'core.workspace_root_upsert',
                                'arguments': {'name': 'private', 'path': str(data), 'read': True, 'write': True,
-                                             'execute': True, 'expected_sha256': None}, 'confirmation': 'INVOKE'})
+                                             'execute': True, 'expected_sha256': expected_sha}, 'confirmation': 'INVOKE'})
                 assert value['status'] == 'error' and 'private desktop data' in json.dumps(value), value
             except Exception as exc:
                 from fastmcp.exceptions import ToolError
@@ -100,6 +107,7 @@ def main():
     args = parser.parse_args()
     resources = args.resources.resolve()
     data = Path(tempfile.mkdtemp(prefix='pla-desktop-packaged-'))
+    authorized = Path(tempfile.mkdtemp(prefix='pla-approved-workspace-'))
     process = subprocess.Popen([str(resources / 'runtime/pla-runtime.exe'), 'manager', '--data-dir', str(data),
                                 '--resources', str(resources)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, encoding='utf-8')
@@ -112,10 +120,11 @@ def main():
         result = json.loads(raw)
         assert result['ok'], result
         return result['result']
-    report = {'payload': str(resources), 'isolated_data': str(data), 'tests': [],
+    report = {'payload': str(resources), 'isolated_data': str(data), 'authorized_workspace': str(authorized), 'tests': [],
               'tunnel_e2e': 'NOT TESTED', 'chatgpt_e2e': 'NOT TESTED', 'clean_windows': 'NOT TESTED'}
     try:
         rpc('status')
+        rpc('workspace_save', {'name': 'approved', 'path': str(authorized), 'read': True, 'write': True, 'execute': True, 'expected_sha256': None})
         # An ephemeral port selected only for this isolated test.
         import socket
         with socket.socket() as listener:

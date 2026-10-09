@@ -97,6 +97,16 @@ class Manager:
             return [sys.executable, role]
         return [sys.executable, str(Path(__file__).with_name("entry.py")), role]
 
+    def _tunnel_environment(self):
+        # The vendor honors many config/profile/log environment variables. Pass
+        # only OS/network prerequisites, never a developer profile or raw-log flag.
+        allowed = {"SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA",
+                   "HOMEDRIVE", "HOMEPATH", "PATH", "PATHEXT", "COMSPEC", "USERNAME", "USERDOMAIN",
+                   "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES", "NUMBER_OF_PROCESSORS",
+                   "PROCESSOR_ARCHITECTURE", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                   "SSL_CERT_FILE", "SSL_CERT_DIR", "LANG", "LC_ALL"}
+        return {key: value for key, value in os.environ.items() if key.upper() in allowed}
+
     def _alive(self, role):
         child = self.children.get(role)
         return child is not None and child.poll() is None
@@ -153,7 +163,7 @@ class Manager:
             raise RuntimeError("Bundled Tunnel component is missing")
         self._free_port(cfg["health_port"])
         self._secret = self.config.secret()
-        env = self._environment()
+        env = self._tunnel_environment()
         env["CONTROL_PLANE_API_KEY"] = self._secret
         self.tunnel_readiness = TunnelReadiness()
         self._spawn("tunnel", [str(tunnel), "run", "--control-plane.api-key", "env:CONTROL_PLANE_API_KEY",

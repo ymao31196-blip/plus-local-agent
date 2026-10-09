@@ -122,3 +122,11 @@ def test_tunnel_readiness_requires_fresh_remote_success_and_recovers_after_error
     assert state.observe(True, metrics(103, 1), 170) == 'disconnected'
     assert state.observe(False, metrics(171, 1), 172) == 'starting_or_disconnected'
     assert TunnelReadiness().observe(True, 'unknown_metric 100\n', 100) != 'ready'
+
+
+def test_tunnel_cannot_inherit_developer_profiles_or_unsafe_logging(tmp_path, monkeypatch):
+    for name in ('TUNNEL_CLIENT_CONFIG', 'TUNNEL_CLIENT_PROFILE', 'LOG_HTTP_RAW_UNSAFE', 'OPENAI_API_KEY', 'CONTROL_PLANE_API_KEY'):
+        monkeypatch.setenv(name, 'existing-private-value')
+    env = Manager(tmp_path / 'data', tmp_path / 'resources')._tunnel_environment()
+    assert not any(name in env for name in ('TUNNEL_CLIENT_CONFIG', 'TUNNEL_CLIENT_PROFILE', 'LOG_HTTP_RAW_UNSAFE', 'OPENAI_API_KEY', 'CONTROL_PLANE_API_KEY'))
+    assert 'SYSTEMROOT' in env if os.name == 'nt' else True

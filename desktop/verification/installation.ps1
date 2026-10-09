@@ -13,13 +13,14 @@ $tests = [Collections.Generic.List[object]]::new()
 $defaultData = Join-Path $env:LOCALAPPDATA "io.pla.desktop"
 $marker = Join-Path $defaultData ("uninstall-preservation-" + [guid]::NewGuid().ToString("N") + ".txt")
 $installed = $false
+$authorizedReport = $null
 $legacyBefore = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object LocalPort -in 8766,8931,18081 | Select-Object LocalPort,OwningProcess)
 try {
     $setup = Start-Process -FilePath ([IO.Path]::GetFullPath($Installer)) -ArgumentList @("/S", "/D=$installRoot") -WindowStyle Hidden -Wait -PassThru
     if ($setup.ExitCode -ne 0) { throw "NSIS installation exit code $($setup.ExitCode)" }
     $installed = Test-Path -LiteralPath (Join-Path $installRoot "pla-desktop.exe")
     if (-not $installed) { throw "Installed native executable missing" }
-    foreach ($file in @("WebView2Loader.dll", "resources\runtime\pla-runtime.exe", "resources\python\python.exe", "resources\tunnel\tunnel-client.exe")) {
+    foreach ($file in @("WebView2Loader.dll", "resources\runtime\pla-runtime.exe", "resources\python\python.exe", "resources\tunnel\tunnel-client.exe", "resources\node.exe")) {
         if (-not (Test-Path -LiteralPath (Join-Path $installRoot $file))) { throw "Installed dependency missing: $file" }
     }
     $tests.Add(@{test="Actual current-user NSIS installation and payload presence";status="PASS"})
@@ -27,6 +28,7 @@ try {
     [IO.File]::WriteAllText($marker,"PLA Desktop uninstall preservation test; created by the isolated acceptance harness.")
     & $Python (Join-Path $PSScriptRoot "packaged_mcp.py") --resources (Join-Path $installRoot "resources") --report (Join-Path $evidence "installed-mcp-report.json") --browser *> (Join-Path $evidence "installed-mcp.log")
     if ($LASTEXITCODE -ne 0) { throw "Installed MCP acceptance failed; see installed-mcp.log" }
+    $authorizedReport = Get-Content -LiteralPath (Join-Path $evidence "installed-mcp-report.json") -Raw | ConvertFrom-Json
     $tests.Add(@{test="Actual installed MCP and browser execution";status="PASS"})
     & node.exe (Join-Path $PSScriptRoot "native-ui.cjs") --executable (Join-Path $installRoot "pla-desktop.exe") --output $evidence *> (Join-Path $evidence "native-ui.log")
     if ($LASTEXITCODE -ne 0) { throw "Installed native UI acceptance failed; see native-ui.log" }
@@ -44,6 +46,11 @@ try {
             $gone = -not (Test-Path -LiteralPath (Join-Path $installRoot "pla-desktop.exe"))
             $tests.Add(@{test="Actual NSIS uninstall removes application";status=$(if ($gone) {"PASS"} else {"FAIL"});exit_code=$uninstall.ExitCode})
             $tests.Add(@{test="Uninstall preserves default private data marker";status=$(if (Test-Path -LiteralPath $marker) {"PASS"} else {"FAIL"});marker=$marker})
+            if ($null -ne $authorizedReport) {
+                $authorizedMarker = Join-Path $authorizedReport.authorized_workspace "approved.txt"
+                $preserved = (Test-Path -LiteralPath $authorizedMarker) -and ([IO.File]::ReadAllText($authorizedMarker).Trim() -eq "approved-two")
+                $tests.Add(@{test="Uninstall preserves explicitly authorized workspace and MCP-created user file";status=$(if ($preserved) {"PASS"} else {"FAIL"});path=$authorizedMarker})
+            }
         } else { $tests.Add(@{test="Actual NSIS uninstall";status="FAIL";error="Uninstaller missing"}) }
     }
     $legacyAfter = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object LocalPort -in 8766,8931,18081 | Select-Object LocalPort,OwningProcess)

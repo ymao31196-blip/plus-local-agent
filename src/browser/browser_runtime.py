@@ -163,6 +163,8 @@ def _keeper_ready(state: dict[str, Any]) -> bool:
 
 def _resolve_playwright_launch() -> tuple[str, list[str], str]:
     bundled_node = PROJECT_ROOT / "node.exe"
+    if os.environ.get("PLA_DESKTOP_RUNTIME") == "1" and not bundled_node.is_file():
+        raise RuntimeError("Bundled Node component is missing; repair the PLA Desktop installation")
     node = str(bundled_node) if bundled_node.is_file() else (shutil.which("node.exe") or shutil.which("node"))
     if not node:
         raise RuntimeError("Node.js executable is unavailable")
