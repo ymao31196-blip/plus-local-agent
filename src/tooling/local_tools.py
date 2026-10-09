@@ -2283,6 +2283,144 @@ def _git_release_preflight(
 
 
 @workspace_mutation
+def git_refresh_index(
+    changes: list[GitStageRequest],
+    expected_head: str,
+    cwd: str = ".",
+    root: str = "pla",
+) -> dict[str, Any]:
+    """Clear stale Git index metadata without accepting any content changes.
+
+    Refreshes explicit tracked regular files in a shadow index, verifies its
+    tree is identical to the original tree, then atomically swaps the index.
+    It never stages content changes or executes Git hooks.
+    """
+    if not isinstance(changes, list) or not 1 <= len(changes) <= 32:
+        raise ValueError("changes must contain 1–32 explicit tracked files")
+    if not isinstance(expected_head, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40,64}", expected_head
+    ):
+        raise ValueError("expected_head must be a full commit id")
+
+    working_directory, repo_root = _git_repo_context(cwd, root)
+    if _git_resolve_commit(working_directory, "HEAD") != expected_head.lower():
+        raise ValueError("HEAD changed before index refresh")
+    git_dir = Path(_git_run(
+        working_directory, ["rev-parse", "--absolute-git-dir"]
+    ).stdout.strip()).resolve()
+    root_base = root_policy(root).resolve(root, ".", "write").target.resolve()
+    if os.path.commonpath((os.path.normcase(str(root_base)),
+                           os.path.normcase(str(git_dir)))) != os.path.normcase(str(root_base)):
+        raise ValueError("Git metadata directory is outside the selected root")
+    index_path = git_dir / "index"
+    if not index_path.is_file():
+        raise ValueError("Git index is missing")
+
+    names: list[str] = []
+    fingerprints: list[tuple[Path, str]] = []
+    for change in changes:
+        if not isinstance(change, dict) or set(change) != {"path", "expected_sha256"}:
+            raise ValueError("Each change requires path and expected_sha256")
+        if not isinstance(change["path"], str) or not change["path"]:
+            raise ValueError("Path must be a non-empty string")
+        target = safe_path(change["path"], root, "read")
+        if not target.is_file() or target.is_symlink():
+            raise ValueError("Only existing regular tracked files may be refreshed")
+        try:
+            repo_path = target.relative_to(repo_root).as_posix()
+        except ValueError as exc:
+            raise ValueError("Refresh path outside selected repository") from exc
+        if repo_path in names:
+            raise ValueError("Duplicate refresh path")
+        _validate_expected_sha256(target, change["expected_sha256"], root)
+        stage = _git_run(working_directory, ["ls-files", "--stage", "--", repo_path]).stdout
+        entries = [line for line in stage.splitlines() if line.strip()]
+        if len(entries) != 1 or not entries[0].startswith(("100644 ", "100755 ")):
+            raise ValueError("Refresh requires an unconflicted tracked regular file")
+        if _git_run(
+            working_directory,
+            ["diff", "--no-ext-diff", "--no-textconv", "--quiet", "--", repo_path],
+            allow_failure=True,
+        ).returncode != 0:
+            raise ValueError("Refresh refuses actual worktree content changes")
+        attr = _git_run(
+            working_directory, ["check-attr", "filter", "--", repo_path]
+        ).stdout.strip()
+        if not attr.endswith(": unspecified"):
+            raise ValueError("Refresh refuses files with custom Git clean filters")
+        names.append(repo_path)
+        fingerprints.append((target, change["expected_sha256"]))
+
+    staged = _git_run(
+        working_directory, ["diff", "--cached", "--name-only", "-z", expected_head]
+    ).stdout
+    if staged:
+        raise ValueError("Refresh requires a clean index")
+    original_tree = _git_run(working_directory, ["write-tree"]).stdout.strip()
+    lock_path = git_dir / "index.lock"
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise ValueError("Git index is locked") from exc
+    lock_open = True
+    candidate_path: Path | None = None
+    try:
+        snapshot = index_path.read_bytes()
+        snapshot_sha = hashlib.sha256(snapshot).hexdigest()
+        with tempfile.NamedTemporaryFile(
+            dir=git_dir, prefix=".pla-index-refresh-", suffix=".tmp", delete=False
+        ) as candidate:
+            candidate.write(snapshot)
+            candidate.flush()
+            os.fsync(candidate.fileno())
+            candidate_path = Path(candidate.name)
+
+        shadow_env = os.environ.copy()
+        shadow_env["GIT_INDEX_FILE"] = str(candidate_path)
+        # Git add refreshes stat metadata in the shadow index. A changed blob
+        # is rejected by the exact tree equality check below.
+        _git_run(working_directory, ["add", "--", *names], env=shadow_env)
+        if _git_run(
+            working_directory, ["write-tree"], env=shadow_env
+        ).stdout.strip() != original_tree:
+            raise ValueError("Shadow index differs from original tree; aborting refresh")
+        if _git_run(
+            working_directory, ["status", "--porcelain=v1", "--", *names],
+            env=shadow_env,
+        ).stdout:
+            raise ValueError("Shadow index did not resolve the stale status")
+        for path, digest in fingerprints:
+            _validate_expected_sha256(path, digest, root)
+        if _git_resolve_commit(working_directory, "HEAD") != expected_head.lower():
+            raise ValueError("HEAD changed during index refresh")
+        if hashlib.sha256(index_path.read_bytes()).hexdigest() != snapshot_sha:
+            raise ValueError("Git index changed during index refresh")
+
+        updated = candidate_path.read_bytes()
+        with os.fdopen(lock_fd, "wb", closefd=False) as handle:
+            handle.write(updated)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.close(lock_fd)
+        lock_open = False
+        os.replace(lock_path, index_path)
+    finally:
+        if lock_open:
+            os.close(lock_fd)
+        lock_path.unlink(missing_ok=True)
+        if candidate_path is not None:
+            candidate_path.unlink(missing_ok=True)
+
+    return {
+        "status": "completed",
+        "head": expected_head.lower(),
+        "paths": names,
+        "tree_unchanged": True,
+        "index_only": True,
+    }
+
+
+@workspace_mutation
 def git_tag(
     tag: str,
     expected_head: str,

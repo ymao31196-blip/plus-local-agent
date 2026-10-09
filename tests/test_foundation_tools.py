@@ -351,6 +351,53 @@ def test_structured_git_commit_accepts_exact_newly_added_file(workspace):
 
 
 
+def test_git_index_refresh_preserves_tree_and_rejects_actual_changes(workspace):
+    _init_git_repo(workspace)
+    tracked = workspace / "tracked.txt"
+    head = local_tools.git_status()["head"]
+    original = tracked.read_bytes()
+    digest = hashlib.sha256(original).hexdigest()
+
+    # A replaced file with identical bytes can have stale index stat metadata.
+    replacement = workspace / "replacement.tmp"
+    replacement.write_bytes(original)
+    replacement.replace(tracked)
+    refreshed = local_tools.git_refresh_index(
+        [{"path": "tracked.txt", "expected_sha256": digest}], head,
+        root="workspace",
+    )
+    assert refreshed["status"] == "completed"
+    assert refreshed["tree_unchanged"] is True
+    assert local_tools.git_status()["clean"] is True
+    assert tracked.read_bytes() == original
+
+    tracked.write_text("changed\n", encoding="utf-8")
+    changed_digest = hashlib.sha256(tracked.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="content changes"):
+        local_tools.git_refresh_index(
+            [{"path": "tracked.txt", "expected_sha256": changed_digest}],
+            head, root="workspace",
+        )
+    assert local_tools.git_status()["head"] == head
+    assert local_tools.git_status()["clean"] is False
+
+
+def test_git_index_refresh_requires_exact_head_and_hash(workspace):
+    _init_git_repo(workspace)
+    digest = hashlib.sha256((workspace / "tracked.txt").read_bytes()).hexdigest()
+    head = local_tools.git_status()["head"]
+    with pytest.raises(ValueError, match="HEAD changed"):
+        local_tools.git_refresh_index(
+            [{"path": "tracked.txt", "expected_sha256": digest}], "0" * 40,
+            root="workspace",
+        )
+    with pytest.raises((ValueError, RuntimeError), match="hash precondition"):
+        local_tools.git_refresh_index(
+            [{"path": "tracked.txt", "expected_sha256": "0" * 64}], head,
+            root="workspace",
+        )
+
+
 def test_controlled_git_tag_creates_exact_lightweight_tag(workspace):
     git = _init_git_repo(workspace)
     head = local_tools.git_status()["head"]

@@ -73,7 +73,7 @@ def test_release_version_and_provider_catalog():
         include_unavailable=True,
         limit=100,
     )
-    assert core_caps["match_count"] == 43
+    assert core_caps["match_count"] == 44
     assert {item["id"] for item in core_caps["capabilities"]} == {
         "core.capability_route",
         "core.routing_audit",
@@ -97,6 +97,7 @@ def test_release_version_and_provider_catalog():
         "core.git_stage",
         "core.git_remove",
         "core.git_commit",
+        "core.git_refresh_index",
         "core.git_tag",
         "core.git_push",
         "core.project_state_init",

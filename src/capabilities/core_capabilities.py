@@ -29,6 +29,7 @@ from tooling.internal_tool_executor import INTERNAL_TOOL_SCHEMAS
 from tooling.local_tools import (
     LOCAL_TOOL_FUNCTIONS,
     git_push as controlled_git_push,
+    git_refresh_index as controlled_git_refresh_index,
     git_tag as controlled_git_tag,
     workspace_root_remove as controlled_workspace_root_remove,
     workspace_root_upsert as controlled_workspace_root_upsert,
@@ -526,6 +527,38 @@ def core_gate_descriptors() -> tuple[CapabilityDescriptor, ...]:
 def core_release_descriptors() -> tuple[CapabilityDescriptor, ...]:
     return (
         _descriptor(
+            "core.git_refresh_index",
+            "git_refresh_index",
+            "Refresh Git Index Metadata",
+            "Repair stale Git file-status metadata for explicit tracked files only. "
+            "Each file must have an exact expected SHA-256, the Git tree must "
+            "remain unchanged, and content changes are never staged.",
+            {
+                "type": "object",
+                "properties": {
+                    "changes": {
+                        "type": "array", "minItems": 1, "maxItems": 32,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "expected_sha256": {"type": "string", "minLength": 64, "maxLength": 64},
+                            },
+                            "required": ["path", "expected_sha256"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "expected_head": {"type": "string", "minLength": 40, "maxLength": 64},
+                    "cwd": {"type": "string", "default": "."},
+                },
+                "required": ["changes", "expected_head"],
+                "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("git", "index", "refresh", "maintenance"),
+            requires_confirmation=True,
+        ),
+        _descriptor(
             "core.git_tag",
             "git_tag",
             "Create Release Tag",
@@ -882,6 +915,15 @@ def register_core_transaction_capabilities(
     broker.register_internal_handler(
         "core.transaction_complete_external",
         complete_external_handler,
+    )
+    broker.register_internal_handler(
+        "core.git_refresh_index",
+        lambda args: controlled_git_refresh_index(
+            args["changes"],
+            args["expected_head"],
+            args.get("cwd", "."),
+            "pla",
+        ),
     )
     broker.register_internal_handler(
         "core.git_tag",
