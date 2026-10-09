@@ -4,6 +4,7 @@ param(
     [string]$TunnelId,
     [string]$TunnelClient,
     [string]$TunnelCredential,
+    [string]$SkillLibraryPackage,
     [switch]$SkipProviders,
     [switch]$SkipTests,
     [switch]$SkipTunnel,
@@ -320,6 +321,18 @@ if (-not $SkipProviders) {
         "-ExecutionPolicy", "Bypass",
         "-File", $setupProviders
     ) "Installing reviewed Provider environments"
+}
+if (-not [string]::IsNullOrWhiteSpace($SkillLibraryPackage)) {
+    if ($SkipProviders) {
+        throw "-SkillLibraryPackage cannot be used with -SkipProviders."
+    }
+    $setupSkillLibrary = Join-Path $projectRoot "setup_skill_library.ps1"
+    Invoke-Checked $powershell @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $setupSkillLibrary,
+        "-SourcePath", $SkillLibraryPackage
+    ) "Installing optional Skill Library v0.3.0 server package"
 }
 
 $wingetMcp = Resolve-ExecutablePath "WindowsPackageManagerMCPServer.exe"

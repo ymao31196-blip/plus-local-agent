@@ -42,7 +42,7 @@ Set-Location $PlaRoot
 .\install.ps1
 ~~~
 
-安装器会创建本地Python环境、安装经过审查的Provider依赖、检查运行条件并执行验证。如果此时尚未配置这台电脑自己的Secure MCP Tunnel，安装结果可能显示为**PARTIAL**。这通常表示本地PLA已经安装完成，只差Tunnel等外部连接条件，并不等于安装失败。
+安装器会创建本地Python环境、安装经过审查的Provider依赖、检查运行条件并执行验证。Skill Library服务端为独立可选包；如需启用其13项工具，可阅读[Skill Library安装与管理](docs/skill_library_provider.md)，或者将独立Skill Library v0.3.0源码/Wheel路径传给`install.ps1 -SkillLibraryPackage`。如果此时尚未配置这台电脑自己的Secure MCP Tunnel，安装结果可能显示为**PARTIAL**。这通常表示本地PLA已经安装完成，只差Tunnel等外部连接条件，并不等于安装失败。
 
 从OpenAI官方的[Tunnels管理页面](https://platform.openai.com/settings/organization/tunnels)（推荐）或[官方tunnel-client releases](https://github.com/openai/tunnel-client/releases)下载Windows x64 Tunnel client。选择`windows-amd64` ZIP，并解压到PLA目录旁边的独立目录中。程序文件名是`tunnel-client.exe`（中间是连字符`-`）。
 

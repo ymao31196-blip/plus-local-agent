@@ -7,11 +7,11 @@ Skill Library是PLA的可选Provider，代码位于独立的`chatgpt-skill-libra
 PLA的`setup_providers.ps1 -Provider skill-library`负责安装该Provider的Python运行依赖；Skill Library自身的Python包需要独立安装。任选一种：
 
 1. 将已取得访问权限的Skill Library源码放到`workspace/skill-library`，保留`src/skill_library/server.py`。PLA入口会在该位置加载源码。
-2. 在`.provider_envs/skill-library/Scripts/python.exe`对应环境中安装通过审核的Skill Library 0.2.0包。PLA入口会在没有本地源码目录时使用已安装的包。
+2. 运行`setup_skill_library.ps1`，向`.provider_envs/skill-library/Scripts/python.exe`安装Skill Library 0.3.0包。PLA入口会在没有本地源码目录时使用已安装的包。
 
 不要把仅有`SKILL.md`的个人Skills仓库当成Skill Library服务端源码。它们属于用户随后登记的**Source**。
 
-独立仓库发布前或处于私有状态时，需要确保用户获得明确的源代码访问权限；不要假设单凭PLA克隆指令即可获得所有Provider。
+已取得Skill Library代码访问权限的用户，可从独立仓库克隆对应`v0.3.0`标签到`workspace/skill-library`，然后执行`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\setup_skill_library.ps1`。也可以提供已获得的本地Wheel：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\setup_skill_library.ps1 -SourcePath C:\\path\\chatgpt_skill_library-0.3.0-py3-none-any.whl`。只检查本地来源可使用`-ValidateOnly`。PLA主安装器支持`-SkillLibraryPackage <本地源码目录或Wheel路径>`，省去独立执行安装脚本的步骤。两种方式都不会自动开放任何本地Skill读写权限。独立仓库如处于私有状态，用户需要自行获得合法代码访问权限；不能假设所有GitHub访问者都能下载。
 
 ## 配置
 
@@ -59,6 +59,6 @@ Source Registry配置和缓存保存在服务端`state/skill-library`，按来�
 
 ## 升级与验证
 
-安装或更换Skill Library服务端后，通过PLA的`runtime.provider_reload`重新发现11项工具，然后运行`runtime.provider_status`或`provider_doctor`确认健康状态；更改独立Provider时无需重启整套PLA。若报缺少`skill_library`模块，先检查独立包是否实际安装在Provider运行环境中。
+安装或更换Skill Library服务端后，通过PLA的`runtime.provider_reload`重新发现13项工具，然后运行`runtime.provider_status`或`provider_doctor`确认健康状态；更改独立Provider时无需重启整套PLA。若报缺少`skill_library`模块，先检查独立包是否实际安装在Provider运行环境中。
 
 重要限制：配置与身份隔离是**按服务部署实例**实现的。不能将同一个无多租户隔离的Provider实例公开给彼此不信任的不同用户。

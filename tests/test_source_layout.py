@@ -14,6 +14,7 @@ ROOT_ENTRYPOINTS = {
     "install.ps1",
     "restart_pla.ps1",
     "setup_providers.ps1",
+    "setup_skill_library.ps1",
     "start_all.ps1",
     "stop_all.ps1",
 }
