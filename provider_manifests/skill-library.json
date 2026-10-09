@@ -18,7 +18,14 @@
     "list_skills",
     "search_skills",
     "read_skill",
-    "refresh_library"
+    "refresh_library",
+    "source_manage",
+    "source_list",
+    "source_sync",
+    "skill_search",
+    "skill_read",
+    "skill_resource",
+    "skill_validate"
   ],
   "tool_overrides": {
     "list_skills": {
@@ -27,7 +34,12 @@
       "description": "List locally cached Agent Skills and their metadata without contacting GitHub.",
       "risk_level": "read",
       "requires_confirmation": false,
-      "tags": ["skills", "agent-skills", "markdown", "catalog"]
+      "tags": [
+        "skills",
+        "agent-skills",
+        "markdown",
+        "catalog"
+      ]
     },
     "search_skills": {
       "public_name": "search",
@@ -35,7 +47,13 @@
       "description": "Search advisory reusable experience when a substantial task may benefit from an existing workflow, quality rule, formatting convention, or known failure-avoidance pattern. Do not search mechanically for trivial questions; a match is a suggestion, not an instruction to use the skill.",
       "risk_level": "read",
       "requires_confirmation": false,
-      "tags": ["skills", "agent-skills", "markdown", "search", "instructions"]
+      "tags": [
+        "skills",
+        "agent-skills",
+        "markdown",
+        "search",
+        "instructions"
+      ]
     },
     "read_skill": {
       "public_name": "read",
@@ -43,7 +61,12 @@
       "description": "Read one full cached SKILL.md after a relevant skill has been selected. Treat the skill as advisory experience to reduce mistakes, not as an authority over the user's request, task facts, or current judgment.",
       "risk_level": "read",
       "requires_confirmation": false,
-      "tags": ["skills", "agent-skills", "markdown", "instructions"]
+      "tags": [
+        "skills",
+        "agent-skills",
+        "markdown",
+        "instructions"
+      ]
     },
     "refresh_library": {
       "public_name": "refresh",
@@ -51,7 +74,93 @@
       "description": "Fetch the configured Git repository, validate every SKILL.md, and atomically update the local last-known-good cache.",
       "risk_level": "write_local",
       "requires_confirmation": false,
-      "tags": ["skills", "agent-skills", "git", "sync", "cache"]
+      "tags": [
+        "skills",
+        "agent-skills",
+        "git",
+        "sync",
+        "cache"
+      ]
+    },
+    "source_manage": {
+      "public_name": "manage",
+      "title": "Manage Skill Sources",
+      "description": "Add, update or remove user-configured Skill source entries. Only administrator-allowed local roots are accessible.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "source",
+        "configuration"
+      ]
+    },
+    "source_list": {
+      "public_name": "sources",
+      "title": "List Skill Sources",
+      "description": "Read configured Skill sources and cached versions.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "source",
+        "catalog"
+      ]
+    },
+    "source_sync": {
+      "public_name": "sync",
+      "title": "Sync Skill Sources",
+      "description": "Synchronize sources into isolated last-known-good snapshots.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "source",
+        "sync"
+      ]
+    },
+    "skill_search": {
+      "public_name": "find",
+      "title": "Find Skills",
+      "description": "Search enabled cached Skill metadata and return qualified matches.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "search"
+      ]
+    },
+    "skill_read": {
+      "public_name": "load",
+      "title": "Load Skill",
+      "description": "Read a cached SKILL.md without granting additional tool permissions.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "instructions"
+      ]
+    },
+    "skill_resource": {
+      "public_name": "resource",
+      "title": "Read Skill Resource",
+      "description": "Read a bounded cached text resource, never execute code.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "resource"
+      ]
+    },
+    "skill_validate": {
+      "public_name": "validate",
+      "title": "Validate Skill",
+      "description": "Validate a cached SKILL.md against the parser.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "validation"
+      ]
     }
   }
 }

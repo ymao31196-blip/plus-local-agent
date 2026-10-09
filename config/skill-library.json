@@ -2,5 +2,6 @@
   "repo": "ymao31196-blip/skill-library",
   "branch": "main",
   "transport": "git",
-  "data_dir": "state/skill-library"
+  "data_dir": "state/skill-library",
+  "local_roots": ["workspace/skill-library"]
 }
