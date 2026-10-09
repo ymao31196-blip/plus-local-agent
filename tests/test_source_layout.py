@@ -69,6 +69,7 @@ PACKAGE_MODULES = {
         "routing_audit.py",
     },
     "runtime": {
+        "paths.py",
         "event_runtime.py",
         "runtime_context.py",
         "runtime_lifecycle.py",

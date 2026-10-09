@@ -16,10 +16,12 @@ from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 
+from runtime.paths import state_root
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STATE_DIR = PROJECT_ROOT / "state" / "browser_runtime"
+STATE_DIR = state_root() / "browser_runtime"
 READY_PATH = STATE_DIR / "keeper_ready.json"
-ENDPOINT = "http://localhost:8931/mcp"
+ENDPOINT = f"http://localhost:{int(os.environ.get('PLA_BROWSER_PORT', '8931'))}/mcp"
 
 
 def _utcnow_iso() -> str:

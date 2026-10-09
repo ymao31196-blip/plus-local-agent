@@ -31,7 +31,7 @@ from execution.runner_process_identity import current_process_identity
 from runtime.runtime_context import terminate_owned_process_tree
 
 
-PROJECT_ROOT = SOURCE_ROOT.parent
+PROJECT_ROOT = Path(os.environ.get("AGENT_PLA_ROOT", str(SOURCE_ROOT.parent))).resolve()
 WORKSPACE_ROOT = Path(
     os.environ.get("AGENT_WORKSPACE", str(PROJECT_ROOT / "workspace"))
 ).resolve()
@@ -142,7 +142,7 @@ def _probe(runner: dict[str, object]) -> dict[str, object]:
         "print(os.getpid(), flush=True)"
     )
     completed = subprocess.run(
-        [sys.executable, "-c", script],
+        [os.environ.get("PLA_EXECUTION_PYTHON", sys.executable), "-c", script],
         cwd=Path(__file__).resolve().parents[2],
         shell=False,
         capture_output=True,

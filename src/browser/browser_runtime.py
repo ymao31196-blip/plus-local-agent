@@ -29,18 +29,20 @@ from threading import RLock
 from typing import Any
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STATE_DIR = PROJECT_ROOT / "state" / "browser_runtime"
+from runtime.paths import data_root, state_root
+
+PROJECT_ROOT = Path(os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[2])).resolve()
+STATE_DIR = state_root() / "browser_runtime"
 STATE_PATH = STATE_DIR / "runtime.json"
 KEEPER_READY_PATH = STATE_DIR / "keeper_ready.json"
 MCP_LOG_PATH = STATE_DIR / "playwright-mcp.log"
 KEEPER_LOG_PATH = STATE_DIR / "keeper.log"
 KEEPER_SCRIPT = Path(__file__).resolve().with_name("browser_session_keeper.py")
-PROFILE_DIR = PROJECT_ROOT / ".browser_profiles" / "v13-default"
-OUTPUT_DIR = PROJECT_ROOT / "state" / "browser"
+PROFILE_DIR = data_root() / ".browser_profiles" / "v13-default"
+OUTPUT_DIR = state_root() / "browser"
 
 HOST = "127.0.0.1"
-MCP_PORT = 8931
+MCP_PORT = int(os.environ.get("PLA_BROWSER_PORT", "8931"))
 MCP_ENDPOINT_URL = f"http://localhost:{MCP_PORT}/mcp"
 PACKAGE = "@playwright/mcp@0.0.82"
 PACKAGE_VERSION = "0.0.82"
@@ -160,7 +162,8 @@ def _keeper_ready(state: dict[str, Any]) -> bool:
 
 
 def _resolve_playwright_launch() -> tuple[str, list[str], str]:
-    node = shutil.which("node.exe") or shutil.which("node")
+    bundled_node = PROJECT_ROOT / "node.exe"
+    node = str(bundled_node) if bundled_node.is_file() else (shutil.which("node.exe") or shutil.which("node"))
     if not node:
         raise RuntimeError("Node.js executable is unavailable")
 
@@ -375,14 +378,14 @@ def start_browser_runtime() -> dict[str, Any]:
             return {**current, "already_running": True}
         if current["status"] == "conflict":
             raise RuntimeError(
-                "Browser Runtime cannot start because port 8931 is occupied "
+                f"Browser Runtime cannot start because port {MCP_PORT} is occupied "
                 "by an unmanaged process"
             )
         if current["status"] == "degraded":
             stop_browser_runtime()
 
         executable, prefix_args, launch_source = _resolve_playwright_launch()
-        if not KEEPER_SCRIPT.is_file():
+        if not getattr(sys, "frozen", False) and not KEEPER_SCRIPT.is_file():
             raise RuntimeError("Browser Session Keeper script is missing")
 
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -427,7 +430,8 @@ def start_browser_runtime() -> dict[str, Any]:
             keeper_log = KEEPER_LOG_PATH.open("ab")
             try:
                 keeper_process = subprocess.Popen(
-                    [sys.executable, str(KEEPER_SCRIPT)],
+                    ([sys.executable, "browser_keeper"] if getattr(sys, "frozen", False)
+                     else [sys.executable, str(KEEPER_SCRIPT)]),
                     cwd=str(PROJECT_ROOT),
                     stdin=subprocess.DEVNULL,
                     stdout=keeper_log,

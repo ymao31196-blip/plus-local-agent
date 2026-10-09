@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from importlib.metadata import version
@@ -113,7 +114,8 @@ register_core_transaction_capabilities(
 )
 EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,
-    Path(__file__).resolve().parents[1],
+    Path(os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[1])),
+    manifest_dir=Path(os.environ["PLA_DESKTOP_MANIFEST_DIR"]) if os.environ.get("PLA_DESKTOP_MANIFEST_DIR") else None,
 )
 EXTERNAL_PROVIDER_CONFIG = EXTERNAL_PROVIDER_RUNTIME.configure_initial()
 EXTERNAL_OBSERVER_RUNTIME = ExternalObserverRuntime(
@@ -135,12 +137,19 @@ register_windows_action_capabilities(
 
 @asynccontextmanager
 async def _runtime_lifespan(_server):
+    desktop_owned_runner = os.environ.get("PLA_DESKTOP_RUNTIME") == "1"
+    if desktop_owned_runner:
+        from execution.execution_runner_runtime import start_execution_runner
+        start_execution_runner()
     await MCP_CLIENT_MANAGER.discover_all()
     try:
         yield
     finally:
         SESSION_STORE.close_all()
         await MCP_CLIENT_MANAGER.close_all_persistent_sessions()
+        if desktop_owned_runner:
+            from execution.execution_runner_runtime import stop_execution_runner
+            stop_execution_runner()
 
 
 mcp = FastMCP(

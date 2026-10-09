@@ -18,8 +18,10 @@ import time
 from typing import Any
 
 
+from runtime.paths import state_root
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STATE_DIR = PROJECT_ROOT / "state"
+STATE_DIR = state_root()
 STATE_PATH = STATE_DIR / "computer_use_indicator.json"
 
 _INDICATOR_PROCESS: subprocess.Popen[bytes] | None = None
@@ -83,7 +85,8 @@ def _ensure_indicator_process() -> None:
             return
         creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
         _INDICATOR_PROCESS = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "--overlay"],
+            ([sys.executable, "indicator", "--overlay"] if getattr(sys, "frozen", False)
+             else [sys.executable, str(Path(__file__).resolve()), "--overlay"]),
             cwd=str(PROJECT_ROOT),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
