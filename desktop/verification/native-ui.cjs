@@ -1,7 +1,7 @@
 // Actual installed Tauri/WebView2 UI test. Remote debugging is enabled ONLY for
 // this owned test process, never persisted or configured in the shipped app.
 const { chromium } = require('../browser-component/node_modules/playwright');
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -45,6 +45,21 @@ let child,browser,page;
   await page.locator('nav [data-view="setup"]').click();await page.locator('#verify').click();
   await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('PASS'));
   evidence.tests.push({test:'installed frontend IPC -> frozen Runtime -> real MCP diagnostic',status:'PASS'});
+  const reg=path.join(process.env.SystemRoot,'System32','reg.exe');
+  const startupKey='HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+  let hasPriorStartup=false;
+  try{execFileSync(reg,['query',startupKey,'/v','PLADesktop'],{stdio:'pipe'});hasPriorStartup=true;}catch{}
+  if(!hasPriorStartup){
+    await page.locator('nav [data-view="about"]').click();
+    await page.locator('#autostart').check();
+    await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('登录启动偏好已保存'));
+    assert.ok(execFileSync(reg,['query',startupKey,'/v','PLADesktop'],{encoding:'utf8',stdio:'pipe'}).toLowerCase().includes(executable.toLowerCase()));
+    await page.locator('#autostart').uncheck();
+    await page.waitForFunction(()=>!document.querySelector('#autostart').checked && !document.querySelector('#refresh').disabled);
+    let remains=false;try{execFileSync(reg,['query',startupKey,'/v','PLADesktop'],{stdio:'pipe'});remains=true;}catch{}
+    assert.equal(remains,false);
+    evidence.tests.push({test:'installed login-start opt-in registry persistence and opt-out',status:'PASS'});
+  }else{evidence.tests.push({test:'installed login-start preference',status:'NOT TESTED',detail:'Existing startup registration preserved'});}
   await page.locator('nav [data-view="overview"]').click();
   await page.screenshot({path:path.join(output,'native-overview.png')});
   const duplicate=spawn(executable,['--data-dir',data],{env,windowsHide:true,stdio:'ignore'});
@@ -63,14 +78,21 @@ let child,browser,page;
   const snapshot=await page.evaluate(()=>window.__TAURI__.core.invoke('manage',{command:'status',args:{}}));
   assert.equal(snapshot.config.runtime_port,runtimePort);assert.equal(snapshot.workspaces.roots.desktop_test.path,workspace);
   evidence.tests.push({test:'installed reopen preserves configuration and workspace',status:'PASS'});
+  await page.locator('nav [data-view="about"]').click();
+  await page.locator('#browser-enabled').check();await page.locator('#browser-port').fill(String(await port()));await page.locator('#save-browser').click();
+  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('浏览器偏好已保存'));
   await page.locator('nav [data-view="overview"]').click();await page.locator('#start').click();
   await page.waitForFunction(()=>document.querySelector('#runtime').textContent==='MCP 已就绪',null,{timeout:45000});
   const status=await page.evaluate(()=>window.__TAURI__.core.invoke('manage',{command:'status',args:{}}));
   const runtimePid=status.owned_processes.runtime.pid;
+  assert.equal(status.browser,'provider_ready',JSON.stringify(status));
+  const runnerState=JSON.parse(fs.readFileSync(path.join(data,'state','execution_runner','runtime.json'),'utf8'));
+  const browserState=JSON.parse(fs.readFileSync(path.join(data,'state','browser_runtime','runtime.json'),'utf8'));
+  const ownedPids=[runtimePid,status.owned_processes.browser.pid,runnerState.process_id,browserState.mcp_pid,browserState.keeper_pid];
   child.kill();await awaitExit(child);
-  for(let i=0;i<60 && alive(runtimePid);i++)await pause(100);
-  assert.equal(alive(runtimePid),false,'Windows Job failed to reap owned Runtime on native crash');
-  evidence.tests.push({test:'installed native crash Job Object cleanup',status:'PASS'});
+  for(let i=0;i<60 && ownedPids.some(alive);i++)await pause(100);
+  assert.ok(ownedPids.every(pid=>!alive(pid)),'Windows Job failed to reap an owned child on native crash');
+  evidence.tests.push({test:'installed native crash Job Object cleans Runtime, runner, browser and keeper',status:'PASS'});
   assert.deepEqual(errors,[]);evidence.tests.push({test:'installed frontend JavaScript errors',status:'PASS'});
 })().catch(error=>{evidence.tests.push({test:'native UI acceptance',status:'FAIL',error:error.stack});process.exitCode=1;}).finally(async()=>{
   if(child && child.exitCode===null && child.signalCode===null)child.kill();

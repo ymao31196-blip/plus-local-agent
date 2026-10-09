@@ -28,6 +28,10 @@ Normal data location: `%LOCALAPPDATA%\io.pla.desktop`, obtained from the native 
 
 New user roots cannot overlap application resources or private data. Workspace changes are blocked while Runtime is running; read/write/execute permissions and expected config hashes are validated by the existing registry. Removing an authorization preserves user files. No developer credentials/configuration are imported automatically.
 
+Desktop's application-resource root `pla` permits reads, but rejects file-tool writes and process execution. The same private-data overlap rejection is enforced by the existing Runtime registry validator, including confirmed MCP registration requests. Source/headless root defaults are retained. Root/CWD validation and the existing program/semantic policies are not a Windows OS sandbox: explicitly authorized execution retains the current user's operating-system privileges, as in the original Runtime.
+
+The wizard can inspect a user-selected existing source directory for the expected startup/server files and configuration-file presence. It does not read credential/configuration contents, migrate data or adopt existing processes. Login-start changes also refuse to overwrite a registration for a different installed executable.
+
 ## State evidence and limitations
 
 - Runtime readiness requires a successful real MCP tool catalog request, including the expected diagnostic tool. The current protocol's catalog works across MRTR/backchannel modes; a TCP listener or PID alone is insufficient.

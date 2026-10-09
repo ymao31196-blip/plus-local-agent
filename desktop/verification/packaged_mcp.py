@@ -10,7 +10,7 @@ import tempfile
 from fastmcp import Client
 
 
-async def exercise(port, browser=False):
+async def exercise(port, browser=False, data=None):
     results = []
     async with Client(f'http://127.0.0.1:{port}/mcp', timeout=15) as client:
         async def call(name, args):
@@ -68,6 +68,7 @@ async def exercise(port, browser=False):
                 httpd.server_close()
         for name, args in [('read_text', {'path': '../config/desktop.json'}),
                            ('run_process', {'program': 'cmd.exe', 'args': ['/c', 'echo bypass']}),
+                           ('write_text', {'root': 'pla', 'path': 'unauthorized-install-mutation.txt', 'content': 'must be refused'}),
                            ('read_text', {'root': 'pla', 'path': 'state/private.secret'})]:
             try:
                 value = await client.call_tool(name, args, raise_on_error=False)
@@ -78,6 +79,12 @@ async def exercise(port, browser=False):
                 if not isinstance(exc, ToolError):
                     raise
         results.append({'test': 'frozen traversal/program/private-path rejection', 'status': 'PASS'})
+        if data:
+            value = await call('capability_invoke', {'capability_id': 'core.workspace_root_upsert',
+                               'arguments': {'name': 'private', 'path': str(data), 'read': True, 'write': True,
+                                             'execute': True, 'expected_sha256': None}, 'confirmation': 'INVOKE'})
+            assert value['status'] == 'error' and 'private desktop data' in json.dumps(value), value
+            results.append({'test': 'frozen MCP workspace registration rejects private data even with confirmation', 'status': 'PASS'})
     return results
 
 
@@ -116,7 +123,7 @@ def main():
         rpc('configure', {'runtime_port': port, 'browser_port': browser_port, 'browser_enabled': args.browser})
         assert rpc('start')['runtime'] == 'ready'
         assert rpc('verify')['local_mcp'] == 'PASS'
-        report['tests'] = asyncio.run(exercise(port, args.browser))
+        report['tests'] = asyncio.run(exercise(port, args.browser, data))
         rpc('stop')
         assert rpc('start')['runtime'] == 'ready'
         report['tests'].append({'test': 'frozen stop/restart and persistent configuration', 'status': 'PASS'})

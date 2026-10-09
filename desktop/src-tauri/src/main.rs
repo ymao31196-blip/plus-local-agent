@@ -45,7 +45,7 @@ fn quit_app(app: tauri::AppHandle) { app.exit(0); }
 
 #[tauri::command]
 async fn manage(command: String, args: Value, state: State<'_, Backend>) -> Result<Value,String> {
-    const ALLOWED: &[&str] = &["status","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","verify","diagnose","logs"];
+    const ALLOWED: &[&str] = &["status","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","verify","diagnose","logs","detect_legacy"];
     if !ALLOWED.contains(&command.as_str()) { return Err("Unsupported management command".into()); }
     state.0.lock().map_err(|_| "Manager lock unavailable")?.call(&command,args)
 }
@@ -54,12 +54,20 @@ async fn manage(command: String, args: Value, state: State<'_, Backend>) -> Resu
 fn autostart(enabled: bool, app: tauri::AppHandle, state: State<'_, Backend>) -> Result<(),String> {
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
     let key = RegKey::predef(HKEY_CURRENT_USER).create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run").map_err(|e| e.to_string())?.0;
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let own_registration = format!("\"{}\"", executable.display());
+    let previous: Option<String> = match key.get_value("PLADesktop") { Ok(value)=>Some(value), Err(error) if error.kind()==std::io::ErrorKind::NotFound=>None, Err(error)=>return Err(error.to_string()) };
+    if previous.as_ref().is_some_and(|value| !value.eq_ignore_ascii_case(&own_registration)) {
+        return Err("A different PLA Desktop startup registration exists; it was preserved".into());
+    }
     if enabled {
-        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-        key.set_value("PLADesktop", &format!("\"{}\"", executable.display())).map_err(|e|e.to_string())?;
+        key.set_value("PLADesktop", &own_registration).map_err(|e|e.to_string())?;
     } else { match key.delete_value("PLADesktop") { Ok(_) => (), Err(e) if e.kind() == std::io::ErrorKind::NotFound => (), Err(e) => return Err(e.to_string()) } }
     let _ = app;
-    state.0.lock().map_err(|_| "Manager lock unavailable")?.call("configure", json!({"autostart":enabled}))?;
+    if let Err(error)=state.0.lock().map_err(|_| "Manager lock unavailable")?.call("configure", json!({"autostart":enabled})) {
+        let restored=if let Some(value)=previous {key.set_value("PLADesktop",&value)} else {match key.delete_value("PLADesktop") {Ok(())=>Ok(()),Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(()),Err(e)=>Err(e)}};
+        return Err(if restored.is_ok(){error}else{format!("{error}; could not restore Windows startup registration")});
+    }
     Ok(())
 }
 

@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 const invoke = (command,args) => window.__TAURI__.core.invoke(command,args);
 $('quit-app').onclick=()=>action(()=>invoke('quit_app',{}));
 let snapshot, busy = false;
+const legacy=document.createElement('article');legacy.className='wide';legacy.innerHTML='<h2>可选 · 检测已有源码安装</h2><p>填写已有 PLA 源码目录，仅检查安装布局与配置文件是否存在，不读取或导入密钥，不接管已有服务。</p><label>现有 PLA 目录<input id="legacy-root" placeholder="D:\\AI_Tools\\plus-local-agent"></label><button id="detect-legacy">检查已有安装</button>';$('setup').prepend(legacy);
+$('detect-legacy').onclick=()=>action(async()=>{const result=await rpc('detect_legacy',{path:$('legacy-root').value.trim()});notice(result.recognized_source_install?'已识别 PLA 源码安装。配置和服务保持独立，不会自动导入或接管。':'未识别 PLA 源码安装；该目录未被修改。');});
 function notice(text,error=false){$('notice').textContent=text;$('notice').className=error?'error':'';}
 async function action(fn){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){notice(String(e),true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
 async function rpc(command,args={}){return invoke('manage',{command,args});}
@@ -14,7 +16,7 @@ function renderWorkspaces(){const list=$('workspace-list');list.replaceChildren(
 $('refresh').onclick=()=>action(refresh);
 $('save-browser').onclick=()=>action(async()=>{await rpc('configure',{browser_enabled:$('browser-enabled').checked,browser_port:Number($('browser-port').value)});await refresh();notice('浏览器偏好已保存。启动 Runtime 后会检查真实 Provider 状态。');});
 const refreshBase=refresh;
-refresh=async()=>{await refreshBase();$('browser-enabled').checked=snapshot.config.browser_enabled;$('browser-port').value=snapshot.config.browser_port;if(snapshot.runtime==='exited')$('runtime').textContent='异常退出';if(snapshot.last_error)notice(snapshot.last_error,true);};
+refresh=async()=>{await refreshBase();$('browser-enabled').checked=snapshot.config.browser_enabled;$('browser-port').value=snapshot.config.browser_port;$('browser').textContent=({disabled:'未启用',component_missing:'组件缺失',starting_or_unavailable:'启动中或暂不可用',unavailable:'暂不可用，请查看诊断',edge_missing:'未检测到 Microsoft Edge',provider_ready:'组件已连接，浏览器调用需另行验证'})[snapshot.browser]||'暂不可用';$('optional').textContent='Office：组件未安装 · Skills：组件未安装';if(snapshot.runtime==='exited')$('runtime').textContent='异常退出';if(snapshot.last_error)notice(snapshot.last_error,true);};
 for(const command of ['start','stop','restart','connect'])$(command).onclick=()=>action(async()=>{await rpc(command);await refresh();notice(command==='connect'?'Tunnel 已启动，等待真实连接检测。':'服务操作已完成。');});
 $('save-connection').onclick=()=>action(async()=>{await rpc('configure',{runtime_port:Number($('runtime-port').value),health_port:Number($('health-port').value),tunnel_id:$('tunnel-id').value.trim()});const secret=$('secret').value;if(secret){await rpc('credential',{secret});$('secret').value='';}await refresh();notice('连接配置已保存。');});
 $('save-workspace').onclick=()=>action(async()=>{await rpc('workspace_save',{name:$('workspace-name').value.trim(),path:$('workspace-path').value.trim(),read:$('allow-read').checked,write:$('allow-write').checked,execute:$('allow-execute').checked,expected_sha256:snapshot.workspaces.config_sha256});await refresh();notice('工作区授权已保存。');});
@@ -22,6 +24,6 @@ $('verify').onclick=()=>action(async()=>{const result=await rpc('verify');await 
 $('complete-setup').onclick=()=>action(async()=>{if(!snapshot.local_mcp_verified)throw '请先完成真实本地工具验证。';await rpc('stop');await rpc('configure',{onboarding_complete:true});await refresh();view('overview');notice('本地配置向导已完成。请继续在 ChatGPT 侧完成授权和端到端验收。');});
 $('load-logs').onclick=()=>action(async()=>{$('log-output').textContent=(await rpc('logs')).lines.join('\n')||'暂无日志';});
 $('diagnose').onclick=()=>action(async()=>{const report=await rpc('diagnose');$('log-output').textContent=JSON.stringify(report,null,2);notice('诊断报告已保存：'+report.report_path);});
-$('autostart').onchange=()=>action(async()=>{await invoke('autostart',{enabled:$('autostart').checked});await refresh();notice('登录启动偏好已保存。');});
+$('autostart').onchange=()=>action(async()=>{try{await invoke('autostart',{enabled:$('autostart').checked});}finally{await refresh();}notice('登录启动偏好已保存。');});
 action(async()=>{await refresh();if(!snapshot.config.onboarding_complete)view('setup');});
 setInterval(()=>{if(!busy && !$('overview').classList.contains('hidden'))action(refresh);},10000);

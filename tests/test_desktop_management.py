@@ -77,3 +77,34 @@ def test_developer_overrides_and_keys_are_not_inherited(tmp_path, monkeypatch):
     assert 'OPENAI_API_KEY' not in env and 'CONTROL_PLANE_API_KEY' not in env
     assert env['PLA_EXTERNAL_PROVIDERS'] == ''
     assert Path(env['AGENT_WORKSPACE']).is_relative_to(tmp_path / 'data')
+
+
+def test_runtime_cannot_register_private_desktop_data_or_mutate_installation(tmp_path, monkeypatch):
+    from host.workspace_manager import build_root_policy, workspace_registry_upsert
+    data, resources = tmp_path / 'data', tmp_path / 'resources'
+    data.mkdir(); resources.mkdir()
+    monkeypatch.setenv('PLA_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('PLA_DATA_ROOT', str(data))
+    with pytest.raises(ValueError, match='private desktop data'):
+        workspace_registry_upsert(data / 'config/roots.yaml', resources, name='private', path=str(data),
+                                  read=True, write=True, execute=True, expected_sha256=None)
+    policy = build_root_policy(data / 'workspace', resources)
+    assert policy.resolve('pla', 'runtime/pla-runtime.exe', 'read').root.read
+    for permission in ('write', 'execute'):
+        with pytest.raises(ValueError, match='does not allow'):
+            policy.resolve('pla', 'runtime/pla-runtime.exe', permission)
+
+
+def test_legacy_detection_only_reads_layout_and_does_not_import_credentials(tmp_path):
+    source = tmp_path / 'legacy'
+    for name in ('src/server.py', 'start_all.ps1', 'stop_all.ps1', 'config/tunnel.local.yaml'):
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('PRIVATE_EXISTING_INSTALLATION_SENTINEL', encoding='utf-8')
+    manager = Manager(tmp_path / 'new-data', tmp_path / 'resources')
+    result = manager.dispatch('detect_legacy', {'path': str(source)})
+    assert result['recognized_source_install'] and result['tunnel_config_present']
+    assert not result['imported'] and not result['processes_adopted']
+    assert 'PRIVATE_EXISTING_INSTALLATION_SENTINEL' not in json.dumps(result)
+    assert not manager.config.secret_path.exists()
+    assert (source / 'config/tunnel.local.yaml').read_text() == 'PRIVATE_EXISTING_INSTALLATION_SENTINEL'

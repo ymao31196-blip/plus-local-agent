@@ -234,6 +234,21 @@ class Manager:
             raise ValueError("Arguments must be an object")
         if command == "status":
             return self.status()
+        if command == "detect_legacy":
+            if set(args) != {"path"} or not isinstance(args["path"], str):
+                raise ValueError("Provide the existing installation directory")
+            raw = args["path"]
+            path = Path(raw)
+            if not path.is_absolute() or raw.startswith(("\\\\", "//")):
+                raise ValueError("Select an absolute local installation directory")
+            path = path.resolve()
+            if not path.is_dir():
+                raise ValueError("Installation directory does not exist")
+            recognized = all((path / item).is_file() for item in ("src/server.py", "start_all.ps1", "stop_all.ps1"))
+            return {"recognized_source_install": recognized,
+                    "tunnel_config_present": recognized and (path / "config/tunnel.local.yaml").is_file(),
+                    "workspace_config_present": recognized and (path / "config/workspaces.local.yaml").is_file(),
+                    "imported": False, "processes_adopted": False}
         if command == "start":
             return self.start()
         if command == "connect":
