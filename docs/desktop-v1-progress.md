@@ -59,4 +59,4 @@ PASS means actually executed successfully. FAIL means executed unsuccessfully. B
 
 用户提供桌面 `test.txt` 中的独立测试 Tunnel ID / Runtime key，并授权操作已安装 GUI。Computer Use 实测发现已有 Runtime 已就绪，但 Tunnel ID 为空；填写时保存被运行状态拒绝，英文错误缺少配置页直接停止入口。停止本应用服务后，GUI 保存测试凭据成功（DPAPI），启动 Runtime / Tunnel 后远端元数据获取及成功控制面轮询通过，界面显示「已连接远端服务」。GUI 发起真实本地 MCP 诊断返回 PASS。测试过程中未读取或修改原开发连接凭据。
 
-修复配置页服务控制入口及常见错误中文提示；修复完成向导时停止服务、丢失已验证状态并断开 Tunnel 的问题。新增原生 UI 回归断言：完成向导后 Runtime PID 不变，仍 ready，本地验证仍通过。ChatGPT 新增 PLA-TEST 连接最后一步等待用户确认；真实 ChatGPT 文件/进程调用尚未通过。
+修复配置页服务控制入口及常见错误中文提示；修复完成向导时停止服务、丢失已验证状态并断开 Tunnel 的问题。新增原生 UI 回归断言：完成向导后 Runtime PID 不变，仍 ready，本地验证仍通过。RC.2 已实际更新用户安装，三份配置 SHA-256 保持一致；Computer Use 已验证草稿刷新保留及完成向导后双服务 PID 不变、本地验证仍通过。新打包 MCP / 浏览器 10 项与当前后端 10 项回归通过，实际安装后文件/进程/事务 4 项通过。ChatGPT 新增 PLA-TEST 连接最后一步仍等待操作时确认；真实 ChatGPT 文件/进程调用尚未通过。详见 desktop-v1-rc2-followup.md。

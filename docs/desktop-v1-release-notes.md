@@ -1,4 +1,6 @@
-# PLA Desktop 1.0.0-rc.1 — unsigned local test candidate
+# PLA Desktop 1.0.0-rc.2 — unsigned local test candidate
+
+RC.2 preserves unsaved connection drafts across refreshes, adds service controls to setup, translates common operation errors, and keeps Runtime/Tunnel running when completing the wizard. Actual user-installed upgrade, positive remote control-plane polling and GUI fix verification passed; full ChatGPT calls remain pending. See [the follow-up report](desktop-v1-rc2-followup.md).
 
 The candidate provides a current-user Windows NSIS installer, a Tauri 2 management window and tray, first-run configuration, Windows DPAPI credential storage, named workspace permissions, actual Runtime/Tunnel/browser detection, controlled start/stop/restart, redacted logs, diagnostics and an opt-in login-start preference.
 
@@ -10,8 +12,8 @@ Automatic verification passed 825 source tests, actual frozen/installed MCP file
 
 This package is unsigned. Windows Authenticode and Tauri updater signing are separate concerns; neither is configured. Automatic updating is disabled. Manual upgrade requires verifying source and SHA-256, exiting the app, and running the reviewed installer while retaining user data. No public push, Release or public hosting is authorized or performed.
 
-Installer: `PLA Desktop_1.0.0-rc.1_x64-setup.exe` (89,738,878 bytes).
+Installer: `PLA Desktop_1.0.0-rc.2_x64-setup.exe` (89,755,283 bytes).
 
-SHA-256: `854392e35310134d5e079961435e81630ca391176b615df9d11668234139b437`.
+SHA-256: `9db98b5a3ab4559e80dc5fceaf0313aa56dd4dbb19c969f4f376f8fa3f7db148`.
 
-Build source: `e711724528a05cf459ea6f2d0903ac0633fddcf2` on `codex/pla-desktop-v1`, clean at build. Later documentation-only commits do not change the packaged code snapshot.
+Build source: `685f38ef2071369af770c73548f959d1b4a56b17` on `codex/pla-desktop-v1`. The manifest records source_dirty=true from a Cargo.toml line-ending rewrite; no content diff remained. See the RC.2 follow-up for the exact build and test limits.

@@ -1,6 +1,6 @@
 # PLA Desktop V1 acceptance report — 2026-10-09
 
-This report distinguishes implemented behavior, executed evidence and the owner's still-open final acceptance criteria.
+This report records the RC.1 baseline. The latest RC.2 installer, user-authorized positive remote connection, GUI fixes and actual upgrade results are recorded in [the RC.2 follow-up](desktop-v1-rc2-followup.md). Full ChatGPT and clean-Windows acceptance remain open.
 
 ## Result
 

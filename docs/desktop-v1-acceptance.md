@@ -4,7 +4,7 @@ This handbook separates local packaged checks from the required clean Windows an
 
 ## 安装与首次使用
 
-1. 从最终交付目录取得 `PLA Desktop_1.0.0-rc.1_x64-setup.exe` 与 `SHA256SUMS.txt`，核对安装包 SHA-256。它是未签名测试候选，不是已签名正式发行。
+1. 从最终交付目录取得 `PLA Desktop_1.0.0-rc.2_x64-setup.exe` 与 `SHA256SUMS.txt`，核对安装包 SHA-256。它是未签名测试候选，不是已签名正式发行。
 2. 双击安装包，以当前用户安装。无需安装 Python、Node 或 Rust。若系统没有 WebView2，安装器使用内置 Microsoft bootstrapper 联网安装；应确保可以连接 Microsoft。
 3. 打开 PLA Desktop。首次启动进入「首次配置与连接」。用户数据默认位于 `%LOCALAPPDATA%\io.pla.desktop`。
    如有既有源码安装，可填写其目录并检查布局。该操作仅报告文件是否存在，不读取或导入凭据，也不接管现有服务。
