@@ -91,14 +91,15 @@ try {
     Assert-Exit "Tauri NSIS installer"
     $releaseRoot = Join-Path $projectRoot "dist\desktop-v1"
     New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
-    $installers = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\target\release\bundle\nsis") -Filter "*.exe")
+    $releaseVersion = (Get-Content -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json).version
+    $installers = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\target\release\bundle\nsis") -Filter "PLA Desktop_${releaseVersion}_x64-setup.exe")
     if ($installers.Count -ne 1) { throw "Expected one NSIS installer" }
     Copy-Item -LiteralPath $installers[0].FullName -Destination $releaseRoot -Force
     $installer = Join-Path $releaseRoot $installers[0].Name
     $digest = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText((Join-Path $releaseRoot "SHA256SUMS.txt"), "$digest  $($installers[0].Name)`n")
     $revision = & git rev-parse HEAD
-    [ordered]@{ version = "1.0.0-rc.1"; source_commit = $revision; source_dirty = [bool](& git status --porcelain); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
+    [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = [bool](& git status --porcelain); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
     Write-Output "Installer: $installer"
     Write-Output "SHA-256: $digest"
 } finally {
