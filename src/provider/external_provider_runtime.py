@@ -72,6 +72,14 @@ def _register_manifest(
             command=str(manifest.command_path),
             args=list(manifest.args),
             cwd=str(manifest.cwd),
+            # MCP stdio intentionally inherits only a minimal OS environment.
+            # Pass the desktop workspace context explicitly, never Tunnel/API
+            # credentials or arbitrary developer provider settings.
+            env={key: os.environ[key] for key in (
+                'PLA_DESKTOP_RUNTIME', 'PLA_DATA_ROOT', 'PLA_INSTALL_RESOURCES',
+                'PLA_RESOURCE_ROOT', 'AGENT_PLA_ROOT', 'AGENT_WORKSPACE', 'AGENT_WORKSPACES_CONFIG',
+                'PLA_BROWSER_PORT') if key in os.environ}
+            if os.environ.get('PLA_DESKTOP_RUNTIME') == '1' else None,
         )
     manager.add_provider(
         manifest.provider_id,
@@ -145,6 +153,16 @@ class ExternalProviderRuntime:
     def setup_dependencies(self, provider_id: str) -> dict[str, Any]:
         """Install one provider's reviewed pinned dependency specs."""
         return setup_provider_dependencies(self._project_root, provider_id)
+
+    def import_manifest(self, content: str, confirm: bool = False, expected_sha256: str | None = None) -> dict[str, Any]:
+        """Desktop-native plugin registration without opening private data roots."""
+        if os.environ.get('PLA_DESKTOP_RUNTIME') != '1':
+            raise ValueError('Managed manifest import is available in Desktop; source installations retain their manifest workflow')
+        from desktop_runtime.components import ComponentProject
+        project = ComponentProject(Path(os.environ['PLA_DATA_ROOT']), Path(os.environ['PLA_INSTALL_RESOURCES']))
+        if project.root != self._project_root or project.manifest_dir != self._manifest_dir:
+            raise ValueError('Desktop provider project does not match Runtime configuration')
+        return project.import_manifest(content, confirm=confirm, expected_sha256=expected_sha256)
 
     def _load_manifests(self) -> dict[str, ProviderManifest]:
         return load_provider_manifests(

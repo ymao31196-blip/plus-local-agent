@@ -17,6 +17,8 @@ def main():
         from execution.execution_runner_service import main as run
     elif role == "manager":
         from desktop_runtime.manager import main as run
+    elif role == "component_install":
+        from desktop_runtime.installer import main as run
     elif role == "indicator":
         from host.computer_use_indicator import main as run
     elif role == "browser_keeper":

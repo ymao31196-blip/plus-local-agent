@@ -57,15 +57,44 @@ try {
     $node = Join-Path $resources "node.exe"
     if (-not (Test-Path -LiteralPath $node)) { Invoke-WebRequest "https://nodejs.org/dist/v22.16.0/win-x64/node.exe" -OutFile $node }
     if ((Get-FileHash -LiteralPath $node).Hash -ne "c5ff4c736112dd483c750fd4149d30c8a116db1a49b8b3ec88be4b65e6c86c19") { throw "Node component checksum mismatch" }
+    $nodeArchive = Get-VerifiedArchive "https://nodejs.org/dist/v22.16.0/node-v22.16.0-win-x64.zip" "node-22.16.0.zip" "21c2d9735c80b8f86dab19305aa6a9f6f59bbc808f68de3eef09d5832e3bfbbd"
+    $nodeExpanded = Join-Path $buildRoot "node-runtime"
+    Expand-Archive -LiteralPath $nodeArchive -DestinationPath $nodeExpanded -Force
+    $nodeTarget = Join-Path $resources "node-runtime"
+    New-Item -ItemType Directory -Force -Path $nodeTarget | Out-Null
+    Copy-Item -Path (Join-Path $nodeExpanded "node-v22.16.0-win-x64\*") -Destination $nodeTarget -Recurse -Force
+    $uvArchive = Get-VerifiedArchive "https://releases.astral.sh/github/uv/releases/download/0.12.24/uv-x86_64-pc-windows-msvc.zip" "uv-0.12.24.zip" "7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019"
+    $uvExpanded = Join-Path $buildRoot "uv-0.12.24"
+    Expand-Archive -LiteralPath $uvArchive -DestinationPath $uvExpanded -Force
+    Copy-Item -LiteralPath (Join-Path $uvExpanded "uv.exe") -Destination (Join-Path $resources "uv.exe") -Force
     & npm.cmd ci --prefix (Join-Path $projectRoot "desktop\browser-component") *> (Join-Path $buildRoot "browser-component.log")
     Assert-Exit "Pinned browser component"
     $browserDir = Join-Path $resources ".provider_envs\browser"
     New-Item -ItemType Directory -Force -Path $browserDir | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\browser-component\node_modules") -Destination $browserDir -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $projectRoot "provider_manifests\browser-playwright.json") -Destination (Join-Path $resources "browser-playwright.json") -Force
+    # Public reviewed assets only; developer environments and local settings are never bundled.
+    foreach ($folder in @("provider_manifests", "provider_specs", "providers")) {
+        $assetTarget = Join-Path $resources "provider-assets\$folder"
+        New-Item -ItemType Directory -Force -Path $assetTarget | Out-Null
+        Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) -File | Where-Object {
+            $_.Extension -in @(".json", ".txt", ".py", ".mjs") -and $_.Name -notlike "*.local.*"
+        } | Copy-Item -Destination $assetTarget -Force
+    }
+    $publicConfig = Join-Path $resources "provider-assets\config"
+    New-Item -ItemType Directory -Force -Path $publicConfig | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot "config\skill-library.json") -Destination $publicConfig -Force
+    Copy-Item -LiteralPath (Join-Path $projectRoot "provider_patches") -Destination (Join-Path $resources "provider-assets") -Recurse -Force
+    $policyAssets = Join-Path $resources "provider-assets\policy\host"
+    New-Item -ItemType Directory -Force -Path $policyAssets | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot "src\host\workspace_manager.py"),(Join-Path $projectRoot "src\host\__init__.py") -Destination $policyAssets -Force
+    & $packPython (Join-Path $PSScriptRoot "source_snapshot.py") --output (Join-Path $resources "developer-source.zip")
+    Assert-Exit "Public self-development source snapshot"
     & $packPython (Join-Path $PSScriptRoot "licenses.py") --output (Join-Path $resources "licenses")
     Assert-Exit "License inventory"
     Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/v22.16.0/LICENSE" -OutFile (Join-Path $resources "licenses\NODE-LICENSE.txt")
+    Invoke-WebRequest "https://raw.githubusercontent.com/astral-sh/uv/0.12.24/LICENSE-MIT" -OutFile (Join-Path $resources "licenses\UV-MIT-LICENSE.txt")
+    Invoke-WebRequest "https://raw.githubusercontent.com/astral-sh/uv/0.12.24/LICENSE-APACHE" -OutFile (Join-Path $resources "licenses\UV-APACHE-LICENSE.txt")
     & cargo.exe fetch --locked --manifest-path (Join-Path $projectRoot "desktop\src-tauri\Cargo.toml") *> (Join-Path $buildRoot "cargo-dependencies.log")
     Assert-Exit "Locked Rust dependencies"
     $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }

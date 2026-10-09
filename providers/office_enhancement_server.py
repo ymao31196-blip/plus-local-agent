@@ -22,7 +22,18 @@ from lxml import etree
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from tooling.local_tools import safe_path  # noqa: E402
+if os.environ.get('PLA_DESKTOP_RUNTIME') == '1':
+    # Reuse the original RootPolicy without loading the whole execution runtime
+    # into this isolated optional environment.
+    sys.path.insert(0, str(Path(os.environ['PLA_INSTALL_RESOURCES']) / 'provider-assets/policy'))
+    from host.workspace_manager import build_root_policy, load_workspace_roots
+
+    def safe_path(path: str, root: str = 'workspace', access: str = 'read') -> Path:
+        pla = Path(os.environ['AGENT_PLA_ROOT'])
+        configured = load_workspace_roots(Path(os.environ['AGENT_WORKSPACES_CONFIG']), pla)
+        return build_root_policy(Path(os.environ['AGENT_WORKSPACE']), pla, configured).resolve(root, path, access).target
+else:
+    from tooling.local_tools import safe_path  # noqa: E402
 
 
 mcp = FastMCP("Office Enhancement", version="0.1.0")
@@ -62,6 +73,9 @@ def _package_version(name: str) -> str | None:
 
 
 def _artifact_tool_root() -> Path | None:
+    if os.environ.get('PLA_DESKTOP_RUNTIME') == '1':
+        path = PROJECT_ROOT / '.provider_envs/office-enhancement/node_modules/@oai/artifact-tool'
+        return path if (path / 'package.json').is_file() else None
     configured = os.environ.get("OFFICE_ENHANCEMENT_ARTIFACT_TOOL_ROOT", "").strip()
     if configured:
         path = Path(configured).expanduser().resolve()
@@ -129,6 +143,11 @@ def _require_pdf(path: Path) -> None:
 
 
 def _node_executable() -> str:
+    if os.environ.get('PLA_DESKTOP_RUNTIME') == '1':
+        node = Path(os.environ['PLA_INSTALL_RESOURCES']) / 'node.exe'
+        if not node.is_file():
+            raise RuntimeError('Bundled Node component is missing')
+        return str(node)
     node = shutil.which("node.exe") or shutil.which("node")
     if not node:
         raise RuntimeError("Node.js was not found")

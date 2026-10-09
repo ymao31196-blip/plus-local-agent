@@ -35,8 +35,10 @@ def test_release_version_and_provider_catalog():
         limit=30,
     )
     runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
-    assert runtime_caps["match_count"] == 28
+    assert runtime_caps["match_count"] == 30
     assert runtime_ids == {
+        "runtime.provider_catalog",
+        "runtime.provider_import",
         "runtime.provider_status",
         "runtime.provider_setup",
         "runtime.provider_rescan",

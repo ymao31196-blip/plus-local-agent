@@ -80,6 +80,17 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
     }
     return (
         _descriptor(
+            'runtime.provider_import', 'provider_import', 'Review and Register Desktop MCP Plugin',
+            'Validate a new unique allowlisted MCP manifest in the managed Desktop component directory. Preview returns SHA-256; saving requires confirm=true and exact expected_sha256. Never installs dependencies or activates tools.',
+            {'type': 'object', 'properties': {
+                'content': {'type': 'string', 'maxLength': 50000},
+                'confirm': {'type': 'boolean', 'default': False},
+                'expected_sha256': {'type': ['string', 'null'], 'default': None}},
+             'required': ['content'], 'additionalProperties': False},
+            risk_level='write_local', requires_confirmation=True,
+            tags=('provider', 'runtime', 'import', 'desktop', 'review'),
+        ),
+        _descriptor(
             "runtime.provider_catalog",
             "provider_catalog",
             "Provider Manifest Catalog",
@@ -209,6 +220,10 @@ def register_provider_runtime_capabilities(
     broker.register_internal_handler(
         "runtime.provider_setup",
         lambda args: runtime.setup_dependencies(args["provider_id"]),
+    )
+    broker.register_internal_handler(
+        'runtime.provider_import',
+        lambda args: runtime.import_manifest(args['content'], args.get('confirm', False), args.get('expected_sha256')),
     )
     broker.register_internal_handler(
         "runtime.provider_rescan",

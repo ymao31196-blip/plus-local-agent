@@ -182,6 +182,12 @@ def capability_describe(capability_id: str) -> dict:
 
 
 @mcp.tool
+def capability_catalog(provider_id: str | None = None) -> dict:
+    """Read the complete registry with schemas, policy and real availability."""
+    return CAPABILITY_REGISTRY.catalog(provider_id)
+
+
+@mcp.tool
 async def capability_invoke(
     capability_id: str,
     arguments: dict,
@@ -204,7 +210,7 @@ async def provider_doctor(
     """Inspect provider lifecycle, isolated environment, pinned versions, and optional live MCP health."""
     return await run_provider_doctor(
         MCP_CLIENT_MANAGER,
-        Path(__file__).resolve().parents[1],
+        Path(os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[1])),
         provider_id=provider_id,
         live_probe=live_probe,
         force=force,

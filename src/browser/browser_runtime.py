@@ -31,7 +31,7 @@ from typing import Any
 
 from runtime.paths import data_root, state_root
 
-PROJECT_ROOT = Path(os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[2])).resolve()
+PROJECT_ROOT = Path(os.environ.get("PLA_INSTALL_RESOURCES", os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[2]))).resolve()
 STATE_DIR = state_root() / "browser_runtime"
 STATE_PATH = STATE_DIR / "runtime.json"
 KEEPER_READY_PATH = STATE_DIR / "keeper_ready.json"

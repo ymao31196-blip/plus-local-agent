@@ -17,6 +17,15 @@ def make_capability(provider: str, name: str, *, title: str | None = None):
     )
 
 
+def test_complete_catalog_has_full_schemas_and_no_search_limit():
+    registry = CapabilityRegistry()
+    registry.register_provider('many', [make_capability('many', f'tool_{i}') for i in range(130)])
+    registry.set_provider_enabled('many', False)
+    catalog = registry.catalog('many')
+    assert catalog['returned_count'] == 130 and not catalog['truncated']
+    assert all(not row['available'] and 'input_schema' in row for row in catalog['capabilities'])
+
+
 def test_fake_provider_register_search_and_describe():
     registry = CapabilityRegistry()
     provider = FakeCapabilityProvider()
