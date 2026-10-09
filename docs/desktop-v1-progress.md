@@ -1,3 +1,7 @@
+## 2026-10-10 多 root 覆盖问题修复并实装
+
+原因是重复名称 upsert 与保留旧表单引起静默替换。RC.3 明确 create/update，重名新增拒绝，保存后清空表单，编辑锁定名称。当前全量826、冻结多root4、自动MCP/浏览器10、异常7、已安装独立Computer Use多root5通过；用户安装更新exit0且三份配置hash保持。正式连接恢复，RC.3真实ChatGPT新文件/回读/独立Python执行通过，文件hash核对一致。安装包SHA-2568736fec36dd957237dd3fc3b9b540ec7ff8f6785d3c1000f2d9c061f480a41a6；源码c3e14f3，source_dirty=false。干净Windows/重启仍BLOCKED，专用网络中断仍NOT TESTED，整体正式发行不宣称完成。
+
 ## 2026-10-10 构建与回归收尾
 
 RC.2 当前源码全量 825 项通过；用户安装包异常 7 项通过，专用网络中断尚未测。clean-source 重构建退出 0，源码 3a6e9b7，SHA-256 5ed26e86cf57e3d0a8905abaed24a1a4fc80582a3eacbbf6385f411141c4fb2f。原实装及 ChatGPT 验收对应的 RC.2 首次包已归档；最新版重构建未混用旧二进制的安装测试证据。用户反馈的多 root 界面问题待复现处理。

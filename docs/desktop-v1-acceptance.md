@@ -4,14 +4,14 @@ This handbook separates local packaged checks from the required clean Windows an
 
 ## 安装与首次使用
 
-1. 从最终交付目录取得 `PLA Desktop_1.0.0-rc.2_x64-setup.exe` 与 `SHA256SUMS.txt`，核对安装包 SHA-256。它是未签名测试候选，不是已签名正式发行。
+1. 从最终交付目录取得 `PLA Desktop_1.0.0-rc.3_x64-setup.exe` 与 `SHA256SUMS.txt`，核对安装包 SHA-256。它是未签名测试候选，不是已签名正式发行。
 2. 双击安装包，以当前用户安装。无需安装 Python、Node 或 Rust。若系统没有 WebView2，安装器使用内置 Microsoft bootstrapper 联网安装；应确保可以连接 Microsoft。
 3. 打开 PLA Desktop。首次启动进入「首次配置与连接」。用户数据默认位于 `%LOCALAPPDATA%\io.pla.desktop`。
    如有既有源码安装，可填写其目录并检查布局。该操作仅报告文件是否存在，不读取或导入凭据，也不接管现有服务。
-4. 在官方 Tunnel 页面创建或选择此电脑专用 Tunnel，确认组织角色具备管理/使用权限。创建 runtime API key。将 Tunnel ID 和 key 输入界面并保存；密钥以当前 Windows 用户的 DPAPI 加密保存。
-5. 打开「授权工作区」，填写现有目录的绝对路径及名称，明确选择读取、写入、受控执行权限。不要授权私人凭据目录或过大的目录范围。移除授权不会删除文件。
+4. 在官方 Tunnel 页面创建或选择此电脑专用 Tunnel，确认组织角色具备管理/使用权限。创建 runtime API key。若服务已运行，先停止服务。将 Tunnel ID 和 key 输入界面并保存；密钥以当前 Windows 用户的 DPAPI 加密保存。
+5. 打开「授权工作区」，为每个目录填写唯一 root 名称和绝对路径，明确选择读取、写入、受控执行权限，然后点击「添加 root」。支持连续添加多个 root，成功后表单清空；新增重名会被拒绝。修改旧 root 时点击该行「编辑」，不要把新增当作替换。不要授权私人凭据目录或过大的目录范围。移除授权不会删除文件。
 6. 点击「启动 Runtime」，确认状态为「MCP 已就绪」。运行「真实本地工具验证」，确认本地 MCP 诊断通过。
-7. 点击「连接 Tunnel」，等待「Tunnel 已就绪」。它仅表示本地 Tunnel readiness 通过，不能替代 ChatGPT 授权与远程调用验收。
+7. 点击「连接 Tunnel」，等待「已连接远端服务」。此状态需要本地 readiness 及新鲜的远端成功轮询，仍不能替代 ChatGPT 授权与端到端工具调用验收。
 8. 按照官方说明，在 ChatGPT 侧添加相应的 Tunnel 应用或 MCP 连接，并完成账户授权。
 9. 在「版本与维护」可启用打包的浏览器组件。停止服务后保存偏好，再启动 Runtime。需要系统 Microsoft Edge。浏览器使用自己的配置目录与端口。
 10. 查看日志或运行诊断，报告保存于用户 `logs` 目录。关闭窗口后应用留在托盘；彻底退出请使用托盘「退出」。登录启动默认为关闭，可自主开启。

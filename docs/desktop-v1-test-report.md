@@ -1,6 +1,6 @@
 # PLA Desktop V1 acceptance report — 2026-10-09
 
-This report records the RC.1 baseline. The latest RC.2 installer, user-authorized positive remote connection, GUI fixes and actual upgrade results are recorded in [the RC.2 follow-up](desktop-v1-rc2-followup.md). Real ChatGPT file/process/transaction E2E passed on 2026-10-10; clean Windows and OS restart acceptance remain open.
+This report records the RC.1 baseline. The latest RC.3 multi-root fix and actual installed GUI verification are recorded in [the RC.3 follow-up](desktop-v1-rc3-followup.md). Earlier real ChatGPT evidence is recorded in [the RC.2 follow-up](desktop-v1-rc2-followup.md). Real ChatGPT file/process/transaction E2E passed on 2026-10-10; clean Windows and OS restart acceptance remain open.
 
 ## Result
 

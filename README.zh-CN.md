@@ -2,6 +2,8 @@
 
 ## PLA Desktop V1 测试候选
 
+RC.3 支持连续添加多个 root，每个目录使用不同名称。新增重名会被拒绝；修改旧目录请点击对应行「编辑」。保存新增后表单自动清空，避免把第二目录静默替换到第一个 root。
+
 Windows 桌面候选安装包在本地构建输出 `dist/desktop-v1` 中。安装包包含 Runtime、Python
 执行组件和官方 Tunnel 客户端；普通用户无需安装 Python、Node 或 Rust，也无需运行开发脚本。
 首次图形配置向导会初始化独立用户数据目录、使用 Windows DPAPI 加密保存 runtime API key、

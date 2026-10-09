@@ -1,4 +1,6 @@
-# PLA Desktop 1.0.0-rc.2 — unsigned local test candidate
+# PLA Desktop 1.0.0-rc.3 — unsigned local test candidate
+
+RC.3 separates adding a new root from explicitly editing an existing root. Duplicate additions are refused, saving clears the add form, and multiple roots retain their independent paths and permissions. Current full source tests (826), frozen multi-root/MCP checks, actual NSIS update and isolated installed Computer Use checks passed. See [the RC.3 follow-up](desktop-v1-rc3-followup.md).
 
 RC.2 preserves unsaved connection drafts across refreshes, adds service controls to setup, translates common operation errors, and keeps Runtime/Tunnel running when completing the wizard. Actual user-installed upgrade, positive remote control-plane polling and GUI fix verification passed; real ChatGPT file/independent-runner/transaction calls also passed on 2026-10-10. See [the follow-up report](desktop-v1-rc2-followup.md).
 
@@ -12,8 +14,8 @@ Automatic verification passed 825 source tests, actual frozen/installed MCP file
 
 This package is unsigned. Windows Authenticode and Tauri updater signing are separate concerns; neither is configured. Automatic updating is disabled. Manual upgrade requires verifying source and SHA-256, exiting the app, and running the reviewed installer while retaining user data. No public push, Release or public hosting is authorized or performed.
 
-Installer: `PLA Desktop_1.0.0-rc.2_x64-setup.exe` (89,749,305 bytes).
+Installer: `PLA Desktop_1.0.0-rc.3_x64-setup.exe` (89,752,445 bytes).
 
-SHA-256: `5ed26e86cf57e3d0a8905abaed24a1a4fc80582a3eacbbf6385f411141c4fb2f`.
+SHA-256: `8736fec36dd957237dd3fc3b9b540ec7ff8f6785d3c1000f2d9c061f480a41a6`.
 
-Build source: `3a6e9b7855683b4c299297ae80d1f40d3f1b878c`, source_dirty=false. The user-installed initial RC.2 package and its E2E evidence are archived separately; see the follow-up report for exact artifact/test correspondence.
+Build source: `c3e14f3ad8d5572c50c52c95e8864859eeabba7e`, source_dirty=false. Previous version packages and evidence are archived separately.

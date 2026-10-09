@@ -18,6 +18,8 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 
 ### PLA Desktop V1 test candidate
 
+RC.3 supports multiple named roots. Add each directory with a distinct name; duplicate additions are refused. Use the row's Edit button to change an existing root. Saving a new root clears the form and preserves prior roots.
+
 For the Windows desktop candidate, use the locally built NSIS installer in
 `dist/desktop-v1`. It bundles the Runtime, Python execution interpreter and official
 Tunnel client. Users do not need to install Python, Node or Rust. The GUI wizard
