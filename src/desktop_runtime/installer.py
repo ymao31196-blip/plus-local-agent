@@ -78,7 +78,7 @@ class ComponentInstaller:
         self.env.update(UV_PYTHON_INSTALL_DIR=str(data / 'components/managed-python'),
                         UV_CACHE_DIR=str(data / 'cache/uv'), UV_NO_CONFIG='1', UV_NO_PROJECT='1',
                         UV_INDEX_URL='https://pypi.org/simple',
-                        PATH=str(self.resources / 'node-runtime') + os.pathsep + self.env.get('PATH', ''))
+                        PATH=str(self.resources) + os.pathsep + str(self.resources / 'node-runtime') + os.pathsep + self.env.get('PATH', ''))
 
     def plan(self, provider_id, skill_package=None):
         if not isinstance(provider_id, str) or not PROVIDER_ID.fullmatch(provider_id):
@@ -134,7 +134,7 @@ class ComponentInstaller:
             lines = [line.strip() for line in node_spec.read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')]
             if not lines or any(not re.fullmatch(r'(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+@[0-9][A-Za-z0-9_.+-]*', line) for line in lines):
                 raise ValueError('Bundled npm specifications must pin exact package versions')
-            node = self.resources / 'node-runtime/node.exe'
+            node = self.resources / 'node.exe'
             npm = self.resources / 'node-runtime/node_modules/npm/bin/npm-cli.js'
             if not node.is_file() or not npm.is_file():
                 raise ValueError('Bundled Node/npm component is missing')
