@@ -27,7 +27,13 @@
     "skill_resource",
     "skill_validate",
     "skill_prepare",
-    "skill_apply_local"
+    "skill_apply_local",
+    "skill_states",
+    "skill_toggle",
+    "skill_plan_change",
+    "skill_apply_change",
+    "skill_publish_plan",
+    "skill_restore_local"
   ],
   "tool_overrides": {
     "list_skills": {
@@ -187,6 +193,80 @@
         "skills",
         "authoring",
         "write",
+        "confirmation"
+      ]
+    },
+    "skill_states": {
+      "public_name": "states",
+      "title": "List Individual Skill States",
+      "description": "List cached skills, including individually disabled entries and source enabled states.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "lifecycle",
+        "skill_states"
+      ]
+    },
+    "skill_toggle": {
+      "public_name": "toggle",
+      "title": "Enable or Disable Skill",
+      "description": "Persist per-Skill enable/disable state. Disabled Skills are excluded from managed search and blocked from load, resource, and validation.",
+      "risk_level": "write_local",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "lifecycle",
+        "skill_toggle"
+      ]
+    },
+    "skill_plan_change": {
+      "public_name": "plan-change",
+      "title": "Preview Skill Rename or Delete",
+      "description": "Preview exact files and hashes for a local Skill rename or recoverable delete; does not change files.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "lifecycle",
+        "skill_plan_change"
+      ]
+    },
+    "skill_apply_change": {
+      "public_name": "apply-change",
+      "title": "Apply Reviewed Skill Change",
+      "description": "After explicit confirmation and tree SHA validation, safely rename a local Skill or move it to recoverable trash. No Git push.",
+      "risk_level": "write_local",
+      "requires_confirmation": true,
+      "tags": [
+        "skills",
+        "lifecycle",
+        "skill_apply_change"
+      ]
+    },
+    "skill_publish_plan": {
+      "public_name": "publish-plan",
+      "title": "Plan GitHub Skill Publication",
+      "description": "Validate a selected local Skill source and proposed GitHub repository. Returns a read-only confirmed-Git workflow; does not create or push remote repositories.",
+      "risk_level": "read",
+      "requires_confirmation": false,
+      "tags": [
+        "skills",
+        "github",
+        "publication",
+        "planning"
+      ]
+    },
+    "skill_restore_local": {
+      "public_name": "restore-local",
+      "title": "Restore Archived Skill",
+      "description": "Restore archived local Skill files to an empty original folder after explicit confirmation and integrity checks. Git unchanged until separately committed.",
+      "risk_level": "write_local",
+      "requires_confirmation": true,
+      "tags": [
+        "skills",
+        "restore",
+        "lifecycle",
         "confirmation"
       ]
     }

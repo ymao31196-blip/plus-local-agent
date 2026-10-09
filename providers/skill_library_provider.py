@@ -73,7 +73,7 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name == "skill_library":
         raise RuntimeError(
-            "Skill Library is not installed. Install chatgpt-skill-library>=0.3.0 "
+            "Skill Library is not installed. Install chatgpt-skill-library>=0.4.0 "
             "in the provider environment or supply a checkout under workspace/skill-library."
         ) from exc
     raise

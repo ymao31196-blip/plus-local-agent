@@ -51,7 +51,7 @@ Run the repository installer:
 
 The installer creates the local Python environment, installs reviewed Provider dependencies,
 checks prerequisites, and runs validation. The optional Skill Library server is a separate
-v0.3.0 package: follow [Skill Library setup](docs/skill_library_provider.md) or supply its
+v0.4.0 package: follow [Skill Library setup](docs/skill_library_provider.md) or supply its
 reviewed local source/Wheel with `install.ps1 -SkillLibraryPackage <path>`. Read and write
 access to Skill directories remain disabled until explicitly configured. If customer-specific Tunnel credentials are not yet
 configured, a safe local installation may finish as **PARTIAL**.
