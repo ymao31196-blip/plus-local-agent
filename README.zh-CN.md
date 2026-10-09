@@ -105,7 +105,7 @@ PLA会把这台机器的Tunnel配置写入`config/tunnel.local.yaml`。该文件
 .\install.ps1 -ValidateOnly
 ~~~
 
-更完整的部署说明见[docs/customer_installation.md](docs/customer_installation.md)。
+更完整的部署说明见[docs/customer_installation.md](docs/customer_installation.md)。若使用用户可配置的Skill Source，独立安装与来源授权步骤请参考[Skill Library Provider说明](docs/skill_library_provider.md)；普通PLA安装不会预设开发者的个人Skill仓库。
 
 ## 核心能力
 

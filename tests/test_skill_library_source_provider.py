@@ -31,8 +31,26 @@ def test_skill_library_managed_tools_are_explicitly_reviewed() -> None:
 def test_local_source_roots_are_explicit_and_within_project() -> None:
     config = json.loads((ROOT / "config" / "skill-library.json").read_text(encoding="utf-8"))
     roots = config["local_roots"]
-    assert roots == ["workspace/skill-library"]
+    assert roots == []  # public defaults do not grant access to any local files
+    assert "repo" not in config  # each user configures their own GitHub sources
     for path in roots:
         assert not Path(path).is_absolute()
         assert (ROOT / path).resolve().is_relative_to(ROOT.resolve())
     assert "token" not in config
+    assert not (ROOT / "workspace" / "skill-library" / "src").as_posix() in str(config)
+
+
+def test_operator_private_source_config_is_ignored_by_git() -> None:
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "config/skill-library.local.json" in ignored
+    config = json.loads((ROOT / "config" / "skill-library.json").read_text(encoding="utf-8"))
+    assert "repo" not in config
+    assert config["local_roots"] == []
+
+
+def test_provider_accepts_checkout_or_installed_skill_library() -> None:
+    entrypoint = (ROOT / "providers" / "skill_library_provider.py").read_text(encoding="utf-8")
+    assert 'if source_package.is_dir():' in entrypoint
+    assert 'if LOCAL_CONFIG_PATH.is_file():' in entrypoint
+    assert 'if config.get("repo"):' in entrypoint
+    assert 'from skill_library.server import main' in entrypoint

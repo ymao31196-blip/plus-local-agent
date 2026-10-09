@@ -25,6 +25,7 @@ ENV/
 observer_manifests/*.local.json
 config/tunnel.local.yaml
 config/workspaces.local.yaml
+config/skill-library.local.json
 config/windows_actions.local.json
 
 # Local secrets and credentials

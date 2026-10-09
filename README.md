@@ -39,7 +39,7 @@ git clone https://github.com/ymao31196-blip/plus-local-agent.git $PlaRoot
 Set-Location $PlaRoot
 ~~~
 
-For a stable deployment, you may check out the release tag you want before installation.
+For a stable deployment, you may check out the release tag you want before installation. The optional Skill Library Provider requires its independent server package or source checkout; see [Skill Library Provider setup](docs/skill_library_provider.md). Public PLA configuration never grants local Skill source roots by default.
 
 ### Install
 
