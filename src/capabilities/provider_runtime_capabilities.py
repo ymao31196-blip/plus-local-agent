@@ -80,6 +80,16 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
     }
     return (
         _descriptor(
+            "runtime.provider_catalog",
+            "provider_catalog",
+            "Provider Manifest Catalog",
+            "Read all validated installed provider manifests, including disabled or unconfigured entries, with separate actual lifecycle evidence. Does not install or launch a provider.",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            risk_level="read",
+            requires_confirmation=False,
+            tags=("provider", "runtime", "catalog", "discovery"),
+        ),
+        _descriptor(
             "runtime.provider_status",
             "provider_status",
             "Provider Runtime Status",
@@ -187,6 +197,10 @@ def register_provider_runtime_capabilities(
         "runtime",
         descriptors,
         enabled=True,
+    )
+    broker.register_internal_handler(
+        "runtime.provider_catalog",
+        lambda _args: runtime.catalog(),
     )
     broker.register_internal_handler(
         "runtime.provider_status",

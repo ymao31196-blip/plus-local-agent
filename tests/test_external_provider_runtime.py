@@ -59,6 +59,23 @@ def test_external_providers_are_opt_in(tmp_path, monkeypatch):
     assert manager.provider_status() == {}
 
 
+def test_catalog_detects_new_disabled_manifests_without_launching_them(tmp_path, monkeypatch):
+    from provider.external_provider_runtime import ExternalProviderRuntime
+    monkeypatch.setenv('PLA_EXTERNAL_PROVIDERS', '')
+    write_manifest(tmp_path, 'alpha', autostart=False)
+    manager = MCPClientManager(CapabilityRegistry())
+    runtime = ExternalProviderRuntime(manager, tmp_path)
+    assert runtime.configure_initial() == {}
+    first = runtime.catalog()['providers']
+    assert [item['provider_id'] for item in first] == ['alpha']
+    assert first[0]['configured'] is False and first[0]['lifecycle'] is None
+    assert first[0]['python_exists'] is False
+    write_manifest(tmp_path, 'beta', autostart=False)
+    second = runtime.catalog()['providers']
+    assert [item['provider_id'] for item in second] == ['alpha', 'beta']
+    assert manager.provider_status() == {}
+
+
 def test_manifest_defaults_select_only_autostart_providers(tmp_path, monkeypatch):
     write_manifest(tmp_path, "alpha", autostart=True)
     write_manifest(tmp_path, "beta", autostart=False)

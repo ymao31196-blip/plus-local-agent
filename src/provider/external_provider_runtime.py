@@ -189,6 +189,26 @@ class ExternalProviderRuntime:
             "providers": self._manager.provider_status(),
         }
 
+    def catalog(self) -> dict[str, Any]:
+        """Read every validated manifest, including providers not yet enabled.
+
+        Discovery/installation is never implied by a manifest's mere presence.
+        This is the source of truth for control-panel inventory and new installs.
+        """
+        manifests = self._load_manifests()
+        lifecycle = self._manager.provider_status()
+        return {
+            "manifest_directory": str(self._manifest_dir or self._project_root / "provider_manifests"),
+            "providers": [
+                {**manifest.summary(),
+                 "configured": provider_id in self._active,
+                 "lifecycle": lifecycle.get(provider_id),
+                 "temporarily_enabled": provider_id in self._forced_enabled,
+                 "temporarily_disabled": provider_id in self._forced_disabled}
+                for provider_id, manifest in sorted(manifests.items())
+            ],
+        }
+
     async def rescan(self) -> dict[str, Any]:
         """Reload the manifest directory and apply add/change/remove differences."""
         async with self._lock:
