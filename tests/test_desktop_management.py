@@ -12,7 +12,7 @@ from desktop_runtime.manager import Manager
 
 def test_configuration_is_atomic_persistent_and_secret_free(tmp_path):
     config = DesktopConfig(tmp_path)
-    config.save({'runtime_port': 19001, 'tunnel_id': 'tunnel_test'})
+    config.save({'runtime_port': 19001, 'tunnel_id': 'tunnel_' + '0' * 32})
     assert DesktopConfig(tmp_path).public()['runtime_port'] == 19001
     before = config.path.read_bytes()
     with pytest.raises(ValueError):

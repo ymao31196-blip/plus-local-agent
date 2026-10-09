@@ -87,7 +87,7 @@ class DesktopConfig:
         if len({value["runtime_port"], value["health_port"], value["browser_port"]}) != 3:
             raise ValueError("Runtime, browser and Tunnel require different ports")
         tunnel = value["tunnel_id"]
-        if not isinstance(tunnel, str) or (tunnel and not re.fullmatch(r"tunnel_[A-Za-z0-9_-]{1,160}", tunnel)):
+        if not isinstance(tunnel, str) or (tunnel and not re.fullmatch(r"tunnel_[a-z0-9]{32}", tunnel)):
             raise ValueError("Invalid Tunnel ID")
         for field in ("autostart", "onboarding_complete", "browser_enabled"):
             if not isinstance(value[field], bool):
