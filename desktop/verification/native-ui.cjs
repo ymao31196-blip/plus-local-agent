@@ -47,12 +47,14 @@ let child,browser,page;
   evidence.tests.push({test:'installed frontend IPC -> frozen Runtime -> real MCP diagnostic',status:'PASS'});
   const draftTunnel='tunnel_'+'0'.repeat(32);
   await page.locator('#tunnel-id').fill(draftTunnel);
-  await page.locator('[data-command="stop"]').click();
+  // Multiple sections contain stop buttons. Address the wizard's exact
+  // control rather than relying on a globally ambiguous data-command.
+  await page.locator('#setup [data-command="stop"]').click();
   await page.waitForFunction(()=>!document.querySelector('#refresh').disabled);
   assert.equal(await page.locator('#tunnel-id').inputValue(),draftTunnel);
   await page.locator('#save-connection').click();
   await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('配置已保存') && !document.querySelector('#refresh').disabled);
-  await page.locator('[data-command="start"]').click();
+  await page.locator('#setup [data-command="start"]').click();
   await page.waitForFunction(()=>document.querySelector('#runtime').textContent==='MCP 已就绪' && !document.querySelector('#refresh').disabled,null,{timeout:45000});
   await page.locator('#verify').click();
   await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('PASS'));
