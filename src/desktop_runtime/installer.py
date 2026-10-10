@@ -189,13 +189,20 @@ class ComponentInstaller:
             self.run([str(node), str(npm), 'install', '--prefix', str(target), '--ignore-scripts',
                       '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', *lines])
         if source_spec is not None:
-            # Fixed original reviewed Git/npm helper; Git remains an observable
-            # optional system prerequisite, never installed or elevated silently.
+            # Use the reviewed Node/npm pair bundled with Desktop. A host npm.cmd
+            # may fail under the frozen app's PATH or resolve a mismatched Node.
+            # Git remains an explicit system prerequisite, not installed silently.
             from provider.source_provider_setup import setup_git_npm_source
+            node = self.resources / 'node.exe'
+            npm_cli = self.resources / 'node-runtime/node_modules/npm/bin/npm-cli.js'
+            if not node.is_file() or not npm_cli.is_file():
+                raise ValueError('Bundled Node/npm CLI is missing; repair the Desktop installer')
             prior = os.environ.copy()
             try:
                 os.environ.clear(); os.environ.update(self.env)
-                setup_git_npm_source(self.project.root, provider_id, source_spec, timeout_seconds=600)
+                setup_git_npm_source(
+                    self.project.root, provider_id, source_spec,
+                    timeout_seconds=600, managed_node=node, managed_npm_cli=npm_cli)
             finally:
                 os.environ.clear(); os.environ.update(prior)
         receipt = {**plan, 'status': 'installed', 'activated': False}
