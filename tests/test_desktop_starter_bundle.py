@@ -86,4 +86,6 @@ def test_installed_tauri_ui_contract_exposes_bundle_and_custom_packages():
         assert f'id="{ident}"' in html
         assert f"$('{ident}')" in js or f"output('{ident}'" in js
     assert "details" in html and "provider-card" in js
-    assert "Skill Library尚未连接" in js
+    assert "Skill Library已安装的文件不会丢失" in js
+    assert "Skill Library已连接，但尚未添加Skill来源" in js
+    assert "启停：${enableLabel}" in js and "连接：${currentStatus}" in js

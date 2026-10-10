@@ -25,15 +25,26 @@ async function loadProviders(){
     const advanced=node('details',undefined,'provider-advanced');
     advanced.append(node('summary','详细信息与高级管理'));
     const lifecycle=row.lifecycle;
-    const state=lifecycle?({ready:'MCP 已连接',disabled:'已停用',failed:'连接失败',error:'连接失败',discovered:'已发现',unconfigured:'尚未配置'})[lifecycle.state]||'连接状态未知':'未连接';
+    const state=lifecycle?({ready:'曾成功连接',disabled:'已停用',failed:'连接失败',error:'连接失败',discovered:'已发现',unconfigured:'尚未配置'})[lifecycle.state]||'连接状态未知':'未连接';
     const installedFiles=row.execution_files_present===true;
-    const live=lifecycle?.state==='ready';
-    const failed=['error','failed'].includes(lifecycle?.state);
-    const currentStatus=live?'MCP 已连接':!installedFiles?'缺少运行组件':failed?'连接失败':row.installation_recorded?'已安装，待启用':state;
+    // A historical 'ready' discovery can survive a temporary disable.
+    // Only the active enabled lifecycle is actually invokable.
+    const disabled=lifecycle?.enabled===false||row.temporarily_disabled===true;
+    const live=lifecycle?.state==='ready'&&!disabled&&lifecycle?.enabled===true;
+    const failed=!disabled&&['error','failed'].includes(lifecycle?.state);
+    const currentStatus=!installedFiles?'缺少运行组件':disabled?'未连接':live?'MCP 已连接':failed?'连接失败':row.installation_recorded?'已安装，待启用':state;
     const header=node('div',undefined,'provider-card-header');
-    header.append(node('h2',row.provider_id),node('strong',currentStatus));
+    const statuses=node('div',undefined,'provider-statuses');
+    const enableLabel=lifecycle?.enabled===true&&!disabled?'已启用':disabled?'已停用':row.requested_enabled?'待连接':'未启用';
+    const enableClass=enableLabel==='已启用'?'is-enabled':enableLabel==='待连接'?'is-pending':'is-disabled';
+    statuses.append(
+      node('span',`启停：${enableLabel}`,`provider-enable-status ${enableClass}`),
+      node('span',`连接：${currentStatus}`,'provider-connection-status')
+    );
+    header.append(node('h2',row.provider_id),statuses);
     card.append(header);
-    if(failed)card.append(node('p',`MCP启动失败：${lifecycle?.error_message||'连接未建立'}。可尝试重连；持续失败请停用后修复依赖。`,'error-text'));
+    if(disabled&&installedFiles)card.append(node('p','Provider已停用；历史工具发现记录不代表当前可调用。请点击「启用并连接」，无需重新安装依赖。'));
+    else if(failed)card.append(node('p',`MCP启动失败：${lifecycle?.error_message||'连接未建立'}。可尝试重连；持续失败请停用后修复依赖。`,'error-text'));
     else if(!installedFiles)card.append(node('p',row.provider_id==='skill-library'?'尚未安装Skill Library，请选择自己的源码或wheel。':row.directory_exists===false?'MCP源码目录缺失，需要安装依赖。':'缺少运行文件，需要先安装或检查系统前提。','error-text'));
     advanced.append(node('p',`${row.runtime_kind} · 启动偏好 ${row.requested_enabled?'启用':'停用'} · 已发现工具 ${lifecycle?.tool_count??'未检测'}`));
     advanced.append(node('p',row.url||row.python||row.command));
@@ -52,7 +63,7 @@ async function loadProviders(){
       }
       await installSelectedComponent();
     }));
-    else if(failed && installedFiles) {
+    if(failed && installedFiles) {
       quick.append(button('重试连接',async()=>{
         if(!window.confirm(`重新发现 ${row.provider_id} 的MCP工具？\n${lifecycle?.error_message||'此前连接失败'}`))return;
         const result=await rpc('provider_action',{action:'reload',provider_id:row.provider_id,confirmed:true});
@@ -65,12 +76,23 @@ async function loadProviders(){
         await installSelectedComponent();
       }));
     }
-    else if(installedFiles&&!live)quick.append(button('启用并连接',async()=>{
-      if(!window.confirm(`启用 ${row.provider_id} 并连接真实MCP？此组件可能访问本机资源，请确认其工具权限。`))return;
-      const result=await rpc('provider_action',{action:'enable',provider_id:row.provider_id,confirmed:true});
-      output('provider-result',result);await loadProviders();
-      notice(result.status==='selection_saved'?'启用偏好已保存；启动Runtime后才会连接。':`${row.provider_id}已发起连接；请以实际MCP状态为准。`);
-    }));
+    if(installedFiles){
+      if(lifecycle?.enabled===true&&!disabled){
+        quick.append(button('停用',async()=>{
+          if(!window.confirm(`停用 ${row.provider_id}？工具调用将立即变为不可用；安装文件和Skill缓存保留。`))return;
+          const result=await rpc('provider_action',{action:'disable',provider_id:row.provider_id,confirmed:true});
+          output('provider-result',result);await loadProviders();
+          notice(`${row.provider_id}已执行停用，实际状态见组件卡片。`);
+        }));
+      }else{
+        quick.append(button('启用并连接',async()=>{
+          if(!window.confirm(`启用 ${row.provider_id} 并连接真实MCP？此组件可能访问本机资源，请确认其工具权限。`))return;
+          const result=await rpc('provider_action',{action:'enable',provider_id:row.provider_id,confirmed:true});
+          output('provider-result',result);await loadProviders();
+          notice(result.status==='selection_saved'?'启用偏好已保存；启动Runtime后才会连接。':`${row.provider_id}已发起连接；请以实际MCP状态为准。`);
+        }));
+      }
+    }
     const controls=node('div',undefined,'actions');
     for(const [label,operation] of [['启用','enable'],['停用','disable'],['重载工具','reload']]){
       if(['enable','reload'].includes(operation)&&!installedFiles)continue;
@@ -219,7 +241,9 @@ async function loadSkills(){
   try{skillDescriptors=(await rpc('provider_details',{provider_id:'skill-library'})).capabilities.filter(item=>Object.hasOwn(skillLabels,item.id.slice('skill-library.'.length)));}
   catch(error){skillDescriptors=[];$('skill-status').textContent='Skill Library 尚未连接。请在 MCP 插件页安装并启用，再刷新此页。';$('skill-fields').replaceChildren();return;}
   const available=skillDescriptors.filter(item=>item.available).length;
-  $('skill-status').textContent=`真实服务发现 ${skillDescriptors.length} / 17 项管理能力，其中 ${available} 项可用。`;
+  $('skill-status').textContent=skillDescriptors.length&&!available
+    ?`已发现 ${skillDescriptors.length} 项Skill能力，但当前全部不可用。请到「MCP插件与Provider」启用Skill Library，再刷新。`
+    :`真实服务发现 ${skillDescriptors.length} / 17 项管理能力，其中 ${available} 项可用。`;
   populateSkillActions();
 }
 async function loadSkillList(){
@@ -238,16 +262,24 @@ async function loadSkillList(){
     if(skillInventorySources.some(source=>source.id===previous))select.value=previous;
     renderSkillList();
   }catch(error){
-    $('skill-list-status').textContent='无法读取 Skill 列表。请确认 Runtime 已启动，Skill Library 已安装并启用，然后刷新。';
-    const notReady=String(error).includes('Unknown capability: skill-library.')||String(error).includes('Runtime is stopped');
-    $('skill-list-items').append(node('p',notReady?'Skill Library尚未连接。请先完成安装与启用；本地Skill文件不会因此丢失。':friendlyError(error),'error-text'));
+    const disabled=String(error).includes('Capability is unavailable: skill-library.');
+    const notReady=disabled||String(error).includes('Unknown capability: skill-library.')||String(error).includes('Runtime is stopped');
+    $('skill-list-status').textContent=disabled?'Skill Library当前未启用，无法读取缓存目录。':'无法读取Skill列表，请检查Runtime和Skill Library连接状态。';
+    $('skill-list-items').append(node('p',notReady?'Skill Library已安装的文件不会丢失。请前往「MCP插件与Provider」点击「启用并连接」，成功后刷新Skill列表。':friendlyError(error),'error-text'));
   }
 }
 $('skill-install-link').onclick=()=>action(async()=>{
   view('providers');await loadProviders();
   $('install-provider').value='skill-library';
-  $('install-panel').scrollIntoView({block:'start'});
-  $('install-live').textContent='Skill Library没有随安装包附带源码。请填写你有权使用的v0.5.0源码目录或wheel完整路径，然后直接点击「安装 / 修复」；安装完成后单独启用。';
+  const index=providerCatalog.providers.findIndex(row=>row.provider_id==='skill-library');
+  const installed=index>=0&&providerCatalog.providers[index].execution_files_present===true;
+  if(installed){
+    $('provider-list').children[index].scrollIntoView({block:'start'});
+    $('provider-observation').textContent='Skill Library已安装，请在上方组件卡片点击「启用并连接」，成功后刷新Skill列表，无需重复安装。';
+  }else{
+    $('install-panel').scrollIntoView({block:'start'});
+    $('install-live').textContent='Skill Library尚未安装。请填写你有权使用的v0.5.0源码目录或wheel完整路径，然后点击「安装 / 修复」。';
+  }
 });
 $('skill-quick-add').onclick=()=>action(async()=>{
   const source_id=$('skill-quick-id').value.trim(),location=$('skill-quick-path').value.trim();
@@ -273,9 +305,12 @@ function renderSkillList(){
   const sourceId=$('skill-list-source').value;const status=$('skill-list-state').value;
   const rows=skillInventory.filter(skill=>(!sourceId||skill.source_id===sourceId)&&(!status||(status==='enabled')===skill.effective_enabled)&&(!query||`${skill.ref} ${skill.name} ${skill.source_id}`.toLocaleLowerCase().includes(query)));
   const enabled=skillInventory.filter(skill=>skill.effective_enabled).length;
-  $('skill-list-status').textContent=`共 ${skillInventory.length} 个已缓存 Skill · ${enabled} 个启用 · 当前显示 ${rows.length} 个`;
+  const noSources=skillInventorySources.length===0;
+  $('skill-list-status').textContent=noSources
+    ?'Skill Library已连接，但尚未添加Skill来源。'
+    :`共 ${skillInventory.length} 个已缓存 Skill · ${enabled} 个启用 · 当前显示 ${rows.length} 个`;
   const list=$('skill-list-items');list.replaceChildren();
-  if(!rows.length){list.append(node('p',skillInventory.length?'没有符合筛选条件的 Skill。':'尚无已缓存 Skill。请在 Skills 管理中添加来源并同步。'));return;}
+  if(!rows.length){list.append(node('p',noSources?'请在上方登记你的本地Skill目录并同步；安装Skill Library程序不会自动导入个人Skill。':skillInventory.length?'没有符合筛选条件的 Skill。':'尚无已缓存 Skill。请在 Skills 管理中添加来源并同步。'));return;}
   for(const skill of rows){
     const source=skillInventorySources.find(item=>item.id===skill.source_id);
     const card=node('article',undefined,'wide');

@@ -99,7 +99,70 @@ function setup(rpc) {
   assert.ok(quick.children.some(x => x.textContent === '安装 / 修复组件'));
   assert.ok(labels.includes('安装组件…'));
   assert.ok(!labels.includes('启用') && !labels.includes('重载工具'));
-  assert.match(card.children[0].children.map(x => x.textContent).join(' '), /缺少运行组件/);
+  const statusText=card=>card.children[0].children[1].children.map(x=>x.textContent).join(' ');
+  assert.match(statusText(card), /连接：缺少运行组件/);
+  assert.match(statusText(card), /启停：未启用/);
+
+  // The Runtime may retain state='ready' from discovery even after a
+  // user temporarily disables the Provider. Never advertise it as connected.
+  const stoppedSkill = setup(async (command, args = {}) => {
+    if (command === 'provider_catalog') return {manifest_directory:'TEST',
+      runtime_observed:true, providers:[{provider_id:'skill-library',
+        runtime_kind:'isolated_python_stdio',execution_files_present:true,
+        install_supported:true,temporarily_disabled:true,
+        lifecycle:{state:'ready',enabled:false,tool_count:17}}]};
+    if (command === 'installation_status') return {jobs:[],installed_receipts:['skill-library']};
+    if (command === 'skill_action' && args.action === 'states')
+      throw Error('Capability is unavailable: skill-library.states');
+    throw Error('Unexpected stopped Skill RPC: '+command);
+  });
+  await stoppedSkill.$('reload-providers').onclick();
+  const stoppedCard=stoppedSkill.$('provider-list').children[0];
+  assert.match(statusText(stoppedCard), /启停：已停用/);
+  assert.match(statusText(stoppedCard), /连接：未连接/);
+  assert.doesNotMatch(statusText(stoppedCard), /MCP 已连接/);
+  const stoppedQuick=stoppedCard.children.find(x=>x.className==='actions provider-quick');
+  assert.ok(stoppedQuick.children.some(x=>x.textContent==='启用并连接'));
+  await stoppedSkill.$('reload-skill-list').onclick();
+  assert.match(stoppedSkill.$('skill-list-status').textContent, /未启用/);
+  assert.match(stoppedSkill.$('skill-list-items').children[0].textContent, /启用并连接/);
+  assert.doesNotMatch(stoppedSkill.$('skill-list-items').children[0].textContent, /Capability is unavailable/);
+
+  // Every installed Provider shows BOTH enablement and real connection
+  // at a glance, with a one-click action to reverse its current enable state.
+  let toggleEnabled=true;
+  const toggleCalls=[];
+  const toggle = setup(async (command, args={}) => {
+    if (command === 'provider_catalog') return {
+      manifest_directory:'TEST',runtime_observed:true,providers:[{
+        provider_id:'pdf',runtime_kind:'isolated_python_stdio',
+        execution_files_present:true,install_supported:true,
+        requested_enabled:toggleEnabled,
+        lifecycle:{state:'ready',enabled:toggleEnabled,tool_count:8}
+      }]};
+    if (command === 'installation_status') return {jobs:[],installed_receipts:['pdf']};
+    if (command === 'provider_action') {
+      toggleCalls.push(args);
+      toggleEnabled=args.action==='enable';
+      return {status:'completed'};
+    }
+    throw Error('Unexpected toggle RPC: '+command);
+  });
+  const toggleCard=()=>toggle.$('provider-list').children[0];
+  const toggleQuick=()=>toggleCard().children.find(x=>x.className==='actions provider-quick');
+  await toggle.$('reload-providers').onclick();
+  assert.match(statusText(toggleCard()), /启停：已启用/);
+  assert.match(statusText(toggleCard()), /连接：MCP 已连接/);
+  assert.ok(toggleQuick().children.some(x=>x.textContent==='停用'));
+  await toggleQuick().children.find(x=>x.textContent==='停用').onclick();
+  assert.equal(toggleCalls[0].action,'disable');
+  assert.match(statusText(toggleCard()), /启停：已停用/);
+  assert.doesNotMatch(statusText(toggleCard()), /连接：MCP 已连接/);
+  assert.ok(toggleQuick().children.some(x=>x.textContent==='启用并连接'));
+  await toggleQuick().children.find(x=>x.textContent==='启用并连接').onclick();
+  assert.equal(toggleCalls[1].action,'enable');
+  assert.match(statusText(toggleCard()), /启停：已启用/);
+  assert.match(statusText(toggleCard()), /连接：MCP 已连接/);
 
   // A configured WPS process with a failed MCP startup must not appear merely
   // disabled; the real error reason must be visible without expanding details.
@@ -116,7 +179,8 @@ function setup(rpc) {
   });
   await failed.$('reload-providers').onclick();
   const failedCard=failed.$('provider-list').children[0];
-  assert.match(failedCard.children[0].children.map(x=>x.textContent).join(' '), /连接失败/);
+  assert.match(statusText(failedCard), /启停：已启用/);
+  assert.match(statusText(failedCard), /连接：连接失败/);
   assert.match(failedCard.children.map(x=>x.textContent).join(' '), /Connection closed/);
   const failedQuick=failedCard.children.find(x=>x.className==='actions provider-quick');
   assert.ok(failedQuick.children.some(x=>x.textContent==='重试连接'));
@@ -168,6 +232,16 @@ function setup(rpc) {
   await s.$('skill-quick-add').onclick();
   assert.deepEqual(skillCalls, ['manage', 'sync', 'states', 'sources']);
   assert.match(s.$('skill-list-status').textContent, /共 1 个已缓存 Skill/);
+  // A connected, but empty, Skill Library is a missing source configuration
+  // rather than a failed MCP installation.
+  const emptySkill=setup(async (command,args={}) => {
+    if(command==='skill_action'&&args.action==='states')return {data:{skills:[]}};
+    if(command==='skill_action'&&args.action==='sources')return {data:{sources:[]}};
+    throw Error('Unexpected empty Skill RPC: '+command);
+  });
+  await emptySkill.$('reload-skill-list').onclick();
+  assert.match(emptySkill.$('skill-list-status').textContent,/已连接，但尚未添加Skill来源/);
+  assert.match(emptySkill.$('skill-list-items').children[0].textContent,/不会自动导入个人Skill/);
   // RC.7 reviewed 7-component bundle: one digest-bound confirmation
   // starts one real-install job, without silently enabling providers.
   const bundleCalls = [];

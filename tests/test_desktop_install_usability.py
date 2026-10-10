@@ -161,7 +161,7 @@ def test_desktop_release_version_consistent_across_build_systems():
         VERSION, tauri["version"], package["version"], npm_lock["version"],
         npm_lock["packages"][""]["version"], cargo["package"]["version"],
         locked[0]["version"],
-    } == {"1.0.0-rc.8"}
+    } == {"1.0.0-rc.9"}
 
 
 def test_desktop_build_discovers_existing_rustup_and_mingw_without_persistent_path_change():

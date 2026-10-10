@@ -45,6 +45,14 @@ let child,browser,page;
   await page.locator('nav [data-view="setup"]').click();await page.locator('#verify').click();
   await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('PASS'));
   evidence.tests.push({test:'installed frontend IPC -> frozen Runtime -> real MCP diagnostic',status:'PASS'});
+  await page.locator('nav [data-view="providers"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('#provider-list .provider-card').length>0,null,{timeout:30000});
+  const providerStatuses=await page.locator('#provider-list .provider-card .provider-statuses').allTextContents();
+  const providerCount=await page.locator('#provider-list .provider-card').count();
+  assert.equal(providerStatuses.length,providerCount,'All Provider cards need visible enable/connection indicators');
+  assert.ok(providerStatuses.every(value=>value.includes('启停：')&&value.includes('连接：')),providerStatuses);
+  evidence.tests.push({test:'native every Provider shows separate enable state and MCP connection state',status:'PASS',provider_count:providerCount});
+  await page.locator('nav [data-view="setup"]').click();
   const draftTunnel='tunnel_'+'0'.repeat(32);
   await page.locator('#tunnel-id').fill(draftTunnel);
   // Multiple sections contain stop buttons. Address the wizard's exact
