@@ -164,6 +164,15 @@ class ExternalProviderRuntime:
             raise ValueError('Desktop provider project does not match Runtime configuration')
         return project.import_manifest(content, confirm=confirm, expected_sha256=expected_sha256)
 
+    def configure_manifest(self, **arguments) -> dict[str, Any]:
+        if os.environ.get('PLA_DESKTOP_RUNTIME') != '1':
+            raise ValueError('Managed provider configuration is available in Desktop')
+        from desktop_runtime.components import ComponentProject
+        project = ComponentProject(Path(os.environ['PLA_DATA_ROOT']), Path(os.environ['PLA_INSTALL_RESOURCES']))
+        if project.root != self._project_root or project.manifest_dir != self._manifest_dir:
+            raise ValueError('Desktop provider project does not match Runtime configuration')
+        return project.configure_manifest(**arguments)
+
     def _load_manifests(self) -> dict[str, ProviderManifest]:
         return load_provider_manifests(
             self._project_root,

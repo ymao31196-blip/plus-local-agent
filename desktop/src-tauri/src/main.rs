@@ -19,7 +19,9 @@ impl Bridge {
     fn call(&mut self, command: &str, args: Value) -> Result<Value, String> {
         if self.broken { return Err("Manager unavailable; reopen PLA Desktop to recover".into()); }
         let message = json!({"command":command,"args":args}).to_string();
-        if message.len() > 65536 { return Err("Request too large".into()); }
+        // Skill Library accepts 64 KiB UTF-8 documents; JSON escaping and the
+        // envelope must fit while the private RPC remains explicitly bounded.
+        if message.len() > 512000 { return Err("Request too large".into()); }
         writeln!(self.input, "{message}").map_err(|_| "Manager input closed")?;
         self.input.flush().map_err(|_| "Manager input closed")?;
         let response = match self.output.recv_timeout(Duration::from_secs(100)) {
@@ -45,7 +47,7 @@ fn quit_app(app: tauri::AppHandle) { app.exit(0); }
 
 #[tauri::command]
 async fn manage(command: String, args: Value, state: State<'_, Backend>) -> Result<Value,String> {
-    const ALLOWED: &[&str] = &["status","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","verify","diagnose","logs","detect_legacy","provider_catalog","provider_import","provider_details","provider_action","skill_action","provider_install","installation_status","skill_permissions","development_status","development_prepare","development_configure"];
+    const ALLOWED: &[&str] = &["status","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","verify","diagnose","logs","detect_legacy","provider_catalog","provider_import","provider_configuration","provider_details","provider_action","skill_action","provider_install","installation_status","skill_permissions","development_status","development_prepare","development_configure"];
     if !ALLOWED.contains(&command.as_str()) { return Err("Unsupported management command".into()); }
     state.0.lock().map_err(|_| "Manager lock unavailable")?.call(&command,args)
 }

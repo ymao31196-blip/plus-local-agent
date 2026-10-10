@@ -82,3 +82,61 @@ def test_staging_preserves_user_changes_to_existing_manifest(tmp_path):
     before = path.read_bytes()
     project.stage(18931)
     assert path.read_bytes() == before
+
+
+def test_owned_builtin_paths_migrate_but_reviewed_user_edits_survive(tmp_path):
+    for label in ('old-install', 'new-install'):
+        resources = tmp_path / label
+        template(resources)
+        path = resources / 'provider-assets/provider_manifests/demo.json'
+        value = json.loads(path.read_text())
+        value['runtime'] = {'kind': 'executable_stdio', 'command': 'node.exe', 'args': ['server.js'], 'cwd': '.'}
+        value['tool_allowlist'] = ['one']
+        path.write_text(json.dumps(value))
+    first = ComponentProject(tmp_path / 'data', tmp_path / 'old-install')
+    first.stage(18931)
+    second = ComponentProject(tmp_path / 'data', tmp_path / 'new-install')
+    second.stage(18931)
+    assert second.catalog()['providers'][0]['command'] == str((tmp_path / 'new-install/node.exe').resolve())
+    current = second.configure_manifest('demo')
+    value = json.loads(current['content'])
+    value['runtime']['args'] = ['custom-server.js']
+    content = json.dumps(value)
+    preview = second.configure_manifest('demo', content, expected_sha256=current['sha256'])
+    assert not preview['saved'] and not preview['reloaded']
+    saved = second.configure_manifest('demo', content, confirm=True, expected_sha256=current['sha256'], expected_content_sha256=preview['content_sha256'])
+    assert saved['saved'] and not saved['reloaded']
+    second.stage(18931)
+    assert second.configure_manifest('demo')['content'] == content
+    with pytest.raises(ValueError, match='changed'):
+        second.configure_manifest('demo', content, confirm=True, expected_sha256=current['sha256'], expected_content_sha256=preview['content_sha256'])
+
+
+def test_provider_edit_cannot_change_identity_or_apply_unreviewed_content(tmp_path):
+    resources = tmp_path / 'resources'
+    template(resources)
+    project = ComponentProject(tmp_path / 'data', resources)
+    project.stage(18931)
+    current = project.configure_manifest('demo')
+    value = json.loads(current['content'])
+    value['tool_allowlist'] = ['one']
+    content = json.dumps(value)
+    with pytest.raises(ValueError, match='exact proposed'):
+        project.configure_manifest('demo', content, confirm=True, expected_sha256=current['sha256'], expected_content_sha256='wrong')
+    value['id'] = 'another'
+    with pytest.raises(ValueError, match='cannot rename'):
+        project.configure_manifest('demo', json.dumps(value), expected_sha256=current['sha256'])
+    assert project.configure_manifest('demo')['content'] == current['content']
+
+
+def test_valid_external_manifest_filename_is_editable_and_duplicate_id_is_rejected(tmp_path):
+    project = ComponentProject(tmp_path / 'data', tmp_path / 'resources')
+    content = json.dumps({'schema_version': 1, 'id': 'external', 'runtime': {
+        'kind': 'streamable_http', 'url': 'http://127.0.0.1:19000/mcp', 'cwd': '.'}, 'tool_allowlist': ['one']})
+    path = project.manifest_dir / 'package-generated-name.json'
+    path.write_text(content)
+    current = project.configure_manifest('external')
+    assert current['content'] == content
+    with pytest.raises(ValueError, match='already exists'):
+        project.import_manifest(content)
+    assert not (project.manifest_dir / 'external.json').exists()

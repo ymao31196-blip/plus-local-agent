@@ -63,10 +63,10 @@ try {
     $nodeTarget = Join-Path $resources "node-runtime"
     New-Item -ItemType Directory -Force -Path $nodeTarget | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $nodeExpanded "node-v22.16.0-win-x64") | Where-Object Name -ne "node.exe" | Copy-Item -Destination $nodeTarget -Recurse -Force
-    $uvArchive = Get-VerifiedArchive "https://releases.astral.sh/github/uv/releases/download/0.12.24/uv-x86_64-pc-windows-msvc.zip" "uv-0.12.24.zip" "7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019"
-    $uvExpanded = Join-Path $buildRoot "uv-0.12.24"
-    Expand-Archive -LiteralPath $uvArchive -DestinationPath $uvExpanded -Force
-    Copy-Item -LiteralPath (Join-Path $uvExpanded "uv.exe") -Destination (Join-Path $resources "uv.exe") -Force
+    # uv is an optional official download, not a redistributed binary. This
+    # keeps the base installer smaller and preserves the vendor distribution.
+    $obsoleteUv = Join-Path $resources "uv.exe"
+    if (Test-Path -LiteralPath $obsoleteUv) { Remove-Item -LiteralPath $obsoleteUv -Force }
     & npm.cmd ci --prefix (Join-Path $projectRoot "desktop\browser-component") *> (Join-Path $buildRoot "browser-component.log")
     Assert-Exit "Pinned browser component"
     $browserDir = Join-Path $resources ".provider_envs\browser"

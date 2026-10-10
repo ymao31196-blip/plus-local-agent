@@ -10,11 +10,14 @@ import re
 import subprocess
 import tomllib
 import zipfile
+import urllib.request
 
 from desktop_runtime.components import ComponentProject, PROVIDER_ID
 from desktop_runtime.config import atomic_write
 
 UV_SHA256 = '1e9d1e0a766024a212d165dc67db2d7f71831a5ff4bb60ab7e6863391871c1d5'
+UV_ARCHIVE_SHA256 = '7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019'
+UV_URL = 'https://releases.astral.sh/github/uv/releases/download/0.12.24/uv-x86_64-pc-windows-msvc.zip'
 PYTHON_VERSION = '3.11.9'
 
 
@@ -72,7 +75,7 @@ class ComponentInstaller:
     def __init__(self, data, resources):
         self.project = ComponentProject(data, resources)
         self.resources = resources.resolve()
-        self.uv = self.resources / 'uv.exe'
+        self.uv = self.project.root / 'tools/uv.exe'
         self.env = {key: value for key, value in os.environ.items()
                     if not key.startswith(('UV_', 'PIP_', 'PYTHON', 'VIRTUAL_ENV', 'CONDA_'))}
         self.env.update(UV_PYTHON_INSTALL_DIR=str(data / 'components/managed-python'),
@@ -92,12 +95,40 @@ class ComponentInstaller:
         if skill_package and provider_id != 'skill-library':
             raise ValueError('A local package is accepted only for Skill Library')
         return {'provider_id': provider_id, 'python_version': PYTHON_VERSION,
-                'environment': str(self.project.root / f'.provider_envs/{provider_id}'),
+                'environment': str((self.resources if provider_id == 'browser' else self.project.root) / f'.provider_envs/{provider_id}'),
+                'bundled_component': provider_id == 'browser',
                 'specs': [{'name': path.name, 'content': path.read_text(encoding='utf-8'),
                            'sha256': hashlib.sha256(path.read_bytes()).hexdigest()} for path in present],
                 'skill_package': str(package) if package else None,
                 'skill_package_sha256': package_sha256(package) if package else None,
-                'installs_into_private_data': True, 'activates_provider': False}
+                'installer_tool': {'name': 'uv', 'version': '0.12.24', 'source': UV_URL,
+                                   'archive_sha256': UV_ARCHIVE_SHA256, 'download_on_demand': True} if provider_id != 'browser' else None,
+                'installs_into_private_data': provider_id != 'browser', 'activates_provider': False}
+
+    def ensure_uv(self):
+        if not self.uv.resolve().is_relative_to(self.project.root):
+            raise ValueError('Installer executable escapes private component data')
+        if self.uv.is_file():
+            if hashlib.sha256(self.uv.read_bytes()).hexdigest() != UV_SHA256:
+                raise ValueError('Private uv installer was modified; existing file preserved')
+            return
+        print('STEP Download verified optional uv 0.12.24 from its official release', flush=True)
+        archive_path = self.project.data / 'cache/uv-0.12.24.zip'
+        if not archive_path.resolve().is_relative_to(self.project.data):
+            raise ValueError('Installer archive escapes private cache')
+        if not archive_path.is_file():
+            with urllib.request.urlopen(UV_URL, timeout=60) as response:
+                archive = response.read(100_000_001)
+            if len(archive) > 100_000_000 or hashlib.sha256(archive).hexdigest() != UV_ARCHIVE_SHA256:
+                raise ValueError('Optional installer archive checksum mismatch; no code executed')
+            atomic_write(archive_path, archive)
+        if hashlib.sha256(archive_path.read_bytes()).hexdigest() != UV_ARCHIVE_SHA256:
+            raise ValueError('Cached installer archive checksum mismatch; file preserved')
+        with zipfile.ZipFile(archive_path) as archive:
+            binary = archive.read('uv.exe')
+        if hashlib.sha256(binary).hexdigest() != UV_SHA256:
+            raise ValueError('Optional installer executable checksum mismatch')
+        atomic_write(self.uv, binary)
 
     def run(self, command):
         print('STEP ' + command[1], flush=True)
@@ -111,12 +142,21 @@ class ComponentInstaller:
         python_spec = specs / f'{provider_id}.txt'
         node_spec = specs / f'{provider_id}.npm.txt'
         source_spec = specs / f'{provider_id}.source.json'
+        if provider_id == 'browser':
+            package = self.resources / '.provider_envs/browser/node_modules/@playwright/mcp'
+            if not (self.resources / 'node.exe').is_file() or not (package / 'cli.js').is_file():
+                raise ValueError('Bundled browser component is missing; repair with the verified Desktop installer')
+            version = json.loads((package / 'package.json').read_text())['version']
+            expected = [line.strip().split('@')[-1] for line in node_spec.read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')]
+            if expected != [version]:
+                raise ValueError('Bundled browser version does not match its reviewed specification; repair installation')
+            return {'status': 'bundled_files_verified', 'provider_id': provider_id, 'version': version,
+                    'activated': False, 'mcp_connection_verified': False, 'private_duplicate_not_installed': True}
         if python_spec.is_file():
             lines = [line.strip() for line in python_spec.read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')]
             if not lines or any(not re.fullmatch(r'[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?==[A-Za-z0-9_.+-]+', line) for line in lines):
                 raise ValueError('Bundled Python specifications must pin exact package versions')
-            if not self.uv.is_file() or hashlib.sha256(self.uv.read_bytes()).hexdigest() != UV_SHA256:
-                raise ValueError('Verified bundled uv component is missing or modified; repair installation')
+            self.ensure_uv()
             environment = Path(plan['environment']).resolve()
             if not environment.is_relative_to(self.project.root):
                 raise ValueError('Provider environment escapes private data')

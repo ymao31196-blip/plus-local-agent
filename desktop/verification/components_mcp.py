@@ -14,9 +14,57 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
+from queue import Queue
+from threading import Thread
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 from desktop_runtime.manager import Manager
+
+
+class FrozenManager:
+    """Same bounded private management RPC as Tauri; no developer Runtime."""
+    def __init__(self, data, resources):
+        self.components = SimpleNamespace(root=data / 'components')
+        self.process = subprocess.Popen([str(resources / 'runtime/pla-runtime.exe'), 'manager',
+            '--data-dir', str(data), '--resources', str(resources.resolve())],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        self.responses = Queue()
+        def collect():
+            for line in self.process.stdout:
+                self.responses.put(line)
+            self.responses.put(None)
+        Thread(target=collect, daemon=True).start()
+
+    def dispatch(self, command, args=None):
+        self.process.stdin.write(json.dumps({'command': command, 'args': args or {}}) + '\n')
+        self.process.stdin.flush()
+        raw = self.responses.get(timeout=100)
+        if not raw:
+            raise RuntimeError('Frozen manager exited without a response')
+        result = json.loads(raw)
+        if not result['ok']:
+            raise RuntimeError(result['error'])
+        return result['result']
+
+    def start(self):
+        return self.dispatch('start')
+
+    def stop(self):
+        try:
+            self.dispatch('stop')
+        finally:
+            self.process.stdin.close()
+            try:
+                self.process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                subprocess.run(['taskkill.exe', '/PID', str(self.process.pid), '/T', '/F'], capture_output=True)
+                self.process.wait(timeout=10)
+
+    @property
+    def logs(self):
+        return self.dispatch('logs')['lines']
 
 
 def main():
@@ -24,9 +72,10 @@ def main():
     parser.add_argument('--resources', type=Path, required=True)
     parser.add_argument('--skill-package', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--frozen', action='store_true')
     args = parser.parse_args()
     data = Path(tempfile.mkdtemp(prefix='pla-component-mcp-'))
-    manager = Manager(data, args.resources)
+    manager = FrozenManager(data, args.resources) if args.frozen else Manager(data, args.resources)
     checks = []
     def record(name, evidence):
         checks.append({'name': name, 'result': 'PASS', 'evidence': evidence})
@@ -47,9 +96,11 @@ def main():
         manager.dispatch('provider_install', {**install_args, 'confirmed': True, 'expected_sha256': plan['sha256']})
         deadline = time.monotonic() + 600
         job = 'installer:skill-library'
-        while manager._alive(job) and time.monotonic() < deadline:
+        def job_status():
+            return next(item for item in manager.dispatch('installation_status')['jobs'] if item['job'] == job)
+        while job_status()['state'] == 'running' and time.monotonic() < deadline:
             time.sleep(1)
-        assert manager.children[job].poll() == 0, '\n'.join(manager.logs)[-16000:]
+        assert job_status()['exit_code'] == 0, '\n'.join(manager.logs)[-16000:]
         python = manager.components.root / '.provider_envs/skill-library/Scripts/python.exe'
         assert python.is_file()
         record('independent_managed_python_and_skill_package_install', str(python))
@@ -65,9 +116,9 @@ def main():
         with socket.socket() as connection:
             connection.bind(('127.0.0.1', 0))
             port = connection.getsockname()[1]
-        manager.config.save({'runtime_port': port})
+        manager.dispatch('configure', {'runtime_port': port})
         manager.start()
-        runtime_pid = manager.children['runtime'].pid
+        runtime_pid = manager.dispatch('status')['owned_processes']['runtime']['pid']
         enabled = manager.dispatch('provider_action', {'action': 'enable', 'provider_id': 'skill-library', 'confirmed': True})
         assert enabled['data']['provider']['state'] == 'ready', enabled
         descriptors = manager.dispatch('provider_details', {'provider_id': 'skill-library'})
@@ -105,6 +156,10 @@ def main():
         skill('restore-local', {'trash_id': deleted['trash_id'], 'confirm': True}, True)
         assert renamed.is_dir()
         record('reviewed_draft_apply_rename_archive_restore', 'actual files independently inspected')
+        large_content = '---\nname: desktop-large\ndescription: Unicode document boundary fixture\n---\n\n' + '验收正文' * 5000
+        large = skill('prepare', {'source_id': 'test', 'name': 'desktop-large', 'content': large_content})
+        assert large['content'] == large_content
+        record('bounded_rpc_preserves_large_unicode_skill_draft', len(large_content.encode('utf-8')))
         skill('publish-plan', {'source_id': 'test', 'github_repo': 'desktop-test/fixture', 'visibility': 'private'})
         git = shutil.which('git.exe') or shutil.which('git')
         assert git, 'Git required for publication fixture; this is an optional system prerequisite'
@@ -117,7 +172,7 @@ def main():
         assert (destination / 'skills/desktop-renamed/SKILL.md').read_bytes() == (renamed / 'SKILL.md').read_bytes()
         record('publication_preview_and_local_copy_no_commit_or_push', 'destination bytes independently compared')
         manager.dispatch('provider_action', {'action': 'disable', 'provider_id': 'skill-library', 'confirmed': True})
-        assert manager.children['runtime'].pid == runtime_pid
+        assert manager.dispatch('status')['owned_processes']['runtime']['pid'] == runtime_pid
         record('runtime_pid_preserved_across_skill_enable_disable', runtime_pid)
     except Exception as error:
         checks.append({'name': 'acceptance', 'result': 'FAIL', 'error': str(error)})
@@ -125,7 +180,7 @@ def main():
     finally:
         manager.stop()
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps({'mode': 'source_manager_real_independent_component', 'data_directory': str(data), 'checks': checks}, indent=2, ensure_ascii=False), encoding='utf-8')
+        args.report.write_text(json.dumps({'mode': 'frozen_manager_real_independent_component' if args.frozen else 'source_manager_real_independent_component', 'data_directory': str(data), 'checks': checks}, indent=2, ensure_ascii=False), encoding='utf-8')
 
 
 if __name__ == '__main__':

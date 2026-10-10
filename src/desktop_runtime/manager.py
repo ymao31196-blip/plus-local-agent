@@ -313,6 +313,12 @@ class Manager:
                 raise ValueError('Expected bounded manifest and review confirmation')
             self.components.stage(self.config.value['browser_port'])
             return self.components.import_manifest(args['content'], confirm=args['confirmed'], expected_sha256=args['expected_sha256'])
+        if command == 'provider_configuration':
+            if set(args) != {'provider_id', 'content', 'confirmed', 'expected_sha256', 'expected_content_sha256'}:
+                raise ValueError('Expected provider configuration and exact review hashes')
+            self.components.stage(self.config.value['browser_port'])
+            return self.components.configure_manifest(args['provider_id'], args['content'], confirm=args['confirmed'],
+                expected_sha256=args['expected_sha256'], expected_content_sha256=args['expected_content_sha256'])
         if command == 'provider_details':
             if set(args) != {'provider_id'} or args['provider_id'] not in {row['provider_id'] for row in self.components.catalog()['providers']}:
                 raise ValueError('Select a known provider')
@@ -519,7 +525,7 @@ def main():
     try:
         for raw in sys.stdin.buffer:
             try:
-                if len(raw) > 65536:
+                if len(raw) > 512000:
                     raise ValueError("Management request exceeds limit")
                 request = json.loads(raw)
                 if not isinstance(request, dict) or set(request) != {"command", "args"}:
