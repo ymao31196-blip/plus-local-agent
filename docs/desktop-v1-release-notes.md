@@ -1,4 +1,6 @@
-# PLA Desktop 1.0.0-rc.3 — unsigned local test candidate
+# PLA Desktop 1.0.0-rc.4 — unsigned local test candidate
+
+RC.4 adds complete Provider management, optional independent component installation, a dedicated complete cached Skill List alongside the 17 Skills Management workflows, and opt-in source self-development. Frozen MCP, real Skill service, native GUI and configuration-preserving installed upgrade passed. See [RC.4 evidence and remaining qualification](desktop-v1-rc4-followup.md).
 
 RC.3 separates adding a new root from explicitly editing an existing root. Duplicate additions are refused, saving clears the add form, and multiple roots retain their independent paths and permissions. Current full source tests (826), frozen multi-root/MCP checks, actual NSIS update and isolated installed Computer Use checks passed. See [the RC.3 follow-up](desktop-v1-rc3-followup.md).
 
@@ -10,12 +12,12 @@ The complete PyInstaller onedir Runtime preserves existing MCP wrappers, capabil
 
 Automatic verification passed 825 source tests, actual frozen/installed MCP file/process/transaction/browser calls, installed UI and process-ownership lifecycle, negative security/credential checks, and real NSIS installation/uninstall with user-file retention. See the acceptance report for exact grades and evidence.
 
-**The release is not yet fully qualified.** Real positive Tunnel traversal and ChatGPT authorization/file/process/transaction calls passed. Clean Windows 10/11, OS reboot and manual tray-menu acceptance remain open. Office/Skills external environments are missing and explicitly unavailable. Current dependency versions are frozen in the build inputs; they are not silently updated at runtime.
+**The release is not yet fully qualified.** Real positive Tunnel traversal and ChatGPT authorization/file/process/transaction calls passed. Clean Windows 10/11, OS reboot and manual tray-menu acceptance remain open. Office/Skills are independent optional installations; missing dependencies remain explicitly unavailable. Skill Library redistribution permission is not established, so installation requires the user's matching source or wheel. RC.4 added-capability ChatGPT calls remain untested. Current dependency versions are frozen in the build inputs; they are not silently updated at runtime.
 
 This package is unsigned. Windows Authenticode and Tauri updater signing are separate concerns; neither is configured. Automatic updating is disabled. Manual upgrade requires verifying source and SHA-256, exiting the app, and running the reviewed installer while retaining user data. No public push, Release or public hosting is authorized or performed.
 
-Installer: `PLA Desktop_1.0.0-rc.3_x64-setup.exe` (89,752,445 bytes).
+Installer: `PLA Desktop_1.0.0-rc.4_x64-setup.exe` (92,547,687 bytes).
 
-SHA-256: `8736fec36dd957237dd3fc3b9b540ec7ff8f6785d3c1000f2d9c061f480a41a6`.
+SHA-256: `28b4da3fc6baeb7bd38adeee8af01eb8e401c17e33f6a46dd0707e99743e7ae0`.
 
-Build source: `c3e14f3ad8d5572c50c52c95e8864859eeabba7e`, source_dirty=false. Previous version packages and evidence are archived separately.
+Build source: `578f9a0da9928c06b97c2d9269f39d2e79b99021`, source_dirty=false. Previous version packages and evidence are archived separately.

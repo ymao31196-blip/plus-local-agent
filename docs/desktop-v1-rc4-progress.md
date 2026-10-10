@@ -32,3 +32,6 @@ RC.4冻结构建、真实GUI与冻结MCP、配置保留更新、ChatGPT新增能
 
 保留 Skills 管理的全部工作流，新增独立 Skill 列表入口。进入时通过真实 skill-library.states 与 sources 读取全部已缓存 Skill，包含单项及来源停用状态；支持名称/来源文本筛选、来源与状态筛选、启用项完整正文阅读，以及跳转原管理工作流。未同步来源不伪装成已缓存目录；缺失服务时提供明确提示。页面切换回到顶部，避免继承前页滚动位置。
 
+
+
+最新完成情况以 [RC.4 验证记录](desktop-v1-rc4-followup.md) 为准：干净提交构建、冻结 Skill 8 组、原 MCP 10 项、异常 7 项、真实断线恢复 4 项、独立 Skill 列表 Computer Use、原位置 NSIS 升级和配置保留、正常 Windows 启动及 Runtime/Tunnel 恢复均已执行。上文各阶段“待构建/待冻结/RC.3仍运行”是阶段记录，现用户安装已为 RC.4。RC.4 ChatGPT 新增能力、干净 Windows 和系统重启仍未验证。

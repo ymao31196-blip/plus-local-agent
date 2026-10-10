@@ -18,7 +18,7 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 
 ### PLA Desktop V1 test candidate
 
-RC.3 supports multiple named roots. Add each directory with a distinct name; duplicate additions are refused. Use the row's Edit button to change an existing root. Saving a new root clears the form and preserves prior roots.
+RC.4 retains multiple named roots and adds all Provider manifests, reviewed import/configuration/install flows, hot enable/disable/reload, and complete tool schemas. The dedicated Skill List automatically shows every cached Skill, including disabled entries, with filtering and full-text reading. Skills Management retains all 17 service workflows. Optional source self-development is disabled by default. See [RC.4 verification](docs/desktop-v1-rc4-followup.md).
 
 For the Windows desktop candidate, use the locally built NSIS installer in
 `dist/desktop-v1`. It bundles the Runtime, Python execution interpreter and official
@@ -26,7 +26,7 @@ Tunnel client. Users do not need to install Python, Node or Rust. The GUI wizard
 initializes private user data, saves a Windows DPAPI-protected runtime key, manages
 workspace permissions, and performs a real local MCP diagnostic call. Configure your
 own Tunnel and complete ChatGPT authorization separately. Browser support is opt-in;
-Office and Skills external environments are not included in this candidate.
+Office and Skills use independent optional environments installed through reviewed plans in the MCP page. Skill Library requires the user's own v0.5.0 source or wheel because redistribution permission is not established. Select Skill-specific roots, enable its Provider, then add and synchronize sources in Skills Management to populate the list. No personal Skills are imported automatically.
 
 This is an **unsigned test candidate**, not a publicly approved stable release.
 Automatic updates are disabled. See the [desktop acceptance handbook](docs/desktop-v1-acceptance.md),

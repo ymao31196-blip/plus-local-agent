@@ -2,14 +2,14 @@
 
 ## PLA Desktop V1 测试候选
 
-RC.3 支持连续添加多个 root，每个目录使用不同名称。新增重名会被拒绝；修改旧目录请点击对应行「编辑」。保存新增后表单自动清空，避免把第二目录静默替换到第一个 root。
+RC.4 保留多 root，新增完整 Provider 清单、清单导入与编辑、受控安装、启停与重载，以及全部工具参数。独立「Skill 列表」进入即加载所有已缓存 Skill，包含停用项，支持筛选和全文阅读；「Skills 管理」保留全部 17 项服务工作流。「可选自开发」默认关闭，提供完整公开源码快照与专用工作区授权。参阅 [RC.4 验证记录](docs/desktop-v1-rc4-followup.md)。
 
 Windows 桌面候选安装包在本地构建输出 `dist/desktop-v1` 中。安装包包含 Runtime、Python
 执行组件和官方 Tunnel 客户端；普通用户无需安装 Python、Node 或 Rust，也无需运行开发脚本。
 首次图形配置向导会初始化独立用户数据目录、使用 Windows DPAPI 加密保存 runtime API key、
 管理工作区读写执行权限，并进行真实本地 MCP 诊断调用。用户需配置自己的 Tunnel，并在
 ChatGPT 侧完成账户授权和端到端验收。浏览器组件默认关闭，可在界面启用；此候选未包含
-Office 与 Skills 的独立外部环境。
+Office 与 Skills 的独立外部环境，可在 MCP 页预览计划后独立安装。Skill Library 需选择用户自己的 v0.5.0 源码或 wheel，目前未确立再分发许可。先设置 Skill 专用 root、启用 Provider，再在 Skills 管理中添加并同步来源，列表即可展示缓存目录；不会自动导入私人 Skill。
 
 当前为**未签名测试候选**，自动更新已禁用，尚不能宣称已经满足正式可信分发或完整人工验收。
 参阅[最终验收手册](docs/desktop-v1-acceptance.md)、[架构及权限边界](docs/desktop-v1-architecture.md)

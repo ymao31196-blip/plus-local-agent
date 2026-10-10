@@ -42,3 +42,6 @@
 Skill Library未找到明确的再分发许可证，因此没有自动复制独立仓库进入安装包；当前提供用户自己的v0.5.0源码/wheel受控安装入口。Office增强独立环境已改为复用原RootPolicy的最小公开模块，不借用Codex的artifact-tool；该可选依赖缺失会真实报告。Git和Rust仍为可观察的自开发/来源组件系统前提。
 
 仍需：RC.4构建、冻结安装/热插拔/17项Skills验收、实际GUI验收、默认用户配置保留与更新验证、ChatGPT新增链路复测、第三方组件许可证最终整理。原任务干净Windows与系统重启条件也仍未提供。
+
+
+最新完成情况以 [RC.4 验证记录](desktop-v1-rc4-followup.md) 为准：干净提交构建、冻结 Skill 8 组、原 MCP 10 项、异常 7 项、真实断线恢复 4 项、独立 Skill 列表 Computer Use、原位置 NSIS 升级和配置保留、正常 Windows 启动及 Runtime/Tunnel 恢复均已执行。上文各阶段“待构建/待冻结/RC.3仍运行”是阶段记录，现用户安装已为 RC.4。RC.4 ChatGPT 新增能力、干净 Windows 和系统重启仍未验证。
