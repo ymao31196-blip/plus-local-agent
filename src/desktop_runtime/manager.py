@@ -32,6 +32,7 @@ class Manager:
         self.resources = resources.resolve()
         self.components = ComponentProject(data, resources)
         self.children = {}
+        self._installer_locks = {}
         self.logs = deque(maxlen=500)
         self.log_lock = Lock()
         self.local_verified = False
@@ -62,6 +63,18 @@ class Manager:
         reader = Thread(target=collect, daemon=True)
         self.readers[role] = reader
         reader.start()
+        return process
+
+    def _spawn_installer(self, role, command):
+        from desktop_runtime.component_lock import ComponentInstallLock
+        ownership = ComponentInstallLock(self.config.root)
+        ownership.acquire()
+        try:
+            process = self._spawn(role, command, self._environment())
+        except BaseException:
+            ownership.release()
+            raise
+        self._installer_locks[role] = ownership
         return process
 
     def _environment(self):
@@ -185,6 +198,9 @@ class Manager:
             reader = self.readers.pop(role, None)
             if reader is not None:
                 reader.join(timeout=5)
+        for ownership in self._installer_locks.values():
+            ownership.release()
+        self._installer_locks.clear()
         self.local_verified = False
         self._secret = ""
         return self.config.public()
@@ -416,7 +432,7 @@ class Manager:
             command_line = self._command('component_install') + [
                 '--data-dir', str(self.config.root), '--resources', str(self.resources),
                 '--bundle', '--expected-plan-sha256', digest]
-            self._spawn(role, command_line, self._environment())
+            self._spawn_installer(role, command_line)
             return {**plan, 'sha256': digest, 'started': True, 'job': role}
         if command == 'provider_install':
             from desktop_runtime.installer import ComponentInstaller
@@ -439,7 +455,7 @@ class Manager:
             command_line = self._command('component_install') + ['--data-dir', str(self.config.root), '--resources', str(self.resources), '--provider-id', args['provider_id'], '--expected-plan-sha256', digest]
             if args['skill_package']:
                 command_line += ['--skill-package', str(args['skill_package'])]
-            self._spawn(role, command_line, self._environment())
+            self._spawn_installer(role, command_line)
             return {**plan, 'sha256': digest, 'started': True, 'job': role}
         if command == 'installation_status':
             if args:
@@ -449,6 +465,10 @@ class Manager:
                 if not name.startswith('installer:'):
                     continue
                 code = child.poll()
+                if code is not None:
+                    ownership = self._installer_locks.pop(name, None)
+                    if ownership is not None:
+                        ownership.release()
                 provider_id = name.partition(':')[2]
                 receipt = self.components.root / 'receipts' / f'{provider_id}.json'
                 if provider_id == 'starter-pack':

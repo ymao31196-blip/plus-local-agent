@@ -149,10 +149,38 @@ class ExternalProviderRuntime:
         self._forced_enabled: set[str] = set()
         self._forced_disabled: set[str] = set()
         self._lock = asyncio.Lock()
+        self._desktop_broker = None
+        if os.environ.get("PLA_DESKTOP_RUNTIME") == "1":
+            from desktop_runtime.broker_component import DesktopComponentBroker
+            self._desktop_broker = DesktopComponentBroker(self._project_root, self._manifest_dir)
 
-    def setup_dependencies(self, provider_id: str) -> dict[str, Any]:
-        """Install one provider's reviewed pinned dependency specs."""
-        return setup_provider_dependencies(self._project_root, provider_id)
+    def desktop_package_preview(self, **arguments) -> dict[str, Any]:
+        if self._desktop_broker is None:
+            raise ValueError("This installation is not a managed Desktop Runtime")
+        return self._desktop_broker.package_preview(**arguments)
+
+    def desktop_package_commit(self, **arguments) -> dict[str, Any]:
+        if self._desktop_broker is None:
+            raise ValueError("This installation is not a managed Desktop Runtime")
+        provider_id = arguments.get("provider_id")
+        active = self._manager.provider_status().get(provider_id)
+        return self._desktop_broker.package_commit(
+            **arguments, active=bool(active and active.get("enabled")))
+
+    def desktop_install_status(self) -> dict[str, Any]:
+        if self._desktop_broker is None:
+            raise ValueError("This installation is not a managed Desktop Runtime")
+        return self._desktop_broker.install_status()
+
+    def setup_dependencies(self, provider_id: str, expected_sha256: str | None = None) -> dict[str, Any]:
+        """Preview or queue only bounded reviewed Desktop installs; retain legacy source setup."""
+        if self._desktop_broker is None:
+            return setup_provider_dependencies(self._project_root, provider_id)
+        if expected_sha256 is None:
+            return self._desktop_broker.install_preview(provider_id)
+        active = self._manager.provider_status()
+        enabled = {name for name, details in active.items() if details.get("enabled")}
+        return self._desktop_broker.install_start(provider_id, expected_sha256, enabled)
 
     def import_manifest(self, content: str, confirm: bool = False, expected_sha256: str | None = None) -> dict[str, Any]:
         """Desktop-native plugin registration without opening private data roots."""

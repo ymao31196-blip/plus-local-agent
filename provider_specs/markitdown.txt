@@ -1,2 +1,5 @@
 markitdown-mcp==0.0.1a4
 mcp==1.8.1
+# MCP 1.8.1 imports pydantic._internal._typing_extra.eval_type_backport,
+# removed in later Pydantic; pin the compatible generation.
+pydantic==2.10.6

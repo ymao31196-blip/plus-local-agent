@@ -10,7 +10,8 @@
       "-m",
       "markitdown_mcp"
     ],
-    "cwd": "."
+    "cwd": ".",
+    "discovery_timeout_seconds": 90
   },
   "tool_allowlist": [
     "convert_to_markdown"

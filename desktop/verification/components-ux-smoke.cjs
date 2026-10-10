@@ -90,11 +90,14 @@ function setup(rpc) {
   await w.$('reload-providers').onclick();
   const card = w.$('provider-list').children[0];
   assert.ok(card, 'Expected a WPS provider card');
-  const controls = card.children.find(x => x.className === 'actions');
+  const quick = card.children.find(x => x.className === 'actions provider-quick');
+  const advanced = card.children.find(x => x.tagName === 'DETAILS');
+  const controls = advanced.children.find(x => x.className === 'actions');
   const labels = controls.children.map(x => x.textContent);
+  assert.ok(quick.children.some(x => x.textContent === '安装组件'));
   assert.ok(labels.includes('安装组件…'));
   assert.ok(!labels.includes('启用') && !labels.includes('重载工具'));
-  assert.match(card.children.map(x => x.textContent).join(' '), /未安装/);
+  assert.match(card.children[0].children.map(x => x.textContent).join(' '), /未安装/);
 
   // Skill setup must register, sync and query the cached Skill list in order.
   const skillCalls = [];
@@ -117,5 +120,40 @@ function setup(rpc) {
   await s.$('skill-quick-add').onclick();
   assert.deepEqual(skillCalls, ['manage', 'sync', 'states', 'sources']);
   assert.match(s.$('skill-list-status').textContent, /共 1 个已缓存 Skill/);
-  console.log('PASS: preview→confirm→install-status; WPS gating; Skill source→sync→list');
+  // RC.7 reviewed 7-component bundle: one digest-bound confirmation
+  // starts one real-install job, without silently enabling providers.
+  const bundleCalls = [];
+  const b = setup(async (command, args = {}) => {
+    bundleCalls.push({command, args});
+    if (command === 'provider_bundle') return args.confirmed
+      ? {started: true, job: 'installer:starter-pack', providers: ['docx']}
+      : {sha256: 'starter-hash', providers: ['docx'], started: false};
+    if (command === 'installation_status') return {jobs: [], installed_receipts: []};
+    throw Error('Unexpected bundle RPC: ' + command);
+  });
+  await b.$('preview-bundle').onclick();
+  await b.$('start-bundle').onclick();
+  assert.deepEqual(bundleCalls.filter(c => c.command === 'provider_bundle').map(c => c.args.confirmed), [false, true]);
+  assert.equal(bundleCalls.find(c => c.command === 'provider_bundle' && c.args.confirmed).args.expected_sha256, 'starter-hash');
+
+  // RC.7 custom MCP requirements: exact pins and explicit reviewed digest.
+  const customCalls = [];
+  const c = setup(async (command, args = {}) => {
+    customCalls.push({command, args});
+    if (command === 'provider_package') return args.confirmed
+      ? {provider_id: args.provider_id, committed: true}
+      : {provider_id: args.provider_id, package_kind: args.package_kind, packages: args.packages, sha256: 'custom-hash'};
+    if (command === 'provider_catalog') return {manifest_directory: 'TEST', runtime_observed: false, providers: []};
+    if (command === 'installation_status') return {jobs: [], installed_receipts: []};
+    throw Error('Unexpected custom RPC: ' + command);
+  });
+  c.$('custom-package-id').value = 'my-mcp';
+  c.$('custom-package-kind').value = 'python';
+  c.$('custom-package-pins').value = 'fastmcp==4.0.3\nmcp==2.2.0';
+  await c.$('custom-package-preview').onclick();
+  await c.$('custom-package-save').onclick();
+  assert.equal(customCalls.filter(x => x.command === 'provider_package').length, 2);
+  assert.equal(customCalls.find(x => x.command === 'provider_package' && x.args.confirmed).args.expected_sha256, 'custom-hash');
+
+  console.log('PASS: installer flow; WPS status; Skill list; RC7 starter bundle; RC7 custom MCP plans');
 })().catch(error => {console.error(error); process.exitCode = 1;});
