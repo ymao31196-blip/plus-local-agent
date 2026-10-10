@@ -48,6 +48,33 @@ def test_missing_wps_cwd_is_visible_and_cannot_be_enabled(tmp_path):
     assert manager.components.preferences()["enabled"] == []
 
 
+def test_incomplete_wps_source_cannot_masquerade_as_installed(tmp_path):
+    manager = _wps_fixture(tmp_path)
+    cwd = manager.components.root / ".provider_sources/wps-office/wps-office-mcp"
+    cwd.mkdir(parents=True)
+    row = manager.dispatch("provider_catalog", {})["providers"][0]
+    assert row["directory_exists"] is True
+    assert row["command_exists"] is True
+    assert row["wps_entrypoint_exists"] is False
+    assert row["execution_files_present"] is False
+    with pytest.raises(ValueError, match="missing dist/index.js or node_modules"):
+        manager.dispatch("provider_action", {
+            "action": "enable", "provider_id": "wps-office", "confirmed": True})
+
+    (cwd / "dist").mkdir()
+    (cwd / "dist/index.js").write_text("/* fixture */", encoding="utf-8")
+    row = manager.dispatch("provider_catalog", {})["providers"][0]
+    assert row["wps_entrypoint_exists"] is True
+    assert row["wps_dependencies_exist"] is False
+    assert row["execution_files_present"] is False
+
+    (cwd / "node_modules").mkdir()
+    row = manager.dispatch("provider_catalog", {})["providers"][0]
+    assert row["wps_dependencies_exist"] is True
+    assert row["execution_files_present"] is True
+    assert manager.components.preferences()["enabled"] == []
+
+
 def test_missing_install_spec_explained_without_claiming_installability(tmp_path):
     manager = _wps_fixture(tmp_path)
     (manager.resources / "provider-assets/provider_specs/wps-office.source.json").unlink()

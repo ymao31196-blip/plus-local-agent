@@ -339,6 +339,20 @@ class Manager:
                     and row.get('command_exists') is not False
                     and row['directory_exists']
                 )
+                if provider_id == 'wps-office':
+                    # A Node binary and an existing source directory alone do
+                    # not constitute an installed WPS MCP. Half-completed npm
+                    # setup otherwise looks enableable but instantly disconnects.
+                    source_dir = Path(cwd)
+                    entry = source_dir / 'dist/index.js'
+                    dependencies = source_dir / 'node_modules'
+                    row['wps_entrypoint_exists'] = entry.is_file()
+                    row['wps_dependencies_exist'] = dependencies.is_dir()
+                    row['execution_files_present'] = (
+                        row['execution_files_present']
+                        and row['wps_entrypoint_exists']
+                        and row['wps_dependencies_exist']
+                    )
             return catalog
         if command == 'provider_package':
             from desktop_runtime.custom_packages import package_spec
@@ -379,6 +393,10 @@ class Manager:
                     raise ValueError(f'{provider_id} is not installed: executable missing; install the reviewed component first')
                 if row.get('cwd') and not Path(row['cwd']).is_dir():
                     raise ValueError(f'{provider_id} is not installed: working directory missing; install the reviewed component first')
+                if provider_id == 'wps-office':
+                    source_dir = Path(row['cwd'])
+                    if not (source_dir / 'dist/index.js').is_file() or not (source_dir / 'node_modules').is_dir():
+                        raise ValueError('wps-office is not fully installed: missing dist/index.js or node_modules; repair the reviewed dependencies first')
             if not self._alive('runtime') and args['action'] in {'enable', 'disable'}:
                 self._save_provider_selection(provider_id, args['action'] == 'enable')
                 return {'status': 'selection_saved', 'provider_id': provider_id, 'connected': False, 'applies_on_runtime_start': True}

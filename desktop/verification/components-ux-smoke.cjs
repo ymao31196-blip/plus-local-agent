@@ -40,19 +40,22 @@ function setup(rpc) {
 }
 
 (async () => {
-  // Installation must perform actual preview followed by a confirmed job,
-  // and expose the running status; the first click alone is NOT installation.
+  // One primary click performs silent SHA-bound preview, shows one explicit
+  // confirmation, then starts the job. The technical plan is optional.
   const calls = [];
-  let jobState = 'running';
+  let jobState = 'idle';
   const h = setup(async (command, args = {}) => {
     calls.push({command, args});
     if (command === 'provider_install') {
-      return args.confirmed
-        ? {provider_id: args.provider_id, job: 'installer:docx', started: true}
-        : {provider_id: args.provider_id, skill_package: null, environment: 'TEST', sha256: 'reviewed-plan'};
+      if (args.confirmed) {
+        jobState='running';
+        return {provider_id: args.provider_id, job: 'installer:docx', started: true};
+      }
+      return {provider_id: args.provider_id, skill_package: null, environment: 'TEST',
+        sha256: 'reviewed-plan', specs: [{name:'docx.txt',content:'fastmcp==4.0.3'}]};
     }
     if (command === 'installation_status') return {
-      jobs: [{job: 'installer:docx', provider_id: 'docx', pid: 123,
+      jobs: jobState === 'idle' ? [] : [{job: 'installer:docx', provider_id: 'docx', pid: 123,
         state: jobState, exit_code: jobState === 'installed' ? 0 : null, logs: []}],
       installed_receipts: jobState === 'installed' ? ['docx'] : [],
     };
@@ -61,16 +64,13 @@ function setup(rpc) {
     throw Error('Unexpected RPC: ' + command);
   });
   h.$('install-provider').value = 'docx';
-  await h.$('preview-install').onclick();
-  assert.equal(calls.filter(x => x.command === 'provider_install').length, 1);
-  assert.equal(calls[0].args.confirmed, false);
-  assert.match(h.$('install-live').textContent, /尚未安装/);
   await h.$('start-install').onclick();
   const installed = calls.filter(x => x.command === 'provider_install');
   assert.equal(installed.length, 2);
+  assert.equal(installed[0].args.confirmed, false);
   assert.equal(installed[1].args.confirmed, true);
   assert.equal(installed[1].args.expected_sha256, 'reviewed-plan');
-  assert.match(h.$('install-live').textContent, /正在安装/);
+  assert.match(h.$('install-live').textContent, /安装任务已启动/);
   jobState = 'installed';
   await h.$('installation-refresh').onclick();
   assert.match(h.$('install-live').textContent, /已安装/);
@@ -94,10 +94,56 @@ function setup(rpc) {
   const advanced = card.children.find(x => x.tagName === 'DETAILS');
   const controls = advanced.children.find(x => x.className === 'actions');
   const labels = controls.children.map(x => x.textContent);
-  assert.ok(quick.children.some(x => x.textContent === '安装组件'));
+  assert.ok(quick.children.some(x => x.textContent === '安装 / 修复组件'));
   assert.ok(labels.includes('安装组件…'));
   assert.ok(!labels.includes('启用') && !labels.includes('重载工具'));
-  assert.match(card.children[0].children.map(x => x.textContent).join(' '), /未安装/);
+  assert.match(card.children[0].children.map(x => x.textContent).join(' '), /缺少运行组件/);
+
+  // A configured WPS process with a failed MCP startup must not appear merely
+  // disabled; the real error reason must be visible without expanding details.
+  const failed = setup(async (command) => {
+    if (command === 'provider_catalog') return {manifest_directory: 'TEST',
+      runtime_observed: true, providers: [{provider_id: 'wps-office',
+        runtime_kind: 'executable_stdio', command: 'node.exe', command_exists: true,
+        directory_exists: true, execution_files_present: true,
+        install_supported: true, requested_enabled: true,
+        lifecycle: {state: 'error', enabled: true, tool_count: 0,
+          error_message: 'Connection closed'}}]};
+    if (command === 'installation_status') return {jobs: [], installed_receipts: []};
+    throw Error('Unexpected failed-provider RPC: ' + command);
+  });
+  await failed.$('reload-providers').onclick();
+  const failedCard=failed.$('provider-list').children[0];
+  assert.match(failedCard.children[0].children.map(x=>x.textContent).join(' '), /连接失败/);
+  assert.match(failedCard.children.map(x=>x.textContent).join(' '), /Connection closed/);
+  const failedQuick=failedCard.children.find(x=>x.className==='actions provider-quick');
+  assert.ok(failedQuick.children.some(x=>x.textContent==='重试连接'));
+  assert.ok(failedQuick.children.some(x=>x.textContent==='修复依赖'));
+  assert.ok(!failedQuick.children.some(x=>x.textContent==='启用并连接'));
+
+  // Repair of a failed-but-enabled Provider performs one digest review, one
+  // user confirmation, and disables the Provider before installing anything.
+  const repairCalls = [];
+  const repair = setup(async (command, args = {}) => {
+    repairCalls.push({command, args});
+    if (command === 'installation_status') return {jobs: [], installed_receipts: []};
+    if (command === 'provider_install') return args.confirmed
+      ? {provider_id: 'wps-office', job: 'installer:wps-office', started: true}
+      : {provider_id: 'wps-office', sha256: 'wps-plan-sha', environment: 'TEST',
+        skill_package: null, specs: [{name: 'wps-office.source.json', content: 'pinned-revision'}]};
+    if (command === 'provider_catalog') return {providers: [{
+      provider_id: 'wps-office', lifecycle: {enabled: true, state: 'error'}}],
+      manifest_directory: 'TEST', runtime_observed: true};
+    if (command === 'provider_action' && args.action === 'disable')
+      return {status:'completed'};
+    throw Error('Unexpected repair RPC: ' + command);
+  });
+  repair.$('install-provider').value = 'wps-office';
+  await repair.$('start-install').onclick();
+  const disableAt = repairCalls.findIndex(x => x.command === 'provider_action' && x.args.action === 'disable');
+  const installAt = repairCalls.findIndex(x => x.command === 'provider_install' && x.args.confirmed);
+  assert.ok(disableAt >= 0 && disableAt < installAt, 'Repair must disable before launching installer');
+  assert.equal(repairCalls[installAt].args.expected_sha256, 'wps-plan-sha');
 
   // Skill setup must register, sync and query the cached Skill list in order.
   const skillCalls = [];
@@ -131,7 +177,6 @@ function setup(rpc) {
     if (command === 'installation_status') return {jobs: [], installed_receipts: []};
     throw Error('Unexpected bundle RPC: ' + command);
   });
-  await b.$('preview-bundle').onclick();
   await b.$('start-bundle').onclick();
   assert.deepEqual(bundleCalls.filter(c => c.command === 'provider_bundle').map(c => c.args.confirmed), [false, true]);
   assert.equal(bundleCalls.find(c => c.command === 'provider_bundle' && c.args.confirmed).args.expected_sha256, 'starter-hash');
