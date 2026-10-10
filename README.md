@@ -18,7 +18,7 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 
 ### PLA Desktop V1 test candidate
 
-RC.4 retains multiple named roots and adds all Provider manifests, reviewed import/configuration/install flows, hot enable/disable/reload, and complete tool schemas. The dedicated Skill List automatically shows every cached Skill, including disabled entries, with filtering and full-text reading. Skills Management retains all 17 service workflows. Optional source self-development is disabled by default. See [RC.4 verification](docs/desktop-v1-rc4-followup.md).
+RC.5 retains multiple named roots and adds all Provider manifests, reviewed import/configuration/install flows, hot enable/disable/reload, and complete tool schemas. The dedicated Skill List automatically shows every cached Skill, including disabled entries, with filtering and full-text reading. Skills Management retains all 17 service workflows. Optional source self-development is disabled by default. See [RC.4 verification](docs/desktop-v1-rc4-followup.md).
 
 For the Windows desktop candidate, use the locally built NSIS installer in
 `dist/desktop-v1`. It bundles the Runtime, Python execution interpreter and official

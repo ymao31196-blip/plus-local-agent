@@ -136,6 +136,16 @@ try {
     $untrackedSource = @(& git -C $projectRoot ls-files --others --exclude-standard)
     Assert-Exit "Untracked source inventory"
     [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = ($trackedContentDirty -or $untrackedSource.Count -gt 0); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
+    # Refresh the delivery's notices from this exact build, not an earlier candidate.
+    $noticeTarget = Join-Path $releaseRoot "third-party-licenses\runtime"
+    New-Item -ItemType Directory -Force -Path $noticeTarget | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $resources "licenses") | Copy-Item -Destination $noticeTarget -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $resources "python\LICENSE.txt") -Destination (Join-Path $releaseRoot "third-party-licenses\PYTHON-EXECUTION-LICENSE.txt") -Force
+    $tunnelNotices = Join-Path $releaseRoot "third-party-licenses\tunnel"
+    New-Item -ItemType Directory -Force -Path $tunnelNotices | Out-Null
+    Get-ChildItem -LiteralPath $tunnelDirectory -File | Where-Object { $_.Extension -ne ".exe" } | Copy-Item -Destination $tunnelNotices -Force
+    Get-ChildItem -LiteralPath (Join-Path $projectRoot "docs") -File | Where-Object { $_.Name -like "desktop-v1*.md" } | Copy-Item -Destination $releaseRoot -Force
+    Copy-Item -LiteralPath (Join-Path $projectRoot "docs\desktop-v1-third-party-notices.md") -Destination (Join-Path $releaseRoot "THIRD-PARTY-NOTICES.md") -Force
     Write-Output "Installer: $installer"
     Write-Output "SHA-256: $digest"
 } finally {

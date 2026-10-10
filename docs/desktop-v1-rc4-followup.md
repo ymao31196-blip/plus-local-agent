@@ -23,7 +23,7 @@ The new Skill List preserves the existing Skills Management page. It automatical
 | NSIS upgrade to existing D:\PLA Desktop | PASS | Installer exit 0; desktop.json, workspaces.local.yaml and tunnel.secret hashes unchanged |
 | Ordinary Windows installed launch and recovery | PASS | Opened existing executable in Explorer; real Runtime18766 and Tunnel18082 remote polling recovered |
 | Existing developer services preserved | PASS | 8766/8931/18081 PIDs30744/19464/20620 retained |
-| RC.4 actual ChatGPT added-capability calls | NOT TESTED | Earlier RC.2/RC.3 ChatGPT file/process/transaction evidence remains historical, not RC.4 proof |
+| RC.4 actual ChatGPT Provider directory and file/process/transaction calls | PASS | 2026-10-10 12:16, PLA-TEST: 81 capabilities via nontruncated search, real provider_catalog 11 entries, proof FIRST to VERIFIED with SHA-256, Candidate Runner28252 Python3.11.9 installed image |
 | Clean Windows and actual OS reboot | NOT TESTED | Current workstation cannot establish these results |
 
 Native evidence: `.desktop-build/user-evidence/rc4/skill-list-full-content.jpg`, `skill-list-filter.jpg`, `skill-list-disabled.jpg`. Test Skills were isolated fixtures; no personal Skill import or remote publication occurred.
@@ -32,4 +32,11 @@ Directly launching the installed application from the packaged Codex tool enviro
 
 ## Remaining qualification
 
-Skill Library has no established redistribution license; only a user's own matching v0.5.0 package is accepted by the optional installer. Office artifact-tool is not borrowed from Codex or bundled and remains unavailable without an independent dependency. Git/Rust prerequisites are observed for relevant optional workflows. Clean Windows, reboot, code signing and RC.4 ChatGPT added-capability acceptance remain open. This is not the completed trusted public Desktop V1 release.
+Skill Library has no established redistribution license; only a user's own matching v0.5.0 package is accepted by the optional installer. Office artifact-tool is not borrowed from Codex or bundled and remains unavailable without an independent dependency. Git/Rust prerequisites are observed for relevant optional workflows. Clean Windows, reboot and code signing remain open. RC.4 real Provider directory/file/process/transaction ChatGPT acceptance passed; remote invocation of optional Skills remains untested on the default installation, where that component is intentionally absent. This is not the completed trusted public Desktop V1 release.
+
+
+## RC.4 genuine ChatGPT follow-up
+
+The conversation at https://chatgpt.com/g/g-p-6911c6442f2481918141137a81e3c2da-dui-chatgptde-tan-suo/c/6ac911d1-aaf4-83ea-b152-e94f4e32501c returned real Provider-directory and file/process/transaction results. The local file `workspace/desktop-chatgpt-rc4-20261010/proof.txt` was independently checked: bytes `PLA_RC4_E2E_VERIFIED`, SHA-256 `c8e494adc3173caa6fb18d315a83fb553ed9a8c8b0f267ba323ed4161401bc76`. Runner PID28252 independently resolved to `D:\PLA Desktop\resources\runtime\pla-runtime.exe`. Screenshot: `.desktop-build/user-evidence/rc4/chatgpt-e2e.png`. The ChatGPT surface did not expose the added standalone capability_catalog wrapper; its actual search returned all81 without truncation. RC.5 adds the equivalent catalog through the already exposed capability_invoke surface, pending its own frozen/remote verification. Provider inventory did not imply installed or running optional services.
+
+Closing the installed RC.4 main window made it unusable as a visible app window while native PID34092 and Runtime27156/Tunnel36760 remained alive. Reopening the existing executable via Explorer retained the single native PID; visible recovery is verified separately before claiming the entire menu flow.

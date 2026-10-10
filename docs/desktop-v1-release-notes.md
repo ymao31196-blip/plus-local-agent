@@ -1,23 +1,17 @@
-# PLA Desktop 1.0.0-rc.4 — unsigned local test candidate
+# PLA Desktop 1.0.0-rc.5 — unsigned local test candidate
 
-RC.4 adds complete Provider management, optional independent component installation, a dedicated complete cached Skill List alongside the 17 Skills Management workflows, and opt-in source self-development. Frozen MCP, real Skill service, native GUI and configuration-preserving installed upgrade passed. See [RC.4 evidence and remaining qualification](desktop-v1-rc4-followup.md).
+RC.5 exposes the complete live capability catalog through the existing capability_invoke wrapper as runtime.capability_catalog. Clients which do not expose the additional standalone wrapper can still retrieve full schemas and availability without the 100-item search bound. This read-only path preserves the original Broker and policy checks.
 
-RC.3 separates adding a new root from explicitly editing an existing root. Duplicate additions are refused, saving clears the add form, and multiple roots retain their independent paths and permissions. Current full source tests (826), frozen multi-root/MCP checks, actual NSIS update and isolated installed Computer Use checks passed. See [the RC.3 follow-up](desktop-v1-rc3-followup.md).
+The license packager now preserves British LICENCE names and nested notices, supplements known omitted wheel/crate texts from version-specific reviewed hash-bound assets, checks required target dependency evidence, and includes the five MPL dependencies' original checksum-verified Cargo source archives. Delivery notices are refreshed from the actual build.
 
-RC.2 preserves unsaved connection drafts across refreshes, adds service controls to setup, translates common operation errors, and keeps Runtime/Tunnel running when completing the wizard. Actual user-installed upgrade, positive remote control-plane polling and GUI fix verification passed; real ChatGPT file/independent-runner/transaction calls also passed on 2026-10-10. See [the follow-up report](desktop-v1-rc2-followup.md).
+RC.4 introduced full Provider management/import/configuration/hot-plug, independent optional component installation, the separate cached Skill List alongside 17 Skills Management workflows, and opt-in source self-development. RC.3's multi-root add/edit fix is retained. No separate agent engine is added.
 
-The candidate provides a current-user Windows NSIS installer, a Tauri 2 management window and tray, first-run configuration, Windows DPAPI credential storage, named workspace permissions, actual Runtime/Tunnel/browser detection, controlled start/stop/restart, redacted logs, diagnostics and an opt-in login-start preference.
+844 source tests passed on the RC.5 code. A real license audit preserved texts for77 Python distributions and229 normal/build Cargo dependencies required by the Windows GNU target, plus5 MPL source archives with valid lock-file checksums. RC.5 packaged/install/ChatGPT verification is recorded separately as it executes; older RC.4 passes are historical evidence, not automatically substituted.
 
-The complete PyInstaller onedir Runtime preserves existing MCP wrappers, capability routing and source/headless support. A standalone Python execution component, fixed Node/Playwright browser component and official narrow Secure MCP Tunnel runtime are bundled. No ChatGPT replacement or local model engine is added.
+RC.4 actual ChatGPT Provider-directory/file/process/transaction acceptance passed, along with its frozen MCP, Skill service, authenticated network-loss/recovery and native Skill List checks. See [the RC.4 record](desktop-v1-rc4-followup.md).
 
-Automatic verification passed 825 source tests, actual frozen/installed MCP file/process/transaction/browser calls, installed UI and process-ownership lifecycle, negative security/credential checks, and real NSIS installation/uninstall with user-file retention. See the acceptance report for exact grades and evidence.
+This release is not fully qualified. Clean Windows10/11, actual OS reboot and complete tray-menu acceptance remain open. Skill Library lacks established redistribution permission and requires the user's own matching v0.5.0 source or wheel. Optional missing dependencies, including Office artifact-tool, remain explicitly unavailable. No developer environments or personal Skills are imported.
 
-**The release is not yet fully qualified.** Real positive Tunnel traversal and ChatGPT authorization/file/process/transaction calls passed. Clean Windows 10/11, OS reboot and manual tray-menu acceptance remain open. Office/Skills are independent optional installations; missing dependencies remain explicitly unavailable. Skill Library redistribution permission is not established, so installation requires the user's matching source or wheel. RC.4 added-capability ChatGPT calls remain untested. Current dependency versions are frozen in the build inputs; they are not silently updated at runtime.
+The installer is unsigned; automatic updates are disabled. Windows Authenticode and Tauri updater signing are separate and unconfigured. Manual upgrade retains user data and requires verifying source and SHA-256 before running the reviewed installer. No public push, Release or hosting is performed.
 
-This package is unsigned. Windows Authenticode and Tauri updater signing are separate concerns; neither is configured. Automatic updating is disabled. Manual upgrade requires verifying source and SHA-256, exiting the app, and running the reviewed installer while retaining user data. No public push, Release or public hosting is authorized or performed.
-
-Installer: `PLA Desktop_1.0.0-rc.4_x64-setup.exe` (92,547,687 bytes).
-
-SHA-256: `28b4da3fc6baeb7bd38adeee8af01eb8e401c17e33f6a46dd0707e99743e7ae0`.
-
-Build source: `578f9a0da9928c06b97c2d9269f39d2e79b99021`, source_dirty=false. Previous version packages and evidence are archived separately.
+Installer: `PLA Desktop_1.0.0-rc.5_x64-setup.exe`. The authoritative SHA-256 and exact source commit are emitted into `SHA256SUMS.txt` and `build-manifest.json` alongside the installer; the final build result is recorded in its verification report. Earlier candidate packages and evidence remain separate.

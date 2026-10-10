@@ -80,6 +80,13 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
     }
     return (
         _descriptor(
+            'runtime.capability_catalog', 'capability_catalog', 'Complete Capability Catalog',
+            'Read the complete live registry with full tool schemas, policy and availability, including disabled tools. No search limit. Available through the stable capability_invoke surface even when a client has not discovered the standalone catalog wrapper.',
+            {'type': 'object', 'properties': {'provider_id': {'type': ['string', 'null'], 'default': None}}, 'additionalProperties': False},
+            risk_level='read', requires_confirmation=False,
+            tags=('runtime', 'catalog', 'capability', 'schema', 'discovery'),
+        ),
+        _descriptor(
             'runtime.provider_configure', 'provider_configure', 'Review Desktop Provider Configuration',
             'Read or preview an existing managed manifest. Saving requires confirm=true, exact expected_sha256 of the original file and expected_content_sha256 of the reviewed proposal. Does not reload or activate the provider.',
             {'type': 'object', 'properties': {
@@ -220,6 +227,10 @@ def register_provider_runtime_capabilities(
         "runtime",
         descriptors,
         enabled=True,
+    )
+    broker.register_internal_handler(
+        'runtime.capability_catalog',
+        lambda args: registry.catalog(args.get('provider_id')),
     )
     broker.register_internal_handler(
         "runtime.provider_catalog",

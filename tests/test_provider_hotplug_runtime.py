@@ -274,6 +274,29 @@ def test_hotplug_invalid_manifest_does_not_mutate_active_runtime(tmp_path, monke
     assert registry.describe("alpha.one")["available"] is True
 
 
+def test_complete_catalog_uses_existing_broker_without_search_truncation(tmp_path):
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    runtime = ExternalProviderRuntime(manager, tmp_path)
+    broker = CapabilityBroker(registry, manager)
+    register_provider_runtime_capabilities(registry, broker, runtime)
+    registry.register_provider('many', [CapabilityDescriptor(
+        id=f'many.tool_{i}', provider_id='many', remote_name=f'tool_{i}',
+        title=f'Tool {i}', description='Disabled test provider',
+        input_schema={'type': 'object', 'properties': {'path': {'type': 'string'}}},
+    ) for i in range(130)], enabled=False)
+    result = asyncio.run(broker.invoke('runtime.capability_catalog', {'provider_id': 'many'}))
+    assert result['status'] == 'completed'
+    data = result['data']
+    assert data['returned_count'] == 130 and data['truncated'] is False
+    assert all(not row['available'] and row['input_schema']['properties']['path']['type'] == 'string'
+               for row in data['capabilities'])
+    all_data = asyncio.run(broker.invoke('runtime.capability_catalog', {}))['data']
+    assert all_data['returned_count'] > 130 and all_data['truncated'] is False
+    with pytest.raises(ValueError):
+        asyncio.run(broker.invoke('runtime.capability_catalog', {'shell': 'not allowed'}))
+
+
 def test_runtime_hotplug_capabilities_use_confirmation_gate(tmp_path, monkeypatch):
     monkeypatch.setenv("PLA_EXTERNAL_PROVIDERS", "*")
     registry = CapabilityRegistry()

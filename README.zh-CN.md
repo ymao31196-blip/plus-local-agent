@@ -2,7 +2,7 @@
 
 ## PLA Desktop V1 测试候选
 
-RC.4 保留多 root，新增完整 Provider 清单、清单导入与编辑、受控安装、启停与重载，以及全部工具参数。独立「Skill 列表」进入即加载所有已缓存 Skill，包含停用项，支持筛选和全文阅读；「Skills 管理」保留全部 17 项服务工作流。「可选自开发」默认关闭，提供完整公开源码快照与专用工作区授权。参阅 [RC.4 验证记录](docs/desktop-v1-rc4-followup.md)。
+RC.5 保留多 root，新增完整 Provider 清单、清单导入与编辑、受控安装、启停与重载，以及全部工具参数。独立「Skill 列表」进入即加载所有已缓存 Skill，包含停用项，支持筛选和全文阅读；「Skills 管理」保留全部 17 项服务工作流。「可选自开发」默认关闭，提供完整公开源码快照与专用工作区授权。参阅 [RC.4 验证记录](docs/desktop-v1-rc4-followup.md)。
 
 Windows 桌面候选安装包在本地构建输出 `dist/desktop-v1` 中。安装包包含 Runtime、Python
 执行组件和官方 Tunnel 客户端；普通用户无需安装 Python、Node 或 Rust，也无需运行开发脚本。
