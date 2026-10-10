@@ -145,3 +145,18 @@ def test_desktop_build_discovers_existing_rustup_and_mingw_without_persistent_pa
     assert 'Get-Command gcc.exe -ErrorAction SilentlyContinue' in script
     assert '$env:PATH = $originalPath' in script
     assert "setx " not in script.lower()
+
+
+def test_desktop_build_uses_native_exit_codes_instead_of_powershell_51_stderr():
+    script = (Path(__file__).resolve().parents[1] / "desktop/packaging/build.ps1").read_text(encoding="utf-8")
+    assert '$ErrorActionPreference = "Stop"' in script
+    assert 'function Invoke-LoggedNative' in script
+    assert '$ErrorActionPreference = "Continue"' in script
+    assert '$ErrorActionPreference = $previousPreference' in script
+    assert '. $Command' in script  # Native process must share the function scope for LASTEXITCODE.
+    assert '$exitCode = $LASTEXITCODE' in script
+    assert 'if ($null -eq $exitCode -or $exitCode -ne 0)' in script
+    assert script.count('Invoke-LoggedNative "') == 7
+    assert script.count('2>&1 |') == 7
+    assert script.count('-Encoding utf8 -ErrorAction Stop') == 7
+    assert '*>' not in script, "Old PowerShell native-output redirections must not reappear"

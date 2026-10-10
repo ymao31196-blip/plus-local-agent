@@ -14,6 +14,24 @@ $originalPath = $env:PATH
 function Assert-Exit([string]$Phase) {
     if ($LASTEXITCODE -ne 0) { throw "$Phase failed with exit code $LASTEXITCODE; inspect build logs." }
 }
+function Invoke-LoggedNative([string]$Phase, [scriptblock]$Command) {
+    # Windows PowerShell 5.1 converts native stderr into non-terminating
+    # NativeCommandError records. With the script's global Stop preference,
+    # normal pip/npm/cargo diagnostics could abort before exit-code checking.
+    # Scope Continue to the native invocation only; restore Stop afterward.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        # Run in this scope so LASTEXITCODE is the actual native child status.
+        . $Command
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if ($null -eq $exitCode -or $exitCode -ne 0) {
+        throw "$Phase failed with native exit code $exitCode; inspect the corresponding UTF-8 build log."
+    }
+}
 function Get-VerifiedArchive([string]$Url, [string]$Name, [string]$Hash) {
     $archive = Join-Path $buildRoot $Name
     if (-not (Test-Path -LiteralPath $archive)) { Invoke-WebRequest -Uri $Url -OutFile $archive }
@@ -54,10 +72,14 @@ try {
             & $Python -m venv (Join-Path $buildRoot "venv")
             Assert-Exit "Build virtual environment"
         }
-        & $packPython -m pip install -r (Join-Path $PSScriptRoot "requirements-lock.txt") *> (Join-Path $buildRoot "dependencies.log")
-        Assert-Exit "Pinned dependencies"
-        & $packPython -m PyInstaller --noconfirm --workpath (Join-Path $buildRoot "freeze") --distpath (Join-Path $buildRoot "frozen") (Join-Path $PSScriptRoot "runtime.spec") *> (Join-Path $buildRoot "runtime-build.log")
-        Assert-Exit "Frozen Runtime"
+        Invoke-LoggedNative "Pinned dependencies" {
+            & $packPython -m pip install -r (Join-Path $PSScriptRoot "requirements-lock.txt") 2>&1 |
+                Out-File -FilePath (Join-Path $buildRoot "dependencies.log") -Encoding utf8 -ErrorAction Stop
+        }
+        Invoke-LoggedNative "Frozen Runtime" {
+            & $packPython -m PyInstaller --noconfirm --workpath (Join-Path $buildRoot "freeze") --distpath (Join-Path $buildRoot "frozen") (Join-Path $PSScriptRoot "runtime.spec") 2>&1 |
+                Out-File -FilePath (Join-Path $buildRoot "runtime-build.log") -Encoding utf8 -ErrorAction Stop
+        }
         $runtimeDir = Join-Path $resources "runtime"
         if (Test-Path -LiteralPath $runtimeDir) {
             $resolvedTarget = [IO.Path]::GetFullPath($runtimeDir)
@@ -87,8 +109,10 @@ try {
     # keeps the base installer smaller and preserves the vendor distribution.
     $obsoleteUv = Join-Path $resources "uv.exe"
     if (Test-Path -LiteralPath $obsoleteUv) { Remove-Item -LiteralPath $obsoleteUv -Force }
-    & npm.cmd ci --prefix (Join-Path $projectRoot "desktop\browser-component") *> (Join-Path $buildRoot "browser-component.log")
-    Assert-Exit "Pinned browser component"
+    Invoke-LoggedNative "Pinned browser component" {
+        & npm.cmd ci --prefix (Join-Path $projectRoot "desktop\browser-component") 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "browser-component.log") -Encoding utf8 -ErrorAction Stop
+    }
     $browserDir = Join-Path $resources ".provider_envs\browser"
     New-Item -ItemType Directory -Force -Path $browserDir | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\browser-component\node_modules") -Destination $browserDir -Recurse -Force
@@ -115,8 +139,10 @@ try {
     Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/v22.16.0/LICENSE" -OutFile (Join-Path $resources "licenses\NODE-LICENSE.txt")
     Invoke-WebRequest "https://raw.githubusercontent.com/astral-sh/uv/0.12.24/LICENSE-MIT" -OutFile (Join-Path $resources "licenses\UV-MIT-LICENSE.txt")
     Invoke-WebRequest "https://raw.githubusercontent.com/astral-sh/uv/0.12.24/LICENSE-APACHE" -OutFile (Join-Path $resources "licenses\UV-APACHE-LICENSE.txt")
-    & cargo.exe fetch --locked --manifest-path (Join-Path $projectRoot "desktop\src-tauri\Cargo.toml") *> (Join-Path $buildRoot "cargo-dependencies.log")
-    Assert-Exit "Locked Rust dependencies"
+    Invoke-LoggedNative "Locked Rust dependencies" {
+        & cargo.exe fetch --locked --manifest-path (Join-Path $projectRoot "desktop\src-tauri\Cargo.toml") 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "cargo-dependencies.log") -Encoding utf8 -ErrorAction Stop
+    }
     $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
     $sdkArchive = Get-VerifiedArchive "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3800.47/microsoft.web.webview2.1.0.3800.47.nupkg" "webview2.zip" "56c9f26bdd07916a2d1949fb58a5c7e434dfa1173577dca879206050c4e718db"
     $sdkDirectory = Join-Path $buildRoot "webview2-sdk"
@@ -130,14 +156,20 @@ try {
     & $packPython (Join-Path $PSScriptRoot "licenses.py") --output (Join-Path $resources "licenses") --cargo-lock (Join-Path $projectRoot "desktop\src-tauri\Cargo.lock") --cargo-home $cargoHome
     Assert-Exit "Rust license inventory"
     if (-not $SkipAcceptance) {
-        & $packPython (Join-Path $projectRoot "desktop\verification\packaged_mcp.py") --resources $resources --report (Join-Path $buildRoot "packaged-mcp-report.json") --browser *> (Join-Path $buildRoot "packaged-mcp.log")
-        Assert-Exit "Packaged MCP acceptance"
+        Invoke-LoggedNative "Packaged MCP acceptance" {
+            & $packPython (Join-Path $projectRoot "desktop\verification\packaged_mcp.py") --resources $resources --report (Join-Path $buildRoot "packaged-mcp-report.json") --browser 2>&1 |
+                Out-File -FilePath (Join-Path $buildRoot "packaged-mcp.log") -Encoding utf8 -ErrorAction Stop
+        }
     }
     Set-Location -LiteralPath (Join-Path $projectRoot "desktop")
-    & npm.cmd ci *> (Join-Path $buildRoot "frontend-dependencies.log")
-    Assert-Exit "Frontend dependencies"
-    & npm.cmd run build -- -- --locked *> (Join-Path $buildRoot "installer-build.log")
-    Assert-Exit "Tauri NSIS installer"
+    Invoke-LoggedNative "Frontend dependencies" {
+        & npm.cmd ci 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "frontend-dependencies.log") -Encoding utf8 -ErrorAction Stop
+    }
+    Invoke-LoggedNative "Tauri NSIS installer" {
+        & npm.cmd run build -- -- --locked 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "installer-build.log") -Encoding utf8 -ErrorAction Stop
+    }
     $releaseRoot = Join-Path $projectRoot "dist\desktop-v1"
     New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
     $releaseVersion = (Get-Content -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json).version
