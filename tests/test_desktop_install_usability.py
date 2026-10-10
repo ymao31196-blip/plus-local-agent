@@ -135,3 +135,13 @@ def test_desktop_release_version_consistent_across_build_systems():
         npm_lock["packages"][""]["version"], cargo["package"]["version"],
         locked[0]["version"],
     } == {"1.0.0-rc.6"}
+
+
+def test_desktop_build_discovers_existing_rustup_and_mingw_without_persistent_path_change():
+    script = (Path(__file__).resolve().parents[1] / "desktop/packaging/build.ps1").read_text(encoding="utf-8")
+    assert 'Join-Path $cargoHome "bin"' in script
+    assert 'Join-Path $buildRoot "toolchain\\mingw64\\bin"' in script
+    assert 'Get-Command cargo.exe -ErrorAction SilentlyContinue' in script
+    assert 'Get-Command gcc.exe -ErrorAction SilentlyContinue' in script
+    assert '$env:PATH = $originalPath' in script
+    assert "setx " not in script.lower()

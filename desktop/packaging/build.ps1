@@ -26,7 +26,27 @@ try {
     Set-Location -LiteralPath $projectRoot
     New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
     if ($ToolchainBin) { $env:PATH = "$ToolchainBin;$env:PATH" }
-    Get-Command cargo.exe,npm.cmd -ErrorAction Stop | Out-Null
+    # Rustup on Windows sometimes leaves the per-user cargo directory out of PATH.
+    # Only use an existing trusted per-user toolchain; never change permanent PATH.
+    if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) {
+        $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+        $cargoBin = Join-Path $cargoHome "bin"
+        if (Test-Path -LiteralPath (Join-Path $cargoBin "cargo.exe") -PathType Leaf) {
+            $env:PATH = "$cargoBin;$env:PATH"
+        }
+    }
+    # The previously verified local GNU linker is needed by rustc's Windows GNU target.
+    $mingwBin = Join-Path $buildRoot "toolchain\mingw64\bin"
+    if (-not (Get-Command gcc.exe -ErrorAction SilentlyContinue) -and
+        (Test-Path -LiteralPath (Join-Path $mingwBin "gcc.exe") -PathType Leaf)) {
+        $env:PATH = "$mingwBin;$env:PATH"
+    }
+    if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) {
+        throw "Cargo not found. Install the Rust toolchain or specify -ToolchainBin; expected per-user location: %USERPROFILE%\.cargo\bin."
+    }
+    if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+        throw "npm.cmd not found. Install Node.js or specify the directory with -ToolchainBin."
+    }
     New-Item -ItemType Directory -Force -Path $resources | Out-Null
     $packPython = Join-Path $buildRoot "venv\Scripts\python.exe"
     if (-not $SkipRuntime) {
