@@ -90,9 +90,13 @@ class ComponentProject:
                 if runtime.get('command') == 'node.exe':
                     runtime['command'] = str(self.resources / 'node.exe')
                 elif runtime.get('command') == 'WindowsPackageManagerMCPServer.exe':
-                    # Missing optional system components must remain visible,
-                    # rather than making the whole catalog fail to parse.
-                    runtime['command'] = str(self.root / 'system-components/winget/WindowsPackageManagerMCPServer.exe')
+                    from desktop_runtime.system_components import official_winget_mcp
+                    official = official_winget_mcp()
+                    # Microsoft's App Installer supplies this MCP. Never download
+                    # an unsigned copy or assume winget.exe itself is the MCP.
+                    # Retain the placeholder when system prerequisites are absent.
+                    runtime['command'] = str(official or (
+                        self.root / 'system-components/winget/WindowsPackageManagerMCPServer.exe'))
                 value['autostart'] = False
                 if provider_id == 'browser':
                     runtime['url'] = f'http://localhost:{browser_port}/mcp'
