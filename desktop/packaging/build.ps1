@@ -65,6 +65,17 @@ try {
     if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
         throw "npm.cmd not found. Install Node.js or specify the directory with -ToolchainBin."
     }
+    if (-not $SkipAcceptance) {
+        if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) {
+            throw "node.exe not found; the required Desktop UI smoke test cannot run."
+        }
+        # Make the UI contract a blocking preflight, not an optional manual
+        # command whose failure can be followed by an apparently good NSIS.
+        Invoke-LoggedNative "Component UI smoke" {
+            & node.exe (Join-Path $projectRoot "desktop\verification\components-ux-smoke.cjs") 2>&1 |
+                Out-File -FilePath (Join-Path $buildRoot "components-ux-smoke.log") -Encoding utf8 -ErrorAction Stop
+        }
+    }
     New-Item -ItemType Directory -Force -Path $resources | Out-Null
     $packPython = Join-Path $buildRoot "venv\Scripts\python.exe"
     if (-not $SkipRuntime) {

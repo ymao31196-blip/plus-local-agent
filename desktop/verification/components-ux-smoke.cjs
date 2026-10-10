@@ -70,7 +70,9 @@ function setup(rpc) {
   assert.equal(installed[0].args.confirmed, false);
   assert.equal(installed[1].args.confirmed, true);
   assert.equal(installed[1].args.expected_sha256, 'reviewed-plan');
-  assert.match(h.$('install-live').textContent, /安装任务已启动/);
+  // Installation status refresh replaces the initial 'started' message with
+  // the live running job. Assert the real state, not stale UI copy.
+  assert.match(h.$('install-live').textContent, /docx.+正在安装.*PID 123/);
   jobState = 'installed';
   await h.$('installation-refresh').onclick();
   assert.match(h.$('install-live').textContent, /已安装/);
