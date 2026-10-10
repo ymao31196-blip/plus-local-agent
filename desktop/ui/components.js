@@ -7,6 +7,7 @@ const unwrap = value => value?.data ?? value;
 let providerCatalog, importPreview, installPreview, skillDescriptors=[], skillInputs=[], lastSkillResult, developmentSnapshot;
 let developmentSourcePreview;
 let providerEditVersion, providerEditPreview;
+let skillInventory=[], skillInventorySources=[];
 const skillLabels={manage:'添加、编辑或移除来源',sources:'来源与缓存状态',sync:'同步来源',find:'搜索并加载 Skill',load:'阅读完整 Skill',resource:'阅读附属资源',validate:'验证 Skill',prepare:'准备创作草稿','apply-local':'应用已审阅草稿',states:'单个 Skill 启用状态',toggle:'启用或停用 Skill','plan-change':'预览改名或删除','apply-change':'应用改名或删除','publish-plan':'规划 GitHub 发布','restore-local':'恢复已归档 Skill','publication-prepare':'预览向 Git 仓库转移','publication-apply':'应用已审阅转移'};
 const groups={sources:['sources','manage','sync'],browse:['states','find','load','resource','validate','toggle'],author:['prepare','apply-local','plan-change','apply-change','restore-local'],publish:['publish-plan','publication-prepare','publication-apply']};
 const fieldLabels={action:'操作',source_id:'来源 ID',kind:'来源类型',location:'本地目录或 GitHub 仓库',branch:'分支',subdir:'子目录',enabled:'启用',priority:'优先级',query:'搜索内容',limit:'结果数量',include_best_content:'同时加载最佳结果',name:'Skill 名称或来源限定 ref',path:'资源相对路径',content:'完整 SKILL.md 正文',draft_id:'草稿 ID',expected_current_sha256:'预览中的原文件 SHA-256 / absent',confirm:'我已审阅并确认应用',new_name:'新名称',plan_id:'变更计划 ID',expected_tree_sha256:'预览中的文件树 SHA-256',github_repo:'GitHub 仓库（owner/repo）',visibility:'仓库可见性',trash_id:'归档 ID',destination_source_id:'目标来源 ID',include_disabled:'包括停用 Skill',force:'强制同步'};
@@ -56,6 +57,49 @@ async function loadSkills(){
   $('skill-status').textContent=`真实服务发现 ${skillDescriptors.length} / 17 项管理能力，其中 ${available} 项可用。`;
   populateSkillActions();
 }
+async function loadSkillList(){
+  skillInventory=[];skillInventorySources=[];$('skill-list-items').replaceChildren();
+  $('skill-list-reading').textContent='';
+  $('skill-list-content').textContent='选择一个 Skill 阅读完整正文。';
+  $('skill-list-status').textContent='正在读取 Skill Library 的完整缓存目录…';
+  try{
+    const states=unwrap(await rpc('skill_action',{action:'states',arguments:{},confirmed:false}));
+    const sources=unwrap(await rpc('skill_action',{action:'sources',arguments:{},confirmed:false}));
+    if(!Array.isArray(states?.skills)||!Array.isArray(sources?.sources))throw new Error('服务未返回有效的 Skill 目录。');
+    skillInventory=states.skills;skillInventorySources=sources.sources;
+    const select=$('skill-list-source');const previous=select.value;select.replaceChildren();
+    const all=node('option','所有来源');all.value='';select.append(all);
+    for(const source of skillInventorySources){const option=node('option',`${source.id} · ${source.kind}`);option.value=source.id;select.append(option);}
+    if(skillInventorySources.some(source=>source.id===previous))select.value=previous;
+    renderSkillList();
+  }catch(error){
+    $('skill-list-status').textContent='无法读取 Skill 列表。请确认 Runtime 已启动，Skill Library 已安装并启用，然后刷新。';
+    $('skill-list-items').append(node('p',friendlyError(error),'error-text'));
+  }
+}
+function renderSkillList(){
+  const query=$('skill-list-query').value.trim().toLocaleLowerCase();
+  const sourceId=$('skill-list-source').value;const status=$('skill-list-state').value;
+  const rows=skillInventory.filter(skill=>(!sourceId||skill.source_id===sourceId)&&(!status||(status==='enabled')===skill.effective_enabled)&&(!query||`${skill.ref} ${skill.name} ${skill.source_id}`.toLocaleLowerCase().includes(query)));
+  const enabled=skillInventory.filter(skill=>skill.effective_enabled).length;
+  $('skill-list-status').textContent=`共 ${skillInventory.length} 个已缓存 Skill · ${enabled} 个启用 · 当前显示 ${rows.length} 个`;
+  const list=$('skill-list-items');list.replaceChildren();
+  if(!rows.length){list.append(node('p',skillInventory.length?'没有符合筛选条件的 Skill。':'尚无已缓存 Skill。请在 Skills 管理中添加来源并同步。'));return;}
+  for(const skill of rows){
+    const source=skillInventorySources.find(item=>item.id===skill.source_id);
+    const card=node('article',undefined,'wide');
+    card.append(node('h2',skill.name),node('strong',skill.effective_enabled?'已启用':skill.source_enabled===false?'来源已停用':'Skill 已停用'),node('p',`${skill.ref} · ${source?.kind||'来源'} · ${source?.location||skill.source_id}`));
+    const controls=node('div',undefined,'actions');
+    if(skill.effective_enabled)controls.append(button('阅读全文',async()=>{
+      $('skill-list-content').textContent='正在读取…';$('skill-list-reading').textContent=skill.ref;
+      try{const result=unwrap(await rpc('skill_action',{action:'load',arguments:{name:skill.ref,source_id:skill.source_id},confirmed:false}));if(typeof result?.content!=='string')throw new Error('服务未返回 Skill 正文。');output('skill-list-content',result.content);$('skill-list-reader').scrollIntoView({block:'start'});}catch(error){$('skill-list-content').textContent=friendlyError(error);throw error;}
+    }));
+    controls.append(button('启停 / 更多管理',async()=>{await loadSkills();view('skills');selectSkillOperation('toggle',{source_id:skill.source_id,name:skill.name,enabled:skill.enabled===false});}));
+    card.append(controls);list.append(card);
+  }
+}
+$('reload-skill-list').onclick=()=>action(loadSkillList);
+for(const id of ['skill-list-query','skill-list-source','skill-list-state'])$(id).addEventListener(id==='skill-list-query'?'input':'change',renderSkillList);
 function populateSkillActions(){const select=$('skill-operation');select.replaceChildren();for(const name of groups[$('skill-group').value]){const option=node('option',skillLabels[name]);option.value=name;select.append(option);}renderSkillForm();}
 function renderSkillForm(prefill={}){
   const operation=$('skill-operation').value;
@@ -102,4 +146,4 @@ async function setDevelopment(enabled){if(!enabled&&!developmentSnapshot?.root){
 $('reload-development').onclick=()=>action(loadDevelopment);$('enable-development').onclick=()=>action(()=>setDevelopment(true));$('disable-development').onclick=()=>action(()=>setDevelopment(false));
 $('preview-development-source').onclick=()=>action(async()=>{developmentSourcePreview=await rpc('development_prepare',{path:$('development-empty-path').value.trim(),confirmed:false,expected_sha256:null});output('development-source-preview',developmentSourcePreview);});
 $('prepare-development-source').onclick=()=>action(async()=>{if(!developmentSourcePreview)throw '请先预览源码快照。';if(!window.confirm(`将已校验源码准备到 ${developmentSourcePreview.target}？\n${developmentSourcePreview.file_count} 个文件\n不自动开启授权或更新当前应用。`))return;const result=await rpc('development_prepare',{path:$('development-empty-path').value.trim(),confirmed:true,expected_sha256:developmentSourcePreview.sha256});output('development-source-preview',result);developmentSourcePreview=null;$('development-path').value=result.target;notice('完整源码已准备。请停止 Runtime，再选择开启自开发。');});
-for(const [page,loader] of [['providers',loadProviders],['skills',loadSkills],['development',loadDevelopment]])document.querySelectorAll(`[data-view="${page}"]`).forEach(el=>el.addEventListener('click',()=>action(loader)));
+for(const [page,loader] of [['providers',loadProviders],['skill-list',loadSkillList],['skills',loadSkills],['development',loadDevelopment]])document.querySelectorAll(`[data-view="${page}"]`).forEach(el=>el.addEventListener('click',()=>action(loader)));
