@@ -420,12 +420,17 @@ class ExternalProviderRuntime:
                     f"Unknown provider manifest: {provider_id}"
                 )
 
+            # A disabled provider may still report a historical 'ready' state.
+            # Re-register its transport after a disable/enable cycle so changes
+            # to Desktop Skill permissions and other launch context take effect.
+            was_disabled = provider_id in self._forced_disabled
             self._forced_disabled.discard(provider_id)
             self._forced_enabled.add(provider_id)
             manifest = manifests[provider_id]
 
             if (
-                provider_id not in self._active
+                was_disabled
+                or provider_id not in self._active
                 or self._active[provider_id] != manifest
                 or not self._manager.has_provider(provider_id)
             ):

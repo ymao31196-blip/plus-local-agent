@@ -29,3 +29,11 @@ The original GUI had treated `lifecycle.state==='ready'` as enough to display `M
 **Not yet performed:** Node UI smoke on actual developer Windows; RC.9 frozen app/NSIS build; RC.9 native WebView2/ChatGPT Tunnel full acceptance. The PLA runner's program allowlist does not admit `node.exe` or arbitrary PowerShell builds, and this boundary is not bypassed by source changes. The installed Desktop UI will only show the updates after an authorized developer build and installation.
 
 The provider enable action invoked directly through `runtime.provider_enable` is a current-process hotplug, not a persistent user preference. For durable enablement, use Desktop's `启用并连接` action, which calls the Manager's `provider_action` and saves Provider selection. Keep dev PLA and PLA-TEST state separate.
+
+## Skill local-root hotplug refresh (actual PLA-TEST reproduction)
+
+A user correctly entered `D:\\AI_Tools\\plus-local-agent\\workspace\\my-skills` in the Desktop Skill List. Live `skill-library.manage(add,...)` failed with `local source is outside SKILL_LIBRARY_LOCAL_ROOTS`, although `skill-library.desktop.json` approved roots `D`, `work`, `workspace` and workspace registry maps `D` to `D:\\`. A direct read-only `LocalDirectorySource._approved_path()` check against these persisted files passed. Thus the failure was a stale Provider launch/session context, not a wrong path or lack of disk permission.
+
+Live `runtime.provider_reload(skill-library)` refreshed the actual MCP transport and discovered 17 tools. Repeating the same `skill-library.manage(add)` succeeded; `skill-library.sync(my-skills)` returned `updated`, `skill_count=5`, `invalid_skills=[]`. `states` listed all five enabled Skills and a real `find(include_best_content=true)` loaded `academic-writing` in full. This is verified against the installed PLA-TEST instance, without modifying any Skill contents.
+
+RC.9 source defect: `ExternalProviderRuntime.enable` previously reused a historical `ready` state after `disable` and skipped forced discovery. It now re-registers transport after forced disable and re-discovers. Regression `test_reenable_forces_fresh_provider_transport_and_discovery` checks transport identity, fresh discovery, and availability. The RC.8 frozen Runtime cannot inherit this code until a new Desktop build.
