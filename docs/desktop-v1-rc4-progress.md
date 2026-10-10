@@ -15,10 +15,11 @@
 
 ## 已执行
 
-- 全部源码回归838 PASS，耗时157.33秒（已有清单编辑/迁移专项新增前）；旧Agent自动测试已移到独立工作区和独立Runner状态，避免修改仓库手工样例或借用原Runner。
+- 全部源码回归841 PASS，耗时177.02秒；旧Agent自动测试已移到独立工作区和独立Runner状态，避免修改仓库手工样例或借用原Runner。
 - 新管理/导入/根权限/默认关闭/撤销、真实MCP热插拔与持久启动专项通过；主Runtime PID保持。独立源码快照hash、目标绑定、越界和文件保留专项通过。
 - 独立可选组件实际安装和Skill MCP验收7组PASS，报告`.desktop-build/components-mcp-report.json`。17个真实描述符、正文/资源/启停阻止、草稿写入、改名、归档恢复、Git仓库本地复制均独立核对文件；不等同于冻结和ChatGPT验收。
 - 初版RC.4冻结Runtime同样完成独立安装与Skill MCP七组PASS，报告`.desktop-build/rc4-components-frozen-report.json`；初版安装包构建成功，但source_dirty=true，仅用于开发验收。现正在纳入最后的清单编辑、UV按需下载和大正文RPC容量改动，准备从干净提交重新构建，旧候选不作为最终交付。
+- 官方UV下载在冻结客户端中曾返回403；为客户端设置明确产品User-Agent后官方请求200，校验完整下载成功。源码manager真实自动下载/双hash/独立Python与Skill安装、17项接口工作流、60080字节UTF-8中文草稿8组PASS，报告`.desktop-build/components-mcp-report.json`。修复必须重新冻结后再验收，不能使用旧冻结结果代替。
 - 原开发服务8766/8931/18081 PID30744/19464/20620保持；当前用户RC.3 Runtime18766/Tunnel18082仍运行，未迁移个人Skills或凭据。
 
 ## 待执行/限制

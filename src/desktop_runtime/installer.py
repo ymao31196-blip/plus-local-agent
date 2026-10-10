@@ -117,7 +117,10 @@ class ComponentInstaller:
         if not archive_path.resolve().is_relative_to(self.project.data):
             raise ValueError('Installer archive escapes private cache')
         if not archive_path.is_file():
-            with urllib.request.urlopen(UV_URL, timeout=60) as response:
+            request = urllib.request.Request(UV_URL, headers={
+                'User-Agent': 'PLA-Desktop/1.0 optional-component installer',
+                'Accept': 'application/octet-stream'})
+            with urllib.request.urlopen(request, timeout=60) as response:
                 archive = response.read(100_000_001)
             if len(archive) > 100_000_000 or hashlib.sha256(archive).hexdigest() != UV_ARCHIVE_SHA256:
                 raise ValueError('Optional installer archive checksum mismatch; no code executed')

@@ -97,7 +97,7 @@ def main():
         deadline = time.monotonic() + 600
         job = 'installer:skill-library'
         def job_status():
-            return next(item for item in manager.dispatch('installation_status')['jobs'] if item['job'] == job)
+            return next(item for item in manager.dispatch('installation_status', {})['jobs'] if item['job'] == job)
         while job_status()['state'] == 'running' and time.monotonic() < deadline:
             time.sleep(1)
         assert job_status()['exit_code'] == 0, '\n'.join(manager.logs)[-16000:]
@@ -118,7 +118,7 @@ def main():
             port = connection.getsockname()[1]
         manager.dispatch('configure', {'runtime_port': port})
         manager.start()
-        runtime_pid = manager.dispatch('status')['owned_processes']['runtime']['pid']
+        runtime_pid = manager.dispatch('status', {})['owned_processes']['runtime']['pid']
         enabled = manager.dispatch('provider_action', {'action': 'enable', 'provider_id': 'skill-library', 'confirmed': True})
         assert enabled['data']['provider']['state'] == 'ready', enabled
         descriptors = manager.dispatch('provider_details', {'provider_id': 'skill-library'})
@@ -172,7 +172,7 @@ def main():
         assert (destination / 'skills/desktop-renamed/SKILL.md').read_bytes() == (renamed / 'SKILL.md').read_bytes()
         record('publication_preview_and_local_copy_no_commit_or_push', 'destination bytes independently compared')
         manager.dispatch('provider_action', {'action': 'disable', 'provider_id': 'skill-library', 'confirmed': True})
-        assert manager.dispatch('status')['owned_processes']['runtime']['pid'] == runtime_pid
+        assert manager.dispatch('status', {})['owned_processes']['runtime']['pid'] == runtime_pid
         record('runtime_pid_preserved_across_skill_enable_disable', runtime_pid)
     except Exception as error:
         checks.append({'name': 'acceptance', 'result': 'FAIL', 'error': str(error)})
