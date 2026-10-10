@@ -86,9 +86,8 @@ class ComponentInstaller:
     def plan(self, provider_id, skill_package=None):
         if not isinstance(provider_id, str) or not PROVIDER_ID.fullmatch(provider_id):
             raise ValueError('Invalid provider ID')
-        specs = self.resources / 'provider-assets/provider_specs'
-        paths = [specs / f'{provider_id}{suffix}' for suffix in ('.txt', '.npm.txt', '.source.json')]
-        present = [path for path in paths if path.is_file()]
+        from desktop_runtime.custom_packages import get_spec_paths
+        present = get_spec_paths(self.project, provider_id)
         if not present:
             raise ValueError('No reviewed bundled installer spec exists for this provider')
         package = validate_skill_package(skill_package) if provider_id == 'skill-library' else None
@@ -103,7 +102,8 @@ class ComponentInstaller:
                 'skill_package_sha256': package_sha256(package) if package else None,
                 'installer_tool': {'name': 'uv', 'version': '0.12.24', 'source': UV_URL,
                                    'archive_sha256': UV_ARCHIVE_SHA256, 'download_on_demand': True} if provider_id != 'browser' else None,
-                'installs_into_private_data': provider_id != 'browser', 'activates_provider': False}
+                'installs_into_private_data': provider_id != 'browser', 'activates_provider': False,
+                 'source': 'bundled' if present[0].is_relative_to(self.resources) else 'user_custom'}
 
     def ensure_uv(self):
         if not self.uv.resolve().is_relative_to(self.project.root):
@@ -141,10 +141,11 @@ class ComponentInstaller:
     def install(self, provider_id, skill_package=None):
         plan = self.plan(provider_id, skill_package)
         self.project.stage(int(os.environ.get('PLA_BROWSER_PORT', '18931')))
-        specs = self.resources / 'provider-assets/provider_specs'
-        python_spec = specs / f'{provider_id}.txt'
-        node_spec = specs / f'{provider_id}.npm.txt'
-        source_spec = specs / f'{provider_id}.source.json'
+        from desktop_runtime.custom_packages import get_spec_paths
+        reviewed_specs = {path.name: path for path in get_spec_paths(self.project, provider_id)}
+        python_spec = reviewed_specs.get(f'{provider_id}.txt')
+        node_spec = reviewed_specs.get(f'{provider_id}.npm.txt')
+        source_spec = reviewed_specs.get(f'{provider_id}.source.json')
         if provider_id == 'browser':
             package = self.resources / '.provider_envs/browser/node_modules/@playwright/mcp'
             if not (self.resources / 'node.exe').is_file() or not (package / 'cli.js').is_file():
@@ -155,7 +156,7 @@ class ComponentInstaller:
                 raise ValueError('Bundled browser version does not match its reviewed specification; repair installation')
             return {'status': 'bundled_files_verified', 'provider_id': provider_id, 'version': version,
                     'activated': False, 'mcp_connection_verified': False, 'private_duplicate_not_installed': True}
-        if python_spec.is_file():
+        if python_spec is not None:
             lines = [line.strip() for line in python_spec.read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')]
             if not lines or any(not re.fullmatch(r'[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?==[A-Za-z0-9_.+-]+', line) for line in lines):
                 raise ValueError('Bundled Python specifications must pin exact package versions')
@@ -167,13 +168,14 @@ class ComponentInstaller:
             if not python.is_file():
                 self.run([str(self.uv), 'venv', '--no-config', '--no-project', '--python', PYTHON_VERSION,
                           '--managed-python', str(environment)])
-            self.run([str(self.uv), 'pip', 'install', '--no-config', '--python', str(python),
+            binary_only = ['--only-binary', ':all:'] if plan['source'] == 'user_custom' else []
+            self.run([str(self.uv), 'pip', 'install', '--no-config', *binary_only, '--python', str(python),
                       '--index-url', 'https://pypi.org/simple', '-r', str(python_spec)])
             if plan['skill_package']:
                 self.run([str(self.uv), 'pip', 'install', '--no-config', '--python', str(python),
                           '--no-deps', plan['skill_package']])
                 self.run([str(python), '-I', '-c', 'from importlib.metadata import version; from skill_library.server import mcp; assert version("chatgpt-skill-library") == "0.5.0"; assert mcp.name == "Skill Library"'])
-        if node_spec.is_file():
+        if node_spec is not None:
             lines = [line.strip() for line in node_spec.read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')]
             if not lines or any(not re.fullmatch(r'(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+@[0-9][A-Za-z0-9_.+-]*', line) for line in lines):
                 raise ValueError('Bundled npm specifications must pin exact package versions')
@@ -186,7 +188,7 @@ class ComponentInstaller:
                 raise ValueError('Node environment escapes private data')
             self.run([str(node), str(npm), 'install', '--prefix', str(target), '--ignore-scripts',
                       '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', *lines])
-        if source_spec.is_file():
+        if source_spec is not None:
             # Fixed original reviewed Git/npm helper; Git remains an observable
             # optional system prerequisite, never installed or elevated silently.
             from provider.source_provider_setup import setup_git_npm_source
@@ -201,16 +203,41 @@ class ComponentInstaller:
         return receipt
 
 
+CORE_BUNDLE_IDS = (
+    'computer', 'docx', 'markitdown', 'office-enhancement',
+    'pdf', 'software-migration', 'windows-management',
+)
+
+
+def core_bundle_plan(installer):
+    """One reviewed installation plan for the official optional starter set."""
+    plans = [installer.plan(provider_id) for provider_id in CORE_BUNDLE_IDS]
+    if any(row['source'] != 'bundled' for row in plans):
+        raise ValueError('Starter pack must contain only bundled reviewed specifications')
+    return {'bundle': 'starter-pack', 'providers': list(CORE_BUNDLE_IDS), 'plans': plans,
+            'activated': False, 'requires_explicit_enable': True}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-dir', type=Path, required=True)
     parser.add_argument('--resources', type=Path, required=True)
-    parser.add_argument('--provider-id', required=True)
+    parser.add_argument('--provider-id')
+    parser.add_argument('--bundle', action='store_true')
     parser.add_argument('--skill-package')
     parser.add_argument('--expected-plan-sha256')
     args = parser.parse_args()
+    if args.bundle == bool(args.provider_id) or (args.bundle and args.skill_package):
+        parser.error('Select one provider ID or the reviewed starter bundle')
     installer = ComponentInstaller(args.data_dir, args.resources)
-    plan = installer.plan(args.provider_id, args.skill_package)
+    plan = core_bundle_plan(installer) if args.bundle else installer.plan(args.provider_id, args.skill_package)
     if args.expected_plan_sha256 and hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest() != args.expected_plan_sha256:
         raise ValueError('Installation plan or package changed after review')
-    print(json.dumps(installer.install(args.provider_id, args.skill_package)), flush=True)
+    if args.bundle:
+        for provider_id in CORE_BUNDLE_IDS:
+            print('BUNDLE ' + provider_id, flush=True)
+            installer.install(provider_id)
+        print(json.dumps({'bundle': 'starter-pack', 'status': 'installed', 'providers': CORE_BUNDLE_IDS,
+                          'activated': False, 'requires_explicit_enable': True}), flush=True)
+    else:
+        print(json.dumps(installer.install(args.provider_id, args.skill_package)), flush=True)

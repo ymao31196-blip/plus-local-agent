@@ -309,10 +309,11 @@ class Manager:
                     row['requested_enabled'] = self.config.value['browser_enabled']
                 provider_id = row['provider_id']
                 specs = self.resources / 'provider-assets/provider_specs'
-                row['install_supported'] = provider_id == 'browser' or any(
-                    (specs / f'{provider_id}{suffix}').is_file()
-                    for suffix in ('.txt', '.npm.txt', '.source.json')
-                )
+                from desktop_runtime.custom_packages import get_spec_paths
+                spec_paths = get_spec_paths(self.components, provider_id)
+                row['install_supported'] = provider_id == 'browser' or bool(spec_paths)
+                row['install_source'] = ('bundled' if spec_paths[0].is_relative_to(self.resources)
+                                         else 'user_custom') if spec_paths else None
                 cwd = row.get('cwd')
                 row['directory_exists'] = not cwd or Path(cwd).is_dir()
                 receipt = self.components.root / 'receipts' / f'{provider_id}.json'
@@ -323,6 +324,16 @@ class Manager:
                     and row['directory_exists']
                 )
             return catalog
+        if command == 'provider_package':
+            from desktop_runtime.custom_packages import package_spec
+            if set(args) != {'provider_id', 'package_kind', 'packages', 'confirmed', 'expected_sha256'} or type(args['confirmed']) is not bool:
+                raise ValueError('Preview the exact custom package pins before confirmation')
+            if args['confirmed'] and self._alive('runtime'):
+                actual = self._invoke_management_capability('runtime.provider_catalog', {})['data']['providers']
+                if any(row['provider_id'] == args['provider_id'] and row.get('lifecycle', {}).get('enabled')
+                       for row in actual if row.get('lifecycle')):
+                    raise ValueError('Disable the custom provider before updating its packages')
+            return package_spec(self.components, **args)
         if command == 'provider_import':
             if set(args) != {'content', 'confirmed', 'expected_sha256'} or type(args['confirmed']) is not bool:
                 raise ValueError('Expected bounded manifest and review confirmation')
@@ -383,6 +394,30 @@ class Manager:
         if command == 'skill_action':
             capability_id, arguments = checked_skill_action(args)
             return self._invoke_management_capability(capability_id, arguments, args['confirmed'])
+        if command == 'provider_bundle':
+            from desktop_runtime.installer import ComponentInstaller, core_bundle_plan, CORE_BUNDLE_IDS
+            import hashlib
+            if set(args) != {'confirmed', 'expected_sha256'} or type(args['confirmed']) is not bool:
+                raise ValueError('Review and confirm the exact starter bundle')
+            plan = core_bundle_plan(ComponentInstaller(self.config.root, self.resources))
+            digest = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
+            if not args['confirmed']:
+                return {**plan, 'sha256': digest, 'started': False}
+            if digest != args['expected_sha256']:
+                raise ValueError('Starter bundle changed; preview its exact dependency plans again')
+            if self._alive('runtime'):
+                actual = self._invoke_management_capability('runtime.provider_catalog', {})['data']['providers']
+                if any(row['provider_id'] in CORE_BUNDLE_IDS and row.get('lifecycle', {}).get('enabled')
+                       for row in actual if row.get('lifecycle')):
+                    raise ValueError('Disable starter-pack providers before updating their environments')
+            if any(self._alive(name) for name in self.children if name.startswith('installer:')):
+                raise ValueError('A component installation is already running')
+            role = 'installer:starter-pack'
+            command_line = self._command('component_install') + [
+                '--data-dir', str(self.config.root), '--resources', str(self.resources),
+                '--bundle', '--expected-plan-sha256', digest]
+            self._spawn(role, command_line, self._environment())
+            return {**plan, 'sha256': digest, 'started': True, 'job': role}
         if command == 'provider_install':
             from desktop_runtime.installer import ComponentInstaller
             import hashlib
@@ -416,7 +451,12 @@ class Manager:
                 code = child.poll()
                 provider_id = name.partition(':')[2]
                 receipt = self.components.root / 'receipts' / f'{provider_id}.json'
-                installed = code == 0 and (receipt.is_file() or provider_id == 'browser')
+                if provider_id == 'starter-pack':
+                    from desktop_runtime.installer import CORE_BUNDLE_IDS
+                    installed = code == 0 and all((self.components.root / 'receipts' / (item + '.json')).is_file()
+                                                     for item in CORE_BUNDLE_IDS)
+                else:
+                    installed = code == 0 and (receipt.is_file() or provider_id == 'browser')
                 with self.log_lock:
                     log_lines = [line for line in self.logs if line.startswith(f'[{name}]')][-30:]
                 jobs.append({'job': name, 'provider_id': provider_id, 'pid': child.pid,
