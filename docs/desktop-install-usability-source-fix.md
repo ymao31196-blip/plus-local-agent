@@ -17,18 +17,18 @@
 - 发行候选版本字段统一更新为1.0.0-rc.6：Tauri、Cargo.toml/Cargo.lock、npm package/package-lock以及Python Runtime VERSION保持一致；增加test_desktop_release_version_consistent_across_build_systems自动校验。旧安装版及RC.5安装包保留原状。
 
 ## 已实际执行
-- 完整源码pytest：847 passed in 140.69s（运行开始时已经包含前三项新增回归；随后新增第4项静态契约测试并单独通过）。
-- 最终专项15项测试：15 passed in 14.86s。
-- Python py_compile：PASS。
+- 完整源码pytest：849 passed in 142.91s（RC.6版本同步及新增回归全部包含在此轮）。
+- 专项15项测试：15 passed in 14.86s；单独新增版本与安装控件测试：5 passed in 1.97s。
+- Python py_compile：PASS。前端components.js与CI smoke脚本经隔离V8语法检查：PASS；在隔离V8模拟Node必需接口后运行完整mock UI smoke：PASS。原生Node/Windows WebView2执行仍未进行。
 - 当前用户安装的RC.4运行环境没有被替换，用户凭据、Tunnel和Provider配置未改动。
 
 ## 未完成，不能冒充通过
 - 该轮的Tauri/WebView2安装版构建、安装/原生真实点击和Skill来源现场加载：NOT TESTED。当前PLA执行白名单不允许node.exe/powershell.exe，本轮不能通过受控进程工具运行Tauri/NSIS构建脚本。
-- 未修改发行版本号、未生成新安装包、未commit/push/release。既有Cargo.toml工作树修改在本轮之前就已存在，不归入本轮修复。
+- 源码及锁文件已统一升级为1.0.0-rc.6并提交到本地分支codex/pla-desktop-v1（起始提交4c31e8cc5d3eaf1bf6e5544af8d1b0de96092416）；未生成新安装包，未push/release。
 - WPS实际Git/npm安装需要在隔离用户组件目录上复测；源码修复只消除了缺目录情况下错误启用与误导反馈，并没有宣称已安装WPS。
 
 ## 发行前收尾
-1. 在具备构建授权的原生Windows构建环境中审查本轮diff，保留Cargo.toml既存改动，确认选择下一RC版本号，再执行desktop/packaging/build.ps1。
+1. 在具备构建授权的原生Windows构建环境中核查RC.6源码提交和六处版本字段，执行node desktop/verification/components-ux-smoke.cjs，再执行desktop/packaging/build.ps1。
 2. 用隔离用户目录启动新安装包，实点MCP安装按钮、预览、确认、安装进度/失败恢复、安装后单独启用。每项检查任务日志、真实文件和实际Capability状态。
 3. 用用户已授权的Skill Library v0.5.0源码/wheel，从GUI预览→安装→启用→授权读取root→添加来源→同步→列表读取完整SKILL.md，验证关闭/重启后仍可用。
 4. 重新执行WPS从未安装目录开始的Git/npm安装及错误场景，确认WinError 267不再被伪装为就绪。
