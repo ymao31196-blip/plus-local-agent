@@ -307,6 +307,21 @@ class Manager:
             for row in catalog['providers']:
                 if row['provider_id'] == 'browser':
                     row['requested_enabled'] = self.config.value['browser_enabled']
+                provider_id = row['provider_id']
+                specs = self.resources / 'provider-assets/provider_specs'
+                row['install_supported'] = provider_id == 'browser' or any(
+                    (specs / f'{provider_id}{suffix}').is_file()
+                    for suffix in ('.txt', '.npm.txt', '.source.json')
+                )
+                cwd = row.get('cwd')
+                row['directory_exists'] = not cwd or Path(cwd).is_dir()
+                receipt = self.components.root / 'receipts' / f'{provider_id}.json'
+                row['installation_recorded'] = receipt.is_file()
+                row['execution_files_present'] = (
+                    row.get('python_exists') is not False
+                    and row.get('command_exists') is not False
+                    and row['directory_exists']
+                )
             return catalog
         if command == 'provider_import':
             if set(args) != {'content', 'confirmed', 'expected_sha256'} or type(args['confirmed']) is not bool:
@@ -328,6 +343,15 @@ class Manager:
         if command == 'provider_action':
             capability_id, arguments = checked_provider_action(args)
             provider_id = args['provider_id']
+            if args['action'] == 'enable' and provider_id != 'browser':
+                catalog = self.components.catalog()['providers']
+                row = next((item for item in catalog if item['provider_id'] == provider_id), None)
+                if row is None:
+                    raise ValueError('Unknown provider; refresh the catalog')
+                if row.get('python_exists') is False or row.get('command_exists') is False:
+                    raise ValueError(f'{provider_id} is not installed: executable missing; install the reviewed component first')
+                if row.get('cwd') and not Path(row['cwd']).is_dir():
+                    raise ValueError(f'{provider_id} is not installed: working directory missing; install the reviewed component first')
             if not self._alive('runtime') and args['action'] in {'enable', 'disable'}:
                 self._save_provider_selection(provider_id, args['action'] == 'enable')
                 return {'status': 'selection_saved', 'provider_id': provider_id, 'connected': False, 'applies_on_runtime_start': True}
@@ -385,9 +409,26 @@ class Manager:
         if command == 'installation_status':
             if args:
                 raise ValueError('Installation status takes no arguments')
-            return {'jobs': [{ 'job': name, 'pid': child.pid, 'exit_code': child.poll(),
-                              'state': 'running' if child.poll() is None else 'installed' if child.returncode == 0 else 'failed'}
-                             for name, child in self.children.items() if name.startswith('installer:')]}
+            jobs = []
+            for name, child in self.children.items():
+                if not name.startswith('installer:'):
+                    continue
+                code = child.poll()
+                provider_id = name.partition(':')[2]
+                receipt = self.components.root / 'receipts' / f'{provider_id}.json'
+                installed = code == 0 and (receipt.is_file() or provider_id == 'browser')
+                with self.log_lock:
+                    log_lines = [line for line in self.logs if line.startswith(f'[{name}]')][-30:]
+                jobs.append({'job': name, 'provider_id': provider_id, 'pid': child.pid,
+                             'exit_code': code, 'state': 'running' if code is None else 'installed' if installed else 'failed',
+                             'logs': log_lines})
+            receipts = self.components.root / 'receipts'
+            records = []
+            if receipts.is_dir():
+                for path in sorted(receipts.glob('*.json')):
+                    if path.stem.isascii() and path.stem.replace('-', '').replace('_', '').isalnum():
+                        records.append(path.stem)
+            return {'jobs': jobs, 'installed_receipts': records}
         if command == 'skill_permissions':
             path = self.components.root / 'config/skill-library.desktop.json'
             roots = workspace_registry_status(self.config.workspace_path, self.resources)['roots']

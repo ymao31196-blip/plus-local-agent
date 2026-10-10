@@ -1,6 +1,6 @@
 {
   "name": "pla-desktop",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0-rc.6",
   "private": true,
   "scripts": {"build": "tauri build", "dev": "tauri dev"},
   "devDependencies": {"@tauri-apps/cli": "2.8.4"}

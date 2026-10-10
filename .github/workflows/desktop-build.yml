@@ -26,6 +26,9 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pytest -q --tb=short
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Desktop component UI smoke
+        shell: pwsh
+        run: node ./desktop/verification/components-ux-smoke.cjs
       - name: Freeze, verify packaged tools and build NSIS
         shell: pwsh
         run: ./desktop/packaging/build.ps1

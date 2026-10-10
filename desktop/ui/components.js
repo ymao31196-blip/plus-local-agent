@@ -5,6 +5,7 @@ const button = (text,fn) => {const el=node('button',text);el.onclick=()=>action(
 const output = (id,value) => {$(id).textContent=typeof value==='string'?value:JSON.stringify(value,null,2);};
 const unwrap = value => value?.data ?? value;
 let providerCatalog, importPreview, installPreview, skillDescriptors=[], skillInputs=[], lastSkillResult, developmentSnapshot;
+let watchedInstallJob=null;
 let developmentSourcePreview;
 let providerEditVersion, providerEditPreview;
 let skillInventory=[], skillInventorySources=[];
@@ -21,24 +22,63 @@ async function loadProviders(){
     const card=node('article',undefined,'wide');card.append(node('h2',row.provider_id));
     const lifecycle=row.lifecycle;
     const state=lifecycle?({ready:'MCP 已连接',disabled:'已停用',failed:'连接失败',discovered:'已发现',unconfigured:'尚未配置'})[lifecycle.state]||lifecycle.state:'未连接';
-    card.append(node('strong',state),node('p',`${row.runtime_kind} · 下次启动 ${row.requested_enabled?'启用':'停用'} · 已发现工具 ${lifecycle?.tool_count??'未检测'}`));
+    const installedFiles=row.execution_files_present!==false;
+    const live=lifecycle?.state==='ready';
+    card.append(node('strong',live?'MCP 已连接':!installedFiles?'未安装 / 安装不完整':state),
+      node('p',`${row.runtime_kind} · 启动偏好 ${row.requested_enabled?'启用':'停用'} · 已发现工具 ${lifecycle?.tool_count??'未检测'}`));
     card.append(node('p',row.url||row.python||row.command));
-    if(row.python_exists===false||row.command_exists===false)card.append(node('p','执行组件尚未安装；可先查看安装计划。','error-text'));
+    if(!installedFiles)card.append(node('p',row.directory_exists===false?'工作目录不存在：请先安装对应组件，不要直接启用。':'缺少执行组件：请先安装对应依赖，不要直接启用。','error-text'));
+    if(row.installation_recorded)card.append(node('p','已有安装记录；仍需检查实际文件和MCP连接。'));
+    if(!row.install_supported && !installedFiles)card.append(node('p','此清单没有已审阅安装规格，暂不支持一键安装。请使用组件官方安装方式，配置好执行环境后再启用。','error-text'));
     if(lifecycle?.error_message)card.append(node('p',lifecycle.error_message,'error-text'));
     const controls=node('div',undefined,'actions');
-    for(const [label,operation] of [['启用','enable'],['停用','disable'],['重载工具','reload']])controls.append(button(label,async()=>{
+    for(const [label,operation] of [['启用','enable'],['停用','disable'],['重载工具','reload']]){
+      if(['enable','reload'].includes(operation)&&!installedFiles)continue;
+      controls.append(button(label,async()=>{
       if(!window.confirm(`${label} ${row.provider_id}？\n${operation==='enable'?'将启动清单指定的 MCP 组件，并按原权限 Broker 发现工具。':'将改变该组件的实际连接状态。'}\n${row.url||row.python||row.command||''}`))return;
-      const result=await rpc('provider_action',{action:operation,provider_id:row.provider_id,confirmed:true});output('provider-result',result);await loadProviders();
-    }));
+       const result=await rpc('provider_action',{action:operation,provider_id:row.provider_id,confirmed:true});
+       output('provider-result',result);await loadProviders();
+       notice(result.status==='selection_saved'?'启动偏好已保存，请启动Runtime后再检查实际MCP连接。':`${row.provider_id}已执行${label}；请以卡片上的MCP状态为准。`);
+      }));
+    }
     controls.append(button('工具与参数',async()=>{const result=await rpc('provider_details',{provider_id:row.provider_id});renderTools(result);output('provider-result',result);}));
     controls.append(button('查看 / 编辑清单',async()=>{providerEditVersion=await rpc('provider_configuration',{provider_id:row.provider_id,content:null,confirmed:false,expected_sha256:null,expected_content_sha256:null});providerEditPreview=null;$('edit-provider-id').textContent=row.provider_id;$('edit-manifest-content').value=providerEditVersion.content;output('edit-manifest-preview',providerEditVersion.sha256);$('edit-manifest-panel').scrollIntoView({block:'start'});}));
-    controls.append(button('安装 / 更新',async()=>{$('install-provider').value=row.provider_id;$('install-panel').scrollIntoView({block:'start'});await previewInstall();}));
+    if(row.install_supported)controls.append(button(installedFiles?'检查 / 更新依赖':'安装组件…',async()=>{$('install-provider').value=row.provider_id;$('install-panel').scrollIntoView({block:'start'});await previewInstall();}));
+    else controls.append(node('span','无自动安装规格 · 可配置已有MCP','error-text'));
     card.append(controls);list.append(card);
   }
-  const jobs=await rpc('installation_status');output('install-jobs',jobs.jobs.length?jobs:'暂无安装任务');
+  await refreshInstallationStatus();
+}
+async function refreshInstallationStatus(){
+  const jobs=await rpc('installation_status');
+  output('install-jobs',jobs.jobs.length?jobs:`当前无执行中的安装任务。已有安装记录：${(jobs.installed_receipts||[]).join('、')||'无'}`);
+  const running=jobs.jobs.find(job=>job.state==='running');
+  const finished=watchedInstallJob&&jobs.jobs.find(job=>job.job===watchedInstallJob&&job.state!=='running');
+  if(finished){
+    watchedInstallJob=null;
+    $('install-live').textContent=finished.state==='installed'?`${finished.provider_id} 的依赖已安装；请检查文件后单独启用，验证真实MCP工具。`:`${finished.provider_id} 安装失败（退出码 ${finished.exit_code}）；查看下方日志，可修复后重试。`;
+    await loadProviders();
+    return;
+  }
+  if(running)$('install-live').textContent=`${running.provider_id} 正在安装（PID ${running.pid}）…请查看任务日志，安装过程中勿重复启动。`;
 }
 function renderTools(result){const list=$('provider-tools');list.replaceChildren();for(const tool of result.capabilities){const detail=node('details');detail.append(node('summary',`${tool.id} · ${tool.available?'可用':'不可用'} · ${tool.risk_level}`),node('p',tool.description),node('pre',JSON.stringify(tool,null,2)));list.append(detail);}}
-async function previewInstall(){installPreview=await rpc('provider_install',{provider_id:$('install-provider').value.trim(),skill_package:$('skill-package').value.trim()||null,confirmed:false,expected_sha256:null});output('install-preview',installPreview);}
+async function previewInstall(){
+  installPreview=null;
+  try{
+    const provider_id=$('install-provider').value.trim();
+    const skill_package=$('skill-package').value.trim()||null;
+    if(provider_id==='skill-library'&&!skill_package)throw 'Skill Library未随包分发。请先填写你有权使用的v0.5.0源码或wheel完整路径，再预览安装。';
+    if(provider_id!=='skill-library'&&skill_package)throw '非Skill Library组件请清空本地包路径。';
+    $('install-live').textContent=`正在校验${provider_id}的固定依赖和安装条件…`;
+    installPreview=await rpc('provider_install',{provider_id,skill_package,confirmed:false,expected_sha256:null});
+    output('install-preview',installPreview);
+    $('install-live').textContent=`已生成${provider_id}安装计划（尚未安装）。核对下方来源、依赖及目标目录后，点击「确认安装」。`;
+  }catch(error){
+    $('install-live').textContent='安装预览失败：'+friendlyError(error);
+    throw error;
+  }
+}
 $('reload-providers').onclick=()=>action(loadProviders);
 $('rescan-providers').onclick=()=>action(async()=>{if(!window.confirm('重扫并应用已选择的 Provider 清单变化？Runtime 主服务保持运行。'))return;output('provider-result',await rpc('provider_action',{action:'rescan',provider_id:null,confirmed:true}));await loadProviders();});
 $('preview-import').onclick=()=>action(async()=>{importPreview=await rpc('provider_import',{content:$('manifest-content').value,confirmed:false,expected_sha256:null});output('manifest-preview',importPreview);});
@@ -46,8 +86,20 @@ $('apply-import').onclick=()=>action(async()=>{if(!importPreview)throw '请先�
 $('preview-manifest-edit').onclick=()=>action(async()=>{if(!providerEditVersion)throw '请先选择要编辑的组件。';providerEditPreview=await rpc('provider_configuration',{provider_id:providerEditVersion.provider_id,content:$('edit-manifest-content').value,confirmed:false,expected_sha256:providerEditVersion.sha256,expected_content_sha256:null});output('edit-manifest-preview',providerEditPreview);});
 $('save-manifest-edit').onclick=()=>action(async()=>{if(!providerEditPreview)throw '请先预览当前修改。';if(!window.confirm(`保存 ${providerEditVersion.provider_id} 的已审阅配置？\n${providerEditPreview.content_sha256}\n保存后需单独重载或重扫。`))return;output('edit-manifest-preview',await rpc('provider_configuration',{provider_id:providerEditVersion.provider_id,content:$('edit-manifest-content').value,confirmed:true,expected_sha256:providerEditVersion.sha256,expected_content_sha256:providerEditPreview.content_sha256}));providerEditVersion=null;providerEditPreview=null;await loadProviders();});
 $('preview-install').onclick=()=>action(previewInstall);
-$('start-install').onclick=()=>action(async()=>{if(!installPreview)throw '请先查看当前安装计划。';if(!window.confirm(`安装 ${installPreview.provider_id} 的固定依赖？\n${installPreview.environment}\n可能需要联网下载；安装后仍需单独启用。`))return;output('install-preview',await rpc('provider_install',{provider_id:$('install-provider').value.trim(),skill_package:$('skill-package').value.trim()||null,confirmed:true,expected_sha256:installPreview.sha256}));installPreview=null;await loadProviders();});
-$('installation-refresh').onclick=()=>action(async()=>{output('install-jobs',await rpc('installation_status'));output('provider-result',(await rpc('logs')).lines.join('\n'));});
+$('start-install').onclick=()=>action(async()=>{
+  try{
+  if(!installPreview)throw '请先查看当前安装计划。';
+  if(installPreview.provider_id!==$('install-provider').value.trim()||(installPreview.skill_package||null)!==($('skill-package').value.trim()||null))throw '安装目标已变化，请重新预览并确认。';
+  if(!window.confirm(`安装 ${installPreview.provider_id} 的固定依赖？\n${installPreview.environment}\n可能需要联网下载；安装后仍需单独启用。`))return;
+  const result=await rpc('provider_install',{provider_id:installPreview.provider_id,skill_package:installPreview.skill_package||null,confirmed:true,expected_sha256:installPreview.sha256});
+  output('install-preview',result);installPreview=null;
+  watchedInstallJob=result.job||null;
+  $('install-live').textContent=result.started?`${result.provider_id} 安装任务已启动，请查看下方日志。`:'没有启动安装，请检查安装结果。';
+  await refreshInstallationStatus();
+  }catch(error){$('install-live').textContent='安装未启动：'+friendlyError(error);throw error;}
+});
+$('installation-refresh').onclick=()=>action(refreshInstallationStatus);
+setInterval(()=>{if(!$('providers').classList.contains('hidden')&&!busy)action(refreshInstallationStatus);},2000);
 
 async function loadSkills(){
   await loadSkillPermissions();
@@ -77,6 +129,31 @@ async function loadSkillList(){
     $('skill-list-items').append(node('p',friendlyError(error),'error-text'));
   }
 }
+$('skill-install-link').onclick=()=>action(async()=>{
+  view('providers');await loadProviders();
+  $('install-provider').value='skill-library';
+  $('install-panel').scrollIntoView({block:'start'});
+  $('install-live').textContent='Skill Library需要你有权使用的v0.5.0源码目录或wheel。填好路径，再点击「预览固定依赖」与「确认安装」，等待成功后单独启用。';
+});
+$('skill-quick-add').onclick=()=>action(async()=>{
+  const source_id=$('skill-quick-id').value.trim(),location=$('skill-quick-path').value.trim();
+  if(!/^[a-z0-9][a-z0-9_-]*$/.test(source_id)||!location)throw '请填写唯一的来源ID（英文小写、数字、-、_）和已授权的Skill目录完整路径。';
+  if(!window.confirm(`将以下本地Skill目录注册为来源并同步？\n${source_id}\n${location}\n此目录必须已获得独立Skill读取授权。`))return;
+  $('skill-quick-result').textContent='正在登记本地来源…';
+  try{await rpc('skill_action',{action:'manage',arguments:{action:'add',source_id,kind:'local',location},confirmed:false});}
+  catch(error){$('skill-quick-result').textContent='添加来源失败：'+friendlyError(error)+'。请检查Provider连接及Skill专用目录授权。';throw error;}
+  $('skill-quick-result').textContent='来源已登记，正在同步并校验缓存…';
+  try{
+    const response=unwrap(await rpc('skill_action',{action:'sync',arguments:{source_id},confirmed:false}));
+    const status=response?.results?.[source_id];
+    if(!status||status.status==='error')throw new Error(status?.error||'服务没有返回成功的同步结果');
+    await loadSkillList();
+    $('skill-quick-result').textContent=`来源${source_id}已同步。请查看列表及实际缓存数量（无有效SKILL.md时仍可能为空）。`;
+  }catch(error){
+    $('skill-quick-result').textContent=`来源已登记但同步失败：${friendlyError(error)}。请修复路径或权限后到Skills管理执行「同步来源」，不用重复添加来源。`;
+    throw error;
+  }
+});
 function renderSkillList(){
   const query=$('skill-list-query').value.trim().toLocaleLowerCase();
   const sourceId=$('skill-list-source').value;const status=$('skill-list-state').value;
