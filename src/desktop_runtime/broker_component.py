@@ -52,11 +52,13 @@ class DesktopComponentBroker:
     def _digest(plan: dict) -> str:
         return hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
 
-    def install_preview(self, provider_id: str) -> dict:
+    def install_preview(self, provider_id: str, skill_package: str | None = None) -> dict:
         if provider_id == "starter-pack":
+            if skill_package:
+                raise ValueError("Starter-pack installation never accepts a user-supplied package")
             plan = core_bundle_plan(self.installer)
         else:
-            plan = self.installer.plan(provider_id)
+            plan = self.installer.plan(provider_id, skill_package)
         return {**plan, "sha256": self._digest(plan), "started": False,
                 "mcp_connection_verified": False, "installation_is_activation": False}
 
@@ -65,9 +67,10 @@ class DesktopComponentBroker:
             return [sys.executable, "component_install"]
         return [sys.executable, str(Path(__file__).with_name("entry.py")), "component_install"]
 
-    def install_start(self, provider_id: str, expected_sha256: str, enabled_providers: set[str]) -> dict:
+    def install_start(self, provider_id: str, expected_sha256: str, enabled_providers: set[str],
+                      skill_package: str | None = None) -> dict:
         with self._lock:
-            plan = self.install_preview(provider_id)
+            plan = self.install_preview(provider_id, skill_package)
             if plan["sha256"] != expected_sha256:
                 raise ValueError("Installation plan changed; preview again")
             items = CORE_BUNDLE_IDS if provider_id == "starter-pack" else (provider_id,)
@@ -89,6 +92,8 @@ class DesktopComponentBroker:
                 "--expected-plan-sha256", expected_sha256,
             ]
             command += ["--bundle"] if provider_id == "starter-pack" else ["--provider-id", provider_id]
+            if skill_package:
+                command += ["--skill-package", str(plan["skill_package"])]
             # The runtime was started by Desktop using a sanitized environment.
             environment = {key: val for key, val in os.environ.items()
                            if not key.startswith(("PIP_", "UV_", "PYTHON", "VIRTUAL_ENV", "CONDA_"))}

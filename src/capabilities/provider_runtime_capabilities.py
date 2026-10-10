@@ -143,12 +143,16 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
             "provider_setup",
             "Install Reviewed Provider Dependencies",
             (
-                "Install one manifest/provider's pinned reviewed dependency specs "
-                "through the fixed PLA setup_providers.ps1 entrypoint."
+                "In Desktop, install one reviewed component into private data only after "
+                "an exact SHA-256 plan review; skill-library additionally requires a "
+                "locally reviewed v0.5.0 source/wheel path. Installation never enables "
+                "the Provider. Source-mode PLA retains its legacy setup mechanism."
             ),
             {"type": "object", "properties": {
                 "provider_id": {"type": "string", "minLength": 1},
-                "expected_sha256": {"type": ["string", "null"], "default": None}},
+                "expected_sha256": {"type": ["string", "null"], "default": None},
+                "skill_package": {"type": ["string", "null"], "default": None,
+                                  "description": "Required local v0.5.0 source directory/wheel for skill-library only"}},
              "required": ["provider_id"], "additionalProperties": False},
             risk_level="privileged",
             requires_confirmation=True,
@@ -248,7 +252,10 @@ def desktop_component_descriptors() -> tuple[CapabilityDescriptor, ...]:
             "runtime.desktop_install_preview", "desktop_install_preview",
             "Review Desktop Component Install",
             "Review exact dependency hashes for one bundled or user-defined Desktop Provider, or the reviewed starter-pack. Does not install or activate anything.",
-            {"type": "object", "properties": {"provider_id": {"type": "string"}},
+            {"type": "object", "properties": {
+                "provider_id": {"type": "string"},
+                "skill_package": {"type": ["string", "null"], "default": None,
+                                  "description": "Local v0.5.0 Skill Library source or wheel; required only for skill-library"}},
              "required": ["provider_id"], "additionalProperties": False},
             risk_level="read", requires_confirmation=False,
             tags=("desktop", "provider", "install", "preview"),
@@ -300,7 +307,7 @@ def register_provider_runtime_capabilities(
     )
     broker.register_internal_handler(
         "runtime.provider_setup",
-        lambda args: runtime.setup_dependencies(args["provider_id"], args.get("expected_sha256")),
+        lambda args: runtime.setup_dependencies(args["provider_id"], args.get("expected_sha256"), args.get("skill_package")),
     )
     if os.environ.get("PLA_DESKTOP_RUNTIME") == "1":
         broker.register_internal_handler(
@@ -308,7 +315,7 @@ def register_provider_runtime_capabilities(
         broker.register_internal_handler(
             "runtime.desktop_package_commit", lambda args: runtime.desktop_package_commit(**args))
         broker.register_internal_handler(
-            "runtime.desktop_install_preview", lambda args: runtime.setup_dependencies(args["provider_id"]))
+            "runtime.desktop_install_preview", lambda args: runtime.setup_dependencies(args["provider_id"], skill_package=args.get("skill_package")))
         broker.register_internal_handler(
             "runtime.desktop_install_status", lambda _args: runtime.desktop_install_status())
     broker.register_internal_handler(

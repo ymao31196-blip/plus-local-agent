@@ -172,15 +172,18 @@ class ExternalProviderRuntime:
             raise ValueError("This installation is not a managed Desktop Runtime")
         return self._desktop_broker.install_status()
 
-    def setup_dependencies(self, provider_id: str, expected_sha256: str | None = None) -> dict[str, Any]:
-        """Preview or queue only bounded reviewed Desktop installs; retain legacy source setup."""
+    def setup_dependencies(self, provider_id: str, expected_sha256: str | None = None,
+                           skill_package: str | None = None) -> dict[str, Any]:
+        """Review or queue a digest-bound Desktop install; preserve source setup."""
         if self._desktop_broker is None:
+            if skill_package is not None:
+                raise ValueError("Skill source installation is available only in Desktop")
             return setup_provider_dependencies(self._project_root, provider_id)
         if expected_sha256 is None:
-            return self._desktop_broker.install_preview(provider_id)
+            return self._desktop_broker.install_preview(provider_id, skill_package)
         active = self._manager.provider_status()
         enabled = {name for name, details in active.items() if details.get("enabled")}
-        return self._desktop_broker.install_start(provider_id, expected_sha256, enabled)
+        return self._desktop_broker.install_start(provider_id, expected_sha256, enabled, skill_package)
 
     def import_manifest(self, content: str, confirm: bool = False, expected_sha256: str | None = None) -> dict[str, Any]:
         """Desktop-native plugin registration without opening private data roots."""
