@@ -28,8 +28,14 @@ RC.10 源码全量 929 PASS，无警告；构建来源 3668134d8cac4fe3c7f222875
 
 已实际升级 D:\PLA Desktop；桌面配置、Provider 偏好、加密凭据及工作区配置四文件摘要均保留，安装后二进制与构建一致。已安装原生 UI 验证 13/13；冻结 Python 与 Node 仓库真实 MCP 安装/调用/升级/卸载通过。Computer Use 实测正式应用添加仓库成功并显示 Test Echo Provider，原 undefined 错误不再出现。
 
-上述 RC.10 证据不自动算作 RC.11 验收。当前正式应用尚无本轮改动；用户重装后生效。
+上述 RC.10 证据不自动算作 RC.11 验收。用户随后已更新到 RC.11；桌面程序和 Runtime 与候选完全匹配。原生页面确认三页签、自开发入口移除、常用包无 DOCX、仓库安装信息和操作合并；实际点击完整性检查返回 installation_verified。它不替代完整原生生命周期和远程验收。
 
 ## 发行边界
 
 未验证新候选的 Tunnel/ChatGPT 链路、干净 Windows 10/11 和 OS 重启；未签名，自动更新关闭，未公开推送或发布。组件依赖隔离并非 OS 沙箱，完整性检查并非真实 MCP 连接证明。
+
+## 后续现场诊断
+
+用户已自行完成 RC.11 更新。Computer Use 和文件摘要对比证据见 `.desktop-build/rc11-installed-observations.json`；原生测试副本先前因单实例未启动的失败记录保留。正式 Runtime 与多个 Provider 曾观察就绪，三个工作区存在；未替用户停止服务或改密钥。
+
+重启后的正式 Tunnel 客户端仍持续收到 401 invalid_api_key。DPAPI 保存值与用户此前提供的 test.txt 密钥一致，不含掩码或空白。PLA-TEST 指向同一桌面 Tunnel，返回 tunnel_client_not_seen；plus-local-agent 插件实际通向另一套源码 root，不能计为桌面远程通过。需要有效 runtime API key 才能继续该链路验收。

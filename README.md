@@ -18,7 +18,7 @@ running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes
 
 ### PLA Desktop V1 test candidate
 
-RC.5 retains multiple named roots and adds all Provider manifests, reviewed import/configuration/install flows, hot enable/disable/reload, and complete tool schemas. The dedicated Skill List automatically shows every cached Skill, including disabled entries, with filtering and full-text reading. Skills Management retains all 17 service workflows. RC.11 removes the optional self-development module and excludes DOCX from the starter bundle; existing workspaces and separate DOCX installations are preserved. See [RC.4 verification](docs/desktop-v1-rc4-followup.md).
+RC.11 retains multiple named workspace roots, the full Provider catalog, hot enable/disable/reload and complete tool schemas. The unified component entry has three tabs: local components, repositories and marketplace. Local cards combine installation versions and live connection controls. Skill List includes cached disabled entries; Skills Management retains all 17 workflows. Optional self-development is removed and DOCX is excluded from the six-component starter bundle; existing directories, workspace grants and separate DOCX installations are preserved. See [RC.11 acceptance](docs/desktop-v1-rc11-acceptance.md).
 
 For the Windows desktop candidate, use the locally built NSIS installer in
 `dist/desktop-v1`. It bundles the Runtime, Python execution interpreter and official
