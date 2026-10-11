@@ -10,7 +10,7 @@ function notice(text,error=false){$('notice').textContent=text;$('notice').class
 function friendlyError(error){const text=String(error);return ({'Stop services before changing configuration':'请先停止服务，再保存连接或浏览器配置。','Start Runtime before connecting Tunnel':'请先启动 Runtime，再连接 Tunnel。','Configure this machine\'s Tunnel ID and runtime API key':'请填写并保存 Tunnel ID 和 Runtime API key，再连接 Tunnel。','Stop Runtime before changing workspace permissions':'请先停止 Runtime，再保存工作区授权。','Runtime is stopped':'请先启动 Runtime，再运行本地工具验证。','Root name already exists; choose a different name or edit the existing root':'这个 root 名称已存在。新增目录请使用不同名称；修改原目录请点击它的「编辑」。','Root no longer exists; refresh the workspace list':'这个 root 已被移除，请刷新列表后重新添加。'})[text]||text;}
 async function action(fn){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){notice(friendlyError(e),true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
 async function rpc(command,args={}){return invoke('manage',{command,args});}
-function view(name){if(name==='providers'){name='component-management';currentComponentView='runtime';}document.querySelectorAll('.view').forEach(el=>el.classList.toggle('hidden',el.id!==name));document.querySelectorAll('nav button').forEach(el=>el.classList.toggle('selected',el.dataset.view===name));$('heading').textContent=({overview:'运行概览',setup:'首次配置与连接',workspaces:'授权工作区',providers:'MCP 插件与 Provider','component-management':'组件与 MCP 插件','skill-list':'Skill 列表',skills:'Skills 管理',development:'可选自开发',logs:'日志与诊断',about:'版本与维护'})[name];window.scrollTo(0,0);if(name==='component-management'){renderComponentManagement();}}
+function view(name){if(name==='providers'){name='component-management';currentComponentView='runtime';}document.querySelectorAll('.view').forEach(el=>el.classList.toggle('hidden',el.id!==name));document.querySelectorAll('nav button').forEach(el=>el.classList.toggle('selected',el.dataset.view===name));$('heading').textContent=({overview:'运行概览',setup:'首次配置与连接',workspaces:'授权工作区',providers:'MCP 插件与 Provider','component-management':'组件与 MCP 插件','skill-list':'Skill 列表',skills:'Skills 管理',logs:'日志与诊断',about:'版本与维护'})[name];window.scrollTo(0,0);if(name==='component-management'){renderComponentManagement();}}
 
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>view(b.dataset.view)));
 document.querySelectorAll('[data-link]').forEach(b=>b.addEventListener('click',()=>action(()=>invoke('official_link',{topic:b.dataset.link}))));
@@ -57,7 +57,7 @@ function initComponentManager() {
             },
             get currentView() { return currentComponentView; },
             set currentView(value) {
-                if (['runtime', 'repositories', 'marketplace', 'installed'].includes(value)) currentComponentView = value;
+                if (['runtime', 'repositories', 'marketplace'].includes(value)) currentComponentView = value;
             }
         };
 
@@ -82,7 +82,7 @@ function renderComponentManagement() {
     const runtimeSelected = currentComponentView === 'runtime';
     $('providers').classList.toggle('hidden', !runtimeSelected);
     content.classList.toggle('hidden', runtimeSelected);
-    for (const tab of ['runtime', 'repositories', 'marketplace', 'installed']) {
+    for (const tab of ['runtime', 'repositories', 'marketplace']) {
         const selected = currentComponentView === tab;
         $('view-' + tab).classList.toggle('selected', selected);
         $('view-' + tab).setAttribute('aria-pressed', String(selected));
@@ -103,118 +103,11 @@ function renderComponentManagement() {
         case 'marketplace':
             viewContent = componentManagerInstance.renderProviderMarketplace();
             break;
-        case 'installed':
-            viewContent = renderInstalledProviders();
-            break;
         default:
             viewContent = componentManagerInstance.renderProviderMarketplace();
     }
 
     content.appendChild(viewContent);
-}
-
-function renderInstalledProviders() {
-    const container = document.createElement('div');
-    container.className = 'installed-providers';
-
-    const header = document.createElement('div');
-    header.className = 'section-header';
-    header.innerHTML = '<h3>已安装的组件</h3><button class="btn-primary" id="refresh-installed-btn">刷新</button>';
-    container.appendChild(header);
-
-    const list = document.createElement('div');
-    list.className = 'provider-list';
-    list.id = 'installed-provider-list';
-    list.innerHTML = '<p class="empty-state">加载中...</p>';
-    container.appendChild(list);
-
-    // Load installed providers
-    (async () => {
-        try {
-            const result = await componentManagerInstance.loadInstalledProviders();
-            if ($('installed-provider-list') === list) updateInstalledProvidersList(result);
-        } catch (error) {
-            list.replaceChildren(); const failure=document.createElement('p'); failure.className='empty-state error'; failure.textContent='加载失败: '+friendlyError(error); list.append(failure);
-        }
-    })();
-
-    // Refresh button
-    header.querySelector('#refresh-installed-btn').addEventListener('click', () => {
-        action(async () => {
-            const result = await componentManagerInstance.loadInstalledProviders();
-            updateInstalledProvidersList(result);
-        });
-    });
-
-    return container;
-}
-
-function updateInstalledProvidersList(providers) {
-    const list = $('installed-provider-list');
-    if (!list) return;
-
-    list.innerHTML = '';
-
-    if (providers.length === 0) {
-        list.innerHTML = '<p class="empty-state">暂无已安装的组件</p>';
-        return;
-    }
-
-    providers.forEach(provider => {
-        const item = document.createElement('div');
-        item.className = 'provider-item installed';
-
-        item.innerHTML = `
-            <div class="provider-info">
-                <h4>${escapeHtml(provider.provider_id)}</h4>
-                <p>版本: ${escapeHtml(provider.version)}</p>
-                <p>安装时间: ${new Date(provider.installed_at).toLocaleString('zh-CN')}</p>
-                <span class="badge badge-${getStateClass(provider.state)}">${escapeHtml(provider.state)}</span>
-                ${provider.health_check_status ? `<span class="badge badge-secondary">${escapeHtml(provider.health_check_status)}</span>` : ''}
-            </div>
-            <div class="provider-actions">
-                <button class="btn-secondary btn-sm" data-action="health">健康检查</button>
-                <button class="btn-danger btn-sm" data-action="uninstall">卸载</button>
-            </div>
-        `;
-
-        // Health check button
-        const healthBtn = item.querySelector('[data-action="health"]');
-        healthBtn.addEventListener('click', async () => {
-            await componentManagerInstance.handleHealthCheck({ provider_id: provider.provider_id });
-        });
-
-        // Uninstall button
-        const uninstallBtn = item.querySelector('[data-action="uninstall"]');
-        uninstallBtn.addEventListener('click', async () => {
-            await componentManagerInstance.handleUninstallProvider({ provider_id: provider.provider_id });
-            const result = await componentManagerInstance.loadInstalledProviders();
-            updateInstalledProvidersList(result);
-        });
-
-        list.appendChild(item);
-    });
-}
-
-function getStateClass(state) {
-    const map = {
-        'installed': 'success',
-        'enabled': 'success',
-        'disabled': 'secondary',
-        'installing': 'info',
-        'upgrading': 'warning',
-        'uninstalling': 'warning',
-        'failed': 'danger',
-        'health_check_failed': 'danger'
-    };
-    return map[state] || 'secondary';
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // Component management view switchers
@@ -236,12 +129,6 @@ if ($('view-marketplace')) {
     };
 }
 
-if ($('view-installed')) {
-    $('view-installed').onclick = () => {
-        currentComponentView = 'installed';
-        renderComponentManagement();
-    };
-}
 
 // Initialize on load
 if (typeof ComponentManager !== 'undefined') {

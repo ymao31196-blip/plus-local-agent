@@ -116,8 +116,11 @@ class ProviderLifecycleManager:
     def _paths(self, provider_id, version):
         from provider.provider_repository import checked_identity
         checked_identity(provider_id, version)
-        return (self._inside(f'.provider_envs/{provider_id}/{version}'),
-                self._inside(f'repository-assets/{provider_id}/{version}'))
+        env = self._inside(f'.provider_envs/{provider_id}/{version}')
+        namespace = self._inside(f'repository-assets/{provider_id}/{version}')
+        if env.resolve() != env or namespace.resolve() != namespace:
+            raise ValueError('Version directories must not redirect to another installation')
+        return env, namespace
 
     def _load_states(self):
         if not self.state_file.exists():
@@ -159,7 +162,26 @@ class ProviderLifecycleManager:
         checked_identity(provider_id)
         return self._inside('provider_manifests/' + provider_id + '.json')
 
+    def _asset_directories(self, record):
+        _, namespace = self._paths(record.provider_id, record.version)
+        directories = {namespace}
+        for asset in self._asset_paths(record):
+            parent = asset.parent
+            while parent.is_relative_to(namespace):
+                directories.add(parent)
+                if parent == namespace: break
+                parent = parent.parent
+        for relative in record.metadata.get('created_directories', []):
+            directory = self._inside(relative)
+            if not directory.is_relative_to(namespace):
+                raise ValueError('Recorded directory escapes its version namespace')
+            directories.add(directory)
+        if any(directory.resolve() != directory for directory in directories):
+            raise ValueError('Recorded directory redirects to unrelated data')
+        return sorted(directories, key=lambda path: len(path.parts), reverse=True)
+
     def _verify_version_files(self, record):
+        self._asset_directories(record)
         env, _ = self._paths(record.provider_id, record.version)
         if Path(record.environment_path).resolve() != env.resolve() or record.metadata.get('layout') != 'versioned-v1':
             raise ValueError('Cannot determine installation ownership; existing files preserved')
@@ -215,11 +237,15 @@ class ProviderLifecycleManager:
         target_cwd = namespace if cwd == '.' else namespace / cwd
         args = runtime.get('args', [])
         if kind == 'isolated_python_stdio':
+            requested_python = package.spec.get('dependencies', {}).get('python_version', self.python_version)
+            if requested_python != self.python_version:
+                raise ValueError('Repository requires an unsupported Python version')
             runtime['python'] = env.relative_to(self.component_root).as_posix() + '/Scripts/python.exe'
             if len(args) >= 2 and args[0] == '-m' and re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_.]*', args[1]):
                 module = 'assets/providers/' + args[1].replace('.', '/') + '.py'
                 if module in package.assets:
                     target_cwd = namespace / 'providers'
+            runtime['args'] = ['-B', *args]
         elif kind == 'executable_stdio':
             command = runtime.get('command')
             if command in {'node', 'node.exe'} and self.resources:
@@ -318,8 +344,17 @@ class ProviderLifecycleManager:
                 self._inside(path.relative_to(self.component_root).as_posix())
                 atomic_write(path, data)
                 written.append(path)
-            cwd = self.component_root / manifest['runtime'].get('cwd', '.')
-            cwd.mkdir(parents=True, exist_ok=True)
+            if manifest['runtime']['kind'] != 'streamable_http':
+                cwd = self.component_root / manifest['runtime']['cwd']
+                if not cwd.resolve().is_relative_to(namespace):
+                    raise ValueError('Working directory escapes the version namespace')
+                record.metadata['created_directories'] = []
+                directory = cwd
+                while directory.is_relative_to(namespace):
+                    record.metadata['created_directories'].append(directory.relative_to(self.component_root).as_posix())
+                    if directory == namespace: break
+                    directory = directory.parent
+                cwd.mkdir(parents=True, exist_ok=True)
             for hook in self._hooks['post_install']:
                 hook(package, record)
             if old:
@@ -344,14 +379,8 @@ class ProviderLifecycleManager:
                 digest = paths[path]
                 if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest:
                     path.unlink()
-            for directory in sorted({path.parent for path in written}, key=lambda path: len(path.parts), reverse=True):
-                while directory.is_relative_to(namespace) and directory.exists():
-                    try: directory.rmdir()
-                    except OSError: break
-                    if directory == namespace: break
-                    directory = directory.parent
-            if namespace.exists():
-                try: namespace.rmdir()
+            for directory in self._asset_directories(record):
+                try: directory.rmdir()
                 except OSError: pass
             if env.exists():
                 self._remove_environment(env)
@@ -400,6 +429,12 @@ class ProviderLifecycleManager:
                 os.replace(staged, original)
             staging.rmdir()
             raise
+        # Only remove empty directories derived from registered asset paths.
+        # Unknown directories/files remain untouched; this also allows reinstall.
+        for version in self._owned_versions(record):
+            for directory in self._asset_directories(version):
+                try: directory.rmdir()
+                except OSError: pass
         # State commit makes the component unavailable. Cleanup owns only this
         # uniquely created transaction directory, never a prefix glob.
         try:

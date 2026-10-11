@@ -9,9 +9,10 @@ const assert = require('node:assert/strict');
 (async () => {
   const browser = await chromium.launch({channel:'msedge', headless:true});
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({viewport:{width:1040,height:780}});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('dialog', dialog => dialog.dismiss());
     await page.addInitScript(() => {
       window.managementCalls = [];
       window.__TAURI__ = {core:{invoke:async (method, request) => {
@@ -26,10 +27,22 @@ const assert = require('node:assert/strict');
             workspaces:{roots:{},config_sha256:'workspace-hash'}};
           case 'repository_list': return {repositories:[{name:'Test',url:'file:///test',enabled:true}]};
           case 'provider_installed_list': return {providers:[]};
-          case 'provider_discover': return {providers:[],total:0,installed_count:0};
+          case 'provider_discover': return {providers:[
+            {provider_id:'number',name:'Number Echo',description:'numeric input',category:'general',latest_version:'1.0.0',installed:false},
+            {provider_id:'other',name:'Other Echo',description:'document echo',category:'documents',latest_version:'1.0.0',installed:false},
+            {provider_id:'helper',name:'Documents Helper',description:'document utilities',category:'documents',latest_version:'1.0.0',installed:false}
+          ],total:3,installed_count:0};
           case 'provider_catalog': return {manifest_directory:'private/provider_manifests',
-            runtime_observed:false,providers:[]};
-          case 'installation_status': return {jobs:[],installed_receipts:[]};
+            runtime_observed:false,providers:window.repositoryRemoved?[]:[{provider_id:'installed-echo',
+              runtime_kind:'python',execution_files_present:true,requested_enabled:false,
+              repository_installation:{version:'1.0.0',state:'installed',repository_url:'file:///test'}}]};
+          case 'provider_health_check': return {status:'healthy',scope:'installation_integrity',checks:{manifest:true}};
+          case 'provider_uninstall_remote':
+            if(!args.confirmed)return {sha256:'reviewed-uninstall'};
+            if(args.expected_sha256!=='reviewed-uninstall')throw Error('Unreviewed uninstall');
+            window.repositoryRemoved=true;
+            return {started:true,job:'repository:installed-echo'};
+          case 'installation_status': return {jobs:window.repositoryRemoved?[{job:'repository:installed-echo',state:'completed'}]:[],installed_receipts:[]};
           case 'provider_action': return {status:'selection_saved'};
           case 'repository_add': throw 'Repository URL rejected';
           default: throw Error('Unexpected RPC: '+command);
@@ -45,6 +58,14 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('#heading').textContent(),'组件与 MCP 插件');
     assert.ok(await page.locator('#providers').isVisible());
     assert.equal(await page.locator('#view-runtime').getAttribute('aria-pressed'),'true');
+    assert.match(await page.locator('#provider-list').textContent(),/仓库安装 · 1.0.0/);
+    assert.ok(await page.getByRole('button',{name:'启用并连接',exact:true}).isVisible());
+    await page.getByRole('button',{name:'检查安装完整性',exact:true}).click();
+    await page.waitForFunction(() => !document.querySelector('#refresh').disabled);
+    assert.ok(await page.evaluate(() => window.managementCalls.some(c=>c.command==='provider_health_check')));
+    await page.getByRole('button',{name:'卸载仓库组件',exact:true}).click();
+    await page.waitForFunction(() => !document.querySelector('#refresh').disabled && !document.querySelector('#provider-list').textContent.includes('installed-echo'));
+    assert.ok(await page.evaluate(() => window.managementCalls.some(c=>c.command==='provider_uninstall_remote'&&c.args.confirmed&&c.args.expected_sha256==='reviewed-uninstall')));
     await page.locator('#manifest-content').fill('preserved manifest draft');
     await page.evaluate(() => {window.originalManifestInput=document.querySelector('#manifest-content');});
     await page.locator('#view-repositories').click();
@@ -52,8 +73,18 @@ const assert = require('node:assert/strict');
     await page.locator('[data-action="browse"]').click();
     await page.waitForFunction(() => document.querySelector('#view-marketplace').getAttribute('aria-pressed')==='true');
     assert.ok(await page.locator('#provider-search').isVisible());
-    await page.locator('#view-installed').click();
-    await page.waitForFunction(() => document.querySelector('#installed-provider-list').textContent.includes('暂无已安装'));
+    assert.ok((await page.locator('#provider-search').boundingBox()).width>=200,'Search input must remain usable beside category filter');
+    await page.locator('#provider-search').fill('Echo');
+    await page.locator('#category-filter').selectOption('documents');
+    assert.equal(await page.locator('#marketplace-content .provider-card').count(),1);
+    assert.match(await page.locator('#marketplace-content').textContent(),/Other Echo/);
+    await page.locator('#provider-search').fill('Helper');
+    assert.equal(await page.locator('#category-filter').inputValue(),'documents');
+    assert.equal(await page.locator('#marketplace-content .provider-card').count(),1);
+    assert.match(await page.locator('#marketplace-content').textContent(),/Documents Helper/);
+
+    assert.equal(await page.locator('#view-installed').count(),0);
+    assert.equal(await page.locator('nav [data-view="development"]').count(),0);
     await page.locator('#view-runtime').click();
     await page.waitForFunction(() => !document.querySelector('#refresh').disabled);
     assert.equal(await page.locator('#manifest-content').inputValue(),'preserved manifest draft');
@@ -71,6 +102,6 @@ const assert = require('node:assert/strict');
     });
     assert.equal(message,'Failed to add repository: Repository URL rejected');
     assert.deepEqual(errors,[]);
-    console.log('PASS: unified navigation; four tabs; repository browse; preserved draft/DOM; original rescan RPC; legacy routing; string errors');
+    console.log('PASS: unified navigation; three tabs; repository browse; preserved draft/DOM; original rescan RPC; legacy routing; string errors; usable search width and combined filters');
   } finally {await browser.close();}
 })().catch(error => {console.error(error);process.exitCode=1;});

@@ -33,6 +33,14 @@ def versioned(package, version):
     return replace(package,version=version,spec=spec,metadata_bytes=metadata,checksums=checksums)
 
 
+def with_manifest(package, manifest):
+    raw=json.dumps(manifest,indent=2,sort_keys=True).encode()
+    return replace(package,manifest=manifest,
+        metadata_bytes={**package.metadata_bytes,'manifest.json':raw},
+        checksums={**package.checksums,'files':{**package.checksums['files'],
+            'manifest.json':'sha256:'+hashlib.sha256(raw).hexdigest()}})
+
+
 def fake_dependencies(lifecycle, monkeypatch):
     def install(package, env):
         (env/'Scripts').mkdir(parents=True)
@@ -126,6 +134,54 @@ def test_upgrade_retains_ownership_and_uninstall_removes_all_owned_versions(proj
     assert not Path(previous.environment_path).exists()
     assert not Path(upgraded.environment_path).exists()
     assert lifecycle.list_installed_providers()==[]
+    assert not lifecycle._paths(package.provider_id, package.version)[1].exists()
+    assert not lifecycle._paths(package.provider_id, upgraded.version)[1].exists()
+    reinstalled=lifecycle.install_provider(package,REPOSITORY.as_uri())
+    lifecycle._verify_record(reinstalled)
+
+
+def test_redirected_version_directory_is_rejected_and_foreign_files_preserved(project,package,monkeypatch):
+    import os
+    import subprocess
+    lifecycle=project._lifecycle_manager
+    _,namespace=lifecycle._paths(package.provider_id, package.version)
+    namespace.parent.mkdir(parents=True)
+    foreign=project.root/'foreign-data'
+    foreign.mkdir();marker=foreign/'user-notes.txt';marker.write_text('preserve')
+    if os.name=='nt':
+        result=subprocess.run(['cmd.exe','/c','mklink','/J',str(namespace),str(foreign)],capture_output=True)
+        assert result.returncode==0,result.stderr
+    else:
+        namespace.symlink_to(foreign,target_is_directory=True)
+    monkeypatch.setattr(lifecycle,'_install_dependencies',lambda *args:pytest.fail('No dependency execution is allowed'))
+    with pytest.raises(ValueError,match='redirect'):
+        lifecycle.install_provider(package,REPOSITORY.as_uri())
+    assert marker.read_text()=='preserve'
+
+
+def test_distinct_empty_working_directory_is_removed_for_reinstall(project,package,monkeypatch):
+    lifecycle=project._lifecycle_manager
+    fake_dependencies(lifecycle,monkeypatch)
+    manifest={**package.manifest,'runtime':{**package.manifest['runtime'],
+        'args':['-c','pass'],'cwd':'runtime/empty'}}
+    package=with_manifest(package,manifest)
+    first=lifecycle.install_provider(package,REPOSITORY.as_uri())
+    assert first.metadata['created_directories']
+    lifecycle.uninstall_provider(package.provider_id)
+    lifecycle.install_provider(package,REPOSITORY.as_uri())
+
+
+def test_failed_install_removes_its_empty_working_directory(project,package,monkeypatch):
+    lifecycle=project._lifecycle_manager
+    fake_dependencies(lifecycle,monkeypatch)
+    package=with_manifest(package,{**package.manifest,'runtime':{**package.manifest['runtime'],
+        'args':['-c','pass'],'cwd':'runtime/empty'}})
+    def fail(*args): raise RuntimeError('post-install failure')
+    lifecycle.register_hook('post_install',fail)
+    with pytest.raises(RuntimeError,match='post-install'):
+        lifecycle.install_provider(package,REPOSITORY.as_uri())
+    env,namespace=lifecycle._paths(package.provider_id,package.version)
+    assert not env.exists() and not namespace.exists()
 
 
 def test_confirmed_manager_spawns_fixed_worker_without_sync_install(tmp_path,monkeypatch):
@@ -143,3 +199,21 @@ def test_confirmed_manager_spawns_fixed_worker_without_sync_install(tmp_path,mon
     assert result['started'] and result['job']=='installer:repository-test-echo-provider'
     assert len(calls)==1 and 'repository_job' in calls[0][1]
     assert calls[0][1][-1]==preview['sha256']
+
+
+def test_catalog_includes_repository_version_and_missing_manifest(tmp_path, package, monkeypatch):
+    manager = Manager(tmp_path/'data', tmp_path/'resources')
+    lifecycle = manager.components._lifecycle_manager
+    fake_dependencies(lifecycle, monkeypatch)
+    lifecycle.install_provider(package, REPOSITORY.as_uri())
+    row = next(row for row in manager.dispatch('provider_catalog', {})['providers']
+               if row['provider_id'] == package.provider_id)
+    assert row['repository_installation']['version'] == package.version
+    assert row['installation_recorded'] is True
+    assert row['repository_installation']['repository_url'] == REPOSITORY.as_uri()
+    (manager.components.manifest_dir/f'{package.provider_id}.json').unlink()
+    missing = next(row for row in manager.dispatch('provider_catalog', {})['providers']
+                   if row['provider_id'] == package.provider_id)
+    assert missing['manifest_missing'] is True
+    assert missing['execution_files_present'] is False
+    assert missing['repository_installation']['version'] == package.version

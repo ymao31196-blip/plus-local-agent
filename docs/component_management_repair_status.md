@@ -1,41 +1,31 @@
 # 组件管理修复进度
 
-2026-10-11。此记录描述当前源码；没有把源码测试等同于安装包验收。
+2026-10-11。当前候选 RC.11；源码、打包与实际安装证据分开记录。
 
-## 合并入口
+## 当前改动
 
-已移除单独的「MCP 插件与 Provider」导航，统一为「组件与 MCP 插件」。四个标签为运行管理、仓库管理、浏览组件和已安装组件。原有运行管理表单保持同一 DOM，切换标签保留清单草稿和事件处理器。原 `view('providers')` 路由转到统一页面的运行管理标签，Skill 安装引导继续可用。
+- 统一入口「组件与 MCP 插件」现在只有三个页签：本机组件、仓库管理、浏览组件。仓库组件版本、完整性检查和卸载与原有启停、热插拔、清单编辑、完整工具参数同卡展示。保留原表单 DOM 与草稿。缺失清单的安装记录仍可查看和处理。
+- 按用户要求删除可选自开发 UI、三个管理 RPC、源码准备模块和发行包源码快照。既有工作区授权与源码目录不做自动迁移或删除。
+- 常用组件包改为六项，不包含 DOCX。单独 DOCX 安装和既有文件保留。
+- 修复卸载后空资产目录和 Python 字节码缓存阻碍重新安装的问题；仅移除明确拥有的空目录，Python 使用 -B，不删除用户新增文件。增加目录重定向检查。
+- 修复市场搜索框过窄和分类/文字筛选相互覆盖；HTTPS 资产路径正确编码；列表加载错误不再显示为空列表。
 
-从仓库点击 Browse 现在会真正切换到浏览组件标签。已安装列表加载不再因外层操作锁而被跳过。定时安装状态刷新仅在运行管理实际可见时进行。
+## 当前验证
 
-已执行：
+- PASS：仓库路径、摘要、所有权、回滚、目录重定向、空目录清理和合并目录信息 18 项。
+- PASS：实际 Edge DOM 验证三页签、合并完整性检查及 SHA 绑定卸载、草稿/DOM 保留、仓库浏览联动、搜索宽度及组合筛选。管理 RPC 为模拟，不能代替真实安装验收。
+- PASS：现有组件界面 smoke 回归；常用包、桌面管理、用户组件、版本一致性等选定回归 50 项（与上述仓库项重叠）。
+- PASS：源码真实 Python 仓库安装、Broker 调用、升级、停用、卸载，再次安装/启用/调用/卸载，共 7 项；证据 C:\Users\26286\AppData\Local\Temp\pla-repository-e2e-77mytdg0\repository-evidence.json。
+- RC.11 全量回归与新构建仍待本轮完成。用户负责重装，不自动安装新候选。
 
-- PASS：`node desktop/verification/component-navigation.cjs`。使用实际 Edge 浏览器 DOM 和模拟管理 RPC，检查统一入口、四个标签、仓库浏览联动、草稿及 DOM 保留、原重扫 RPC、兼容路由和字符串错误提示。
-- PASS：`node desktop/verification/components-ux-smoke.cjs`。现有组件控制界面回归。
-- PASS：app.js、components.js 和 native-ui.cjs 的 Node 语法检查。
+## RC.10 历史安装证据
 
-安装版导航验收脚本已更新到统一入口；新版二进制尚未构建和验证。这些测试不证明实际 MCP 连接或仓库组件安装成功。
+RC.10 源码全量 929 PASS，无警告；构建来源 3668134d8cac4fe3c7f222875300267f78d2b876，干净工作树。安装包 SHA-256 bf0e6c865a2f1c47798cfb06781b74568dc609fb9ea72f4daab6bf62191c42b4。
 
-## 安装链路修复与实际验证
+已实际升级 D:\PLA Desktop；桌面配置、Provider 偏好、加密凭据及工作区配置四文件摘要均保留，安装后二进制与构建一致。已安装原生 UI 验证 13/13；冻结 Python 与 Node 仓库真实 MCP 安装/调用/升级/卸载通过。Computer Use 实测正式应用添加仓库成功并显示 Test Echo Provider，原 undefined 错误不再出现。
 
-已补充固定 `repository_job` 子进程角色，复用组件安装全局锁。预览保存完整包字节和原安装状态，SHA-256 绑定安装、升级及卸载确认；确认后执行已审阅快照。新组件按 ID 和版本隔离，升级保留旧版本的所有权记录，卸载仅处理已登记文件，失败可回滚。运行中的插件必须先停用。
+上述 RC.10 证据不自动算作 RC.11 验收。当前正式应用尚无本轮改动；用户重装后生效。
 
-真实测试发现并修正了 uv 参数错误、测试 manifest 的非法 version 字段、测试组件 SDK 接口版本不匹配，以及 stdio 默认 keep_alive 导致停用后解释器仍被占用的问题。测试组件使用精确锁定的 mcp==2.2.0 和该版本的 MCPServer API。
+## 发行边界
 
-已执行：
-
-- PASS：14 项仓库任务和路径/摘要/所有权/异常回滚回归。
-- PASS：桌面相关选定回归共 46 项；MCP 客户端、Provider 热插拔、外部运行和仓库任务选定回归共 53 项。两组有重叠，不能相加作为独立用例总数。
-- PASS：实际全新 Temp 目录中，源代码 Manager → 固定子进程 → 验证 uv → 私有 Python → 仓库组件安装；确认请求约 0.1 秒返回任务。
-- PASS：真实 stdio MCP 发现两个 echo 工具并调用；Runtime 热启用、Broker echo 调用、停用、升级到 1.0.1、重连与再次调用。
-- PASS：拒绝卸载仍启用的插件；停用后卸载两份已登记版本；Runtime PID 保持不变；实际检查安装环境和事务清理目录均无残留。
-
-实际证据：`C:\Users\26286\AppData\Local\Temp\pla-repository-e2e-yrbcbqm3\repository-evidence.json`。复现脚本为 `desktop/verification/repository_install.py`。证据限定为本地真实 MCP，不包含 Tunnel、ChatGPT 或新安装包验收。
-
-## 仍在进行
-
-Node 仓库组件已实际验证：私有 npm 安装 is-number@7.0.0，使用安装包的 Node、独立模块加载器和实际 Runtime Broker 调用；停用和卸载成功，私有依赖及事务目录无残留。证据为 C:\Users\26286\AppData\Local\Temp\pla-node-repository-e2e-c7i19yl8\node-repository-evidence.json。
-
-首轮全量源码回归为 928 PASS、1 FAIL；失败为源码布局清单未登记新 provider 模块，已修正。原移交用例返回 False 仍被 pytest 算通过的问题已修正；RPC 测试现在调用实际 Manager。修正后相关 46 项通过。RC.10 全量源码回归已通过：929 PASS，无警告，用时 144.36 秒；日志为 .desktop-build/rc10-source-tests.log。
-
-版本已统一更新为 1.0.0-rc.10，协议和用户指南已更新。仍需重新构建和安装验收。现有运行应用不会因修改源码而自动更新。
+未验证新候选的 Tunnel/ChatGPT 链路、干净 Windows 10/11 和 OS 重启；未签名，自动更新关闭，未公开推送或发布。组件依赖隔离并非 OS 沙箱，完整性检查并非真实 MCP 连接证明。

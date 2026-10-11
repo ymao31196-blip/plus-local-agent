@@ -90,7 +90,7 @@ def main():
         check("actual_custom_mcp_tool_invoked", tool.get("proof") == "RC7_CHATGPT_INSTALL_OK", tool)
         invoke("runtime.provider_disable", {"provider_id": "chatgpt-rc7"}, confirm=True)
         check("main_runtime_unchanged", manager.children["runtime"].pid == runtime_pid, runtime_pid)
-        check("no_pla_source_development_permission", manager.dispatch("development_status", {})["enabled"] is False, True)
+        check("no_pla_source_development_permission", "pla-development" not in manager.dispatch("status", {})["workspaces"]["roots"], True)
         report["status"] = "PASS"
     except Exception as exc:
         report["status"] = "FAIL"

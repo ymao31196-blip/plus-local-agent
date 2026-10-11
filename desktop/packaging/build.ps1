@@ -143,8 +143,11 @@ try {
     $policyAssets = Join-Path $resources "provider-assets\policy\host"
     New-Item -ItemType Directory -Force -Path $policyAssets | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "src\host\workspace_manager.py"),(Join-Path $projectRoot "src\host\__init__.py") -Destination $policyAssets -Force
-    & $packPython (Join-Path $PSScriptRoot "source_snapshot.py") --output (Join-Path $resources "developer-source.zip")
-    Assert-Exit "Public self-development source snapshot"
+    # Remove the obsolete generated snapshot from previous local builds.
+    $obsoleteSourceSnapshot = Join-Path $resources "developer-source.zip"
+    if (Test-Path -LiteralPath $obsoleteSourceSnapshot) {
+        Remove-Item -LiteralPath $obsoleteSourceSnapshot -Force
+    }
     & $packPython (Join-Path $PSScriptRoot "licenses.py") --output (Join-Path $resources "licenses")
     Assert-Exit "License inventory"
     Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/v22.16.0/LICENSE" -OutFile (Join-Path $resources "licenses\NODE-LICENSE.txt")

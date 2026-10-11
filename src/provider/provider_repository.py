@@ -263,7 +263,7 @@ class RepositoryClient:
             return file_path.read_bytes()
 
         elif self.repo_type == 'http':
-            url = f"{self.repository_url}/{path.lstrip('/')}"
+            url = f"{self.repository_url}/{urllib.parse.quote(path, safe='/')}"
             with urllib.request.urlopen(url, timeout=remaining) as response:
                 if not response.geturl().startswith('https://'):
                     raise ValueError('Repository redirects must retain HTTPS')

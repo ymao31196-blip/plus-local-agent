@@ -17,11 +17,12 @@ def _resources(tmp_path):
     return root
 
 
-def test_starter_bundle_is_exactly_seven_bundled_specs_no_activation(tmp_path):
+def test_starter_bundle_is_exactly_six_bundled_specs_no_activation(tmp_path):
     m = Manager(tmp_path / "private", _resources(tmp_path))
     preview = m.dispatch("provider_bundle", {"confirmed": False, "expected_sha256": None})
     assert tuple(preview["providers"]) == CORE_BUNDLE_IDS
-    assert len(preview["plans"]) == 7
+    assert "docx" not in preview["providers"]
+    assert len(preview["plans"]) == 6
     assert all(plan["source"] == "bundled" and not plan["activates_provider"] for plan in preview["plans"])
     assert preview["activated"] is False
     assert preview["started"] is False

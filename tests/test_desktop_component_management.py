@@ -38,22 +38,11 @@ def test_skill_permissions_never_exceed_independent_workspace_grants(tmp_path):
     assert manager.config.workspace_path.exists()
 
 
-def test_development_default_off_enable_revoke_preserves_source_and_other_roots(tmp_path):
+def test_removed_development_commands_rejected(tmp_path):
     manager = Manager(tmp_path / 'data', tmp_path / 'resources')
-    source = tmp_path / 'source'
-    for name in ('src/server.py', 'desktop/packaging/build.ps1', 'desktop/src-tauri/tauri.conf.json'):
-        path = source / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('source sentinel')
-    before = manager.dispatch('development_status', {})
-    assert not before['enabled'] and before['installed_resources_read_only']
-    result = manager.dispatch('development_configure', {'enabled': True, 'path': str(source), 'confirmed': True, 'expected_sha256': before['config_sha256']})
-    assert manager.dispatch('development_status', {})['enabled']
-    with pytest.raises(ValueError):
-        manager.dispatch('development_configure', {'enabled': False, 'path': '', 'confirmed': True, 'expected_sha256': before['config_sha256']})
-    manager.dispatch('development_configure', {'enabled': False, 'path': '', 'confirmed': True, 'expected_sha256': result['config_sha256']})
-    assert not manager.dispatch('development_status', {})['enabled']
-    assert (source / 'src/server.py').read_text() == 'source sentinel'
+    for command in ('development_status', 'development_prepare', 'development_configure'):
+        with pytest.raises(ValueError):
+            manager.dispatch(command, {})
 
 
 def test_real_mcp_plugin_import_enable_reload_disable_without_runtime_restart(tmp_path):

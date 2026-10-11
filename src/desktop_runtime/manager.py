@@ -320,7 +320,13 @@ class Manager:
                 actual = {row['provider_id']: row for row in result['data']['providers']}
                 catalog['providers'] = [{**row, **actual.get(row['provider_id'], {})} for row in catalog['providers']]
                 catalog['runtime_observed'] = True
+            repository_installs = {row['provider_id']: row for row in self.components.list_installed_providers()['providers']}
+            known = {row['provider_id'] for row in catalog['providers']}
+            for provider_id in sorted(repository_installs.keys() - known):
+                catalog['providers'].append({'provider_id': provider_id, 'runtime_kind': 'missing_manifest',
+                    'manifest_missing': True, 'requested_enabled': False, 'python_exists': False})
             for row in catalog['providers']:
+                row['repository_installation'] = repository_installs.get(row['provider_id'])
                 if row['provider_id'] == 'browser':
                     row['requested_enabled'] = self.config.value['browser_enabled']
                 provider_id = row['provider_id']
@@ -333,7 +339,7 @@ class Manager:
                 cwd = row.get('cwd')
                 row['directory_exists'] = not cwd or Path(cwd).is_dir()
                 receipt = self.components.root / 'receipts' / f'{provider_id}.json'
-                row['installation_recorded'] = receipt.is_file()
+                row['installation_recorded'] = receipt.is_file() or row['repository_installation'] is not None
                 row['execution_files_present'] = (
                     row.get('python_exists') is not False
                     and row.get('command_exists') is not False
@@ -528,23 +534,6 @@ class Manager:
                 atomic_write(path, json.dumps({'local_roots': sorted(set(read)), 'writable_roots': sorted(set(write))}).encode())
             value = json.loads(path.read_text()) if path.exists() else {'local_roots': [], 'writable_roots': []}
             return {**value, 'available_roots': roots}
-        if command == 'development_status':
-            if args:
-                raise ValueError('Development status takes no arguments')
-            registry = workspace_registry_status(self.config.workspace_path, self.resources)
-            root = registry['roots'].get('pla-development')
-            import shutil
-            return {'enabled': bool(root and all(root.get(field) is True for field in ('read', 'write', 'execute'))),
-                    'root_name': 'pla-development', 'root': root, 'config_sha256': registry['config_sha256'],
-                    'installed_resources_read_only': True,
-                    'system_build_prerequisites': {name: bool(shutil.which(name)) for name in ('git.exe', 'cargo.exe', 'rustc.exe', 'npm.cmd')},
-                    'source_snapshot_available': (self.resources / 'developer-source.zip').is_file(),
-                    'candidate_switch': 'explicit_local_installer_after_review'}
-        if command == 'development_prepare':
-            from desktop_runtime.development import prepare_source
-            if set(args) != {'path', 'confirmed', 'expected_sha256'}:
-                raise ValueError('Expected source preparation preview and confirmation')
-            return prepare_source(self.config.root, self.resources, **args)
         # Component repository management
         if command == 'repository_list':
             if args:
@@ -616,25 +605,6 @@ class Manager:
                 raise ValueError('Installed provider list takes no arguments')
             return self.components.list_installed_providers()
 
-        if command == 'development_configure':
-            if set(args) != {'enabled', 'path', 'confirmed', 'expected_sha256'} or type(args['enabled']) is not bool or args['confirmed'] is not True:
-                raise ValueError('Review the development workspace grant before saving')
-            if self._alive('runtime'):
-                raise ValueError('Stop Runtime before changing workspace permissions')
-            if args['enabled']:
-                raw = args['path']
-                if not isinstance(raw, str) or not Path(raw).is_absolute() or raw.startswith(('\\\\', '//')):
-                    raise ValueError('Select an absolute local PLA source directory')
-                path = Path(raw).resolve()
-                if not all((path / name).is_file() for name in ('src/server.py', 'desktop/packaging/build.ps1', 'desktop/src-tauri/tauri.conf.json')):
-                    raise ValueError('Select a complete PLA source workspace')
-                if path == self.config.root or path in self.config.root.parents or self.config.root in path.parents:
-                    raise ValueError('Development workspace must not overlap private application data')
-                return workspace_registry_upsert(self.config.workspace_path, self.resources,
-                    name='pla-development', path=str(path), read=True, write=True, execute=True,
-                    expected_sha256=args['expected_sha256'])
-            return workspace_registry_remove(self.config.workspace_path, self.resources,
-                name='pla-development', expected_sha256=args['expected_sha256'])
         if command == "detect_legacy":
             if set(args) != {"path"} or not isinstance(args["path"], str):
                 raise ValueError("Provide the existing installation directory")

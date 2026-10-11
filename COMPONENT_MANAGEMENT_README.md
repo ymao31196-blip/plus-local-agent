@@ -1,6 +1,6 @@
 # PLA 组件与 MCP 插件
 
-统一管理仓库、组件市场、已安装组件和 MCP 运行状态。安装、升级、卸载使用已审阅完整包的 SHA-256 摘要和受控后台任务；安装不自动启用插件。
+统一管理仓库、组件市场和本机组件；安装信息与 MCP 运行状态在同一卡片中展示。安装、升级、卸载使用已审阅完整包的 SHA-256 摘要和受控后台任务；安装不自动启用插件。
 
 - [使用指南](docs/component_management_quickstart.md)
 - [仓库协议与当前支持范围](docs/provider_repository_protocol.md)

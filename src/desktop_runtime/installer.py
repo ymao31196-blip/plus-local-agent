@@ -211,7 +211,7 @@ class ComponentInstaller:
 
 
 CORE_BUNDLE_IDS = (
-    'computer', 'docx', 'markitdown', 'office-enhancement',
+    'computer', 'markitdown', 'office-enhancement',
     'pdf', 'software-migration', 'windows-management',
 )
 

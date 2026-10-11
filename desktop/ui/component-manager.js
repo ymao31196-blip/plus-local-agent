@@ -23,8 +23,7 @@ class ComponentManager {
             return this.repositories;
         } catch (error) {
             console.error('Failed to load repositories:', error);
-            this.repositories = [];
-            return [];
+            throw error;
         }
     }
 
@@ -60,7 +59,7 @@ class ComponentManager {
             return result;
         } catch (error) {
             console.error('Failed to discover providers:', error);
-            return { providers: [], total: 0, installed_count: 0 };
+            throw error;
         }
     }
 
@@ -189,8 +188,7 @@ class ComponentManager {
             return this.installedProviders;
         } catch (error) {
             console.error('Failed to load installed providers:', error);
-            this.installedProviders = [];
-            return [];
+            throw error;
         }
     }
 
@@ -322,11 +320,11 @@ class ComponentManager {
         });
 
         header.querySelector('#provider-search').addEventListener('input', (e) => {
-            this.filterProviders(e.target.value, '');
+            this.filterProviders(e.target.value, header.querySelector('#category-filter').value);
         });
 
         header.querySelector('#category-filter').addEventListener('change', (e) => {
-            this.filterProviders('', e.target.value);
+            this.filterProviders(header.querySelector('#provider-search').value, e.target.value);
         });
 
         return container;
@@ -481,7 +479,8 @@ class ComponentManager {
 
             const result = await this.checkHealth(provider.provider_id);
 
-            let message = `${provider.name} health: ${result.status}\n`;
+            let message = `${provider.name || provider.provider_id} health: ${result.status}\n`;
+            if (result.scope === 'installation_integrity') message += '仅核对安装文件；实际 MCP 连接状态请查看本机组件。\n';
             if (result.checks) {
                 message += '\nChecks:\n';
                 for (const [check, passed] of Object.entries(result.checks)) {
@@ -670,6 +669,7 @@ class ComponentManager {
             await this.discoverProviders(url);
             this.app.currentView = 'marketplace';
             this.app.renderCurrentView();
+            this.app.showNotification(`已发现 ${this.availableProviders.length} 个组件`, 'success');
         } catch (error) {
             this.app.showNotification(`Failed to browse repository: ${componentErrorMessage(error)}`, 'error');
         }

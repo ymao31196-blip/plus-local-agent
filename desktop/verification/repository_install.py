@@ -112,6 +112,20 @@ def main():
         assert not list((manager.components.root/'.repository-trash').glob('*')), 'Owned environment cleanup left files behind'
         assert manager.children['runtime'].pid==runtime_pid
         evidence['tests'].append({'name':'enabled uninstall refused / disable / uninstall both owned versions / Runtime unchanged','status':'PASS'})
+        assert not(manager.components.root/'repository-assets/test-echo-provider/1.0.0').exists()
+        assert not(manager.components.root/'repository-assets/test-echo-provider/1.0.1').exists()
+        again={'provider_id':'test-echo-provider','repository_url':repository.as_uri(),
+               'version':'1.0.0','confirmed':False,'expected_sha256':None}
+        preview=manager.dispatch('provider_install_remote',again)
+        wait(manager.dispatch('provider_install_remote',{**again,'confirmed':True,'expected_sha256':preview['sha256']}))
+        manager.dispatch('provider_action',{'action':'enable','provider_id':'test-echo-provider','confirmed':True})
+        outcome=manager._invoke_management_capability('test-echo-provider.echo_message',{'message':'Hello after reinstall'},confirmed=True)
+        assert 'Hello after reinstall' in json.dumps(outcome),outcome
+        manager.dispatch('provider_action',{'action':'disable','provider_id':'test-echo-provider','confirmed':True})
+        preview=manager.dispatch('provider_uninstall_remote',uninstall)
+        wait(manager.dispatch('provider_uninstall_remote',{**uninstall,'confirmed':True,'expected_sha256':preview['sha256']}))
+        assert not(manager.components.root/'repository-assets/test-echo-provider/1.0.0').exists()
+        evidence['tests'].append({'name':'uninstall/reinstall/reconnect/tool call/uninstall repeat','status':'PASS'})
         evidence['status']='PASS'
     except BaseException as error:
         evidence['status']='FAIL';evidence['error']=str(error)

@@ -4,11 +4,10 @@ const node = (tag,text,className) => {const el=document.createElement(tag);if(te
 const button = (text,fn) => {const el=node('button',text);el.onclick=()=>action(fn);return el;};
 const output = (id,value) => {$(id).textContent=typeof value==='string'?value:JSON.stringify(value,null,2);};
 const unwrap = value => value?.data ?? value;
-let providerCatalog, importPreview, installPreview, skillDescriptors=[], skillInputs=[], lastSkillResult, developmentSnapshot;
+let providerCatalog, importPreview, installPreview, skillDescriptors=[], skillInputs=[], lastSkillResult;
 let watchedInstallJob=null;
 let customPackagePreview=null;
 let starterBundlePreview=null;
-let developmentSourcePreview;
 let providerEditVersion, providerEditPreview;
 let skillInventory=[], skillInventorySources=[];
 const skillLabels={manage:'添加、编辑或移除来源',sources:'来源与缓存状态',sync:'同步来源',find:'搜索并加载 Skill',load:'阅读完整 Skill',resource:'阅读附属资源',validate:'验证 Skill',prepare:'准备创作草稿','apply-local':'应用已审阅草稿',states:'单个 Skill 启用状态',toggle:'启用或停用 Skill','plan-change':'预览改名或删除','apply-change':'应用改名或删除','publish-plan':'规划 GitHub 发布','restore-local':'恢复已归档 Skill','publication-prepare':'预览向 Git 仓库转移','publication-apply':'应用已审阅转移'};
@@ -43,6 +42,9 @@ async function loadProviders(){
     );
     header.append(node('h2',row.provider_id),statuses);
     card.append(header);
+    const repository = row.repository_installation;
+    if(repository)card.append(node('p',`仓库安装 · ${repository.version} · ${repository.state} · ${repository.repository_url}`));
+    if(row.manifest_missing)card.append(node('p','安装记录仍在，组件清单已缺失；请检查安装完整性后处理。','error-text'));
     if(disabled&&installedFiles)card.append(node('p','Provider已停用；历史工具发现记录不代表当前可调用。请点击「启用并连接」，无需重新安装依赖。'));
     else if(failed)card.append(node('p',`MCP启动失败：${lifecycle?.error_message||'连接未建立'}。可尝试重连；持续失败请停用后修复依赖。`,'error-text'));
     else if(!installedFiles)card.append(node('p',row.provider_id==='skill-library'?'尚未安装Skill Library，请选择自己的源码或wheel。':row.directory_exists===false?'MCP源码目录缺失，需要安装依赖。':'缺少运行文件，需要先安装或检查系统前提。','error-text'));
@@ -53,6 +55,15 @@ async function loadProviders(){
     if(!row.install_supported && !installedFiles)advanced.append(node('p','此清单暂无受控安装规格。可在下方接入自选MCP依赖，或检查外部软件前提。','error-text'));
     if(lifecycle?.error_message)advanced.append(node('p',lifecycle.error_message,'error-text'));
     const quick=node('div',undefined,'actions provider-quick');
+    if(repository){
+      quick.append(button('检查安装完整性',async()=>{
+        await window.componentManager.handleHealthCheck({provider_id:row.provider_id,name:row.provider_id});
+      }));
+      quick.append(button('卸载仓库组件',async()=>{
+        const result=await window.componentManager.uninstallProvider(row.provider_id);
+        if(result){await loadProviders();notice(`${row.provider_id}已卸载；未登记文件按原规则保留。`);}
+      }));
+    }
     if(!installedFiles && row.install_supported)quick.append(button(row.provider_id==='skill-library'?'安装Skill Library':'安装 / 修复组件',async()=>{
       $('install-provider').value=row.provider_id;
       if(row.provider_id!=='skill-library')$('skill-package').value='';
@@ -367,9 +378,4 @@ function selectSkillOperation(operation,prefill){$('skill-group').value=Object.k
 async function loadSkillPermissions(){const result=await rpc('skill_permissions');const list=$('skill-roots');list.replaceChildren();for(const [name,root] of Object.entries(result.available_roots)){const row=node('div',undefined,'permission-row');row.append(node('strong',name),node('p',root.path));for(const [mode,caption,allowed,selected] of [['read','允许 Skill 读取',root.read,result.local_roots],['write','允许创作与改名、删除、恢复',root.write,result.writable_roots]]){const label=node('label',caption);const check=node('input');check.type='checkbox';check.dataset.root=name;check.dataset.permission=mode;check.checked=selected.includes(name);check.disabled=!allowed;label.prepend(check);row.append(label);}list.append(row);}}
 $('save-skill-permissions').onclick=()=>action(async()=>{const selected=mode=>[...$('skill-roots').querySelectorAll(`input[data-permission="${mode}"]:checked`)].map(item=>item.dataset.root);const args={local_roots:selected('read'),writable_roots:selected('write'),confirmed:true};if(!window.confirm(`保存 Skill 专用读写授权？\n读取：${args.local_roots.join(', ')||'无'}\n写入：${args.writable_roots.join(', ')||'无'}`))return;await rpc('skill_permissions',args);await loadSkillPermissions();notice('Skill 授权已保存，请重新启用该组件以加载。');});
 $('reload-skills').onclick=()=>action(loadSkills);$('skill-group').onchange=populateSkillActions;$('skill-operation').onchange=()=>renderSkillForm();$('execute-skill').onclick=()=>action(executeSkill);
-async function loadDevelopment(){developmentSnapshot=await rpc('development_status');$('development-state').textContent=developmentSnapshot.enabled?'已开启：ChatGPT 可在以下源码 root 自开发':'已关闭（默认）';$('development-path').value=developmentSnapshot.root?.path||'';output('development-details',developmentSnapshot);}
-async function setDevelopment(enabled){if(!enabled&&!developmentSnapshot?.root){notice('自开发已关闭，当前没有专用 root 授权。');return;}if(!window.confirm(enabled?'开启自开发？将对所选完整 PLA 源码目录授予读取、写入和受控执行权限。':'关闭自开发并移除此专用 root 的授权？源码文件保留。'))return;await rpc('development_configure',{enabled,path:$('development-path').value.trim(),confirmed:true,expected_sha256:developmentSnapshot.config_sha256});await loadDevelopment();await refresh();}
-$('reload-development').onclick=()=>action(loadDevelopment);$('enable-development').onclick=()=>action(()=>setDevelopment(true));$('disable-development').onclick=()=>action(()=>setDevelopment(false));
-$('preview-development-source').onclick=()=>action(async()=>{developmentSourcePreview=await rpc('development_prepare',{path:$('development-empty-path').value.trim(),confirmed:false,expected_sha256:null});output('development-source-preview',developmentSourcePreview);});
-$('prepare-development-source').onclick=()=>action(async()=>{if(!developmentSourcePreview)throw '请先预览源码快照。';if(!window.confirm(`将已校验源码准备到 ${developmentSourcePreview.target}？\n${developmentSourcePreview.file_count} 个文件\n不自动开启授权或更新当前应用。`))return;const result=await rpc('development_prepare',{path:$('development-empty-path').value.trim(),confirmed:true,expected_sha256:developmentSourcePreview.sha256});output('development-source-preview',result);developmentSourcePreview=null;$('development-path').value=result.target;notice('完整源码已准备。请停止 Runtime，再选择开启自开发。');});
-for(const [page,loader] of [['providers',loadProviders],['skill-list',loadSkillList],['skills',loadSkills],['development',loadDevelopment]])document.querySelectorAll(`[data-view="${page}"]`).forEach(el=>el.addEventListener('click',()=>action(loader)));
+for(const [page,loader] of [['providers',loadProviders],['skill-list',loadSkillList],['skills',loadSkills]])document.querySelectorAll(`[data-view="${page}"]`).forEach(el=>el.addEventListener('click',()=>action(loader)));

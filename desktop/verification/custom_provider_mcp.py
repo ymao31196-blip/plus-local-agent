@@ -98,7 +98,7 @@ def main():
                                               "confirmed": True})
         check("runtime_unchanged", manager.children["runtime"].pid == pid, pid)
         check("development_permission_not_required",
-              manager.dispatch("development_status", {})["enabled"] is False, "pla-development disabled")
+              "pla-development" not in manager.dispatch("status", {})["workspaces"]["roots"], "pla-development disabled")
         report["result"] = "PASS"
     except Exception as exc:
         report["result"] = "FAIL"

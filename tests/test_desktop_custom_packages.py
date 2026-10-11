@@ -134,7 +134,6 @@ def test_manager_custom_package_bridge_and_catalog(tmp_path):
     manager.dispatch("provider_package", {**req, "confirmed": True, "expected_sha256": preview["sha256"]})
     catalog = manager.dispatch("provider_catalog", {})["providers"][0]
     assert catalog["install_supported"] is True and catalog["install_source"] == "user_custom"
-    assert not manager.dispatch("development_status", {})["enabled"]
     assert manager.components.preferences() == {"enabled": []}
 
 
