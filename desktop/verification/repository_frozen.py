@@ -2,7 +2,7 @@
 The adapter only changes test transport; all management/install/runtime work runs
 inside the selected packaged executable. ComponentProject is used solely for file inspection.
 """
-import argparse, asyncio, json, queue, runpy, subprocess, threading
+import argparse, asyncio, hashlib, json, queue, runpy, subprocess, threading
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'src'))
@@ -15,6 +15,8 @@ args=parser.parse_args()
 resources=args.resources.resolve()
 executable=resources/'runtime/pla-runtime.exe'
 
+frozen_roots=[]
+
 class ConfigProxy:
     def __init__(self,manager):self.manager=manager
     def save(self,value):return self.manager.dispatch('configure',value)
@@ -22,6 +24,7 @@ class ConfigProxy:
 class FrozenManager:
     def __init__(self,data,ignored_resources):
         self.data=data
+        frozen_roots.append(data)
         data.mkdir(parents=True,exist_ok=True)
         self.components=ComponentProject(data,resources)
         self.config=ConfigProxy(self)
@@ -68,3 +71,12 @@ fixture=Path(__file__).resolve().parent/('repository_install.py' if args.fixture
 namespace=runpy.run_path(str(fixture),run_name='frozen_fixture')
 namespace['main'].__globals__['Manager']=FrozenManager
 namespace['main']()
+
+for data_root in frozen_roots:
+    report=data_root/('repository-evidence.json' if args.fixture=='python' else 'node-repository-evidence.json')
+    if report.is_file():
+        evidence=json.loads(report.read_text(encoding='utf-8'))
+        evidence.update(scope='frozen Manager stdio RPC / fixed installer worker / actual local MCP and Runtime Broker',
+                        runtime_executable=str(executable),resources=str(resources),
+                        runtime_sha256=hashlib.sha256(executable.read_bytes()).hexdigest())
+        report.write_text(json.dumps(evidence,indent=2),encoding='utf-8')

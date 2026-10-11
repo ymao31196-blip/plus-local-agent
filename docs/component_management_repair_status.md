@@ -18,7 +18,8 @@
 - PASS：源码真实 Python 仓库安装、Broker 调用、升级、停用、卸载，再次安装/启用/调用/卸载，共 7 项；证据 C:\Users\26286\AppData\Local\Temp\pla-repository-e2e-77mytdg0\repository-evidence.json。
 - PASS：RC.11 全量源码回归 931 项，无警告，174.74 秒；日志 `.desktop-build/rc11-source-tests.log`。
 - PASS：RC.11 冻结运行时实际 Python 仓库安装/升级/Broker 调用/卸载/再次安装 7 项，以及 Node 实际安装/调用/卸载 2 项。证据分别为 `C:\Users\26286\AppData\Local\Temp\pla-repository-e2e-kerll6b1\repository-evidence.json` 和 `C:\Users\26286\AppData\Local\Temp\pla-node-repository-e2e-05cdd3ti\node-repository-evidence.json`。复现工具 `desktop/verification/repository_frozen.py --resources desktop/src-tauri/resources --fixture python`（或 node），仅使用新 Temp 数据。
-- PASS：完整构建退出码 0，固定资源 MCP 验收通过；发行资源中已无 `developer-source.zip`。候选 `dist/desktop-v1/PLA Desktop_1.0.0-rc.11_x64-setup.exe`，源码提交 `bca65cda9eb887150f863f00cf0b603cf4f25056`，构建时工作树干净；SHA-256 `b06242a1b3de1788c6006a2385ce133a7c922b143704085a21d34b2e67bf14f9`。
+- PASS：完整构建退出码 0，固定资源 MCP 验收通过；发行资源中已无 `developer-source.zip`。候选 `dist/desktop-v1/PLA Desktop_1.0.0-rc.11_x64-setup.exe`，源码提交 `fd0448bc8d29092229afdb92101acf9ff5a493a2`，构建时工作树干净；SHA-256 `41423a8b54bce58bdbe146c5d6cea9f1b9070dcef671b90649674a05f17bcbeb`。
+- 最终两处维护页提示统一为「本机组件」后，Edge DOM 回归再次通过；桌面与安装包重新构建成功。最终封装使用 SkipRuntime/SkipAcceptance，运行时二进制 SHA-256 2459e912fa0eaac48a281bbfb72f82709f7a7a4026364b557810e3cc874d0775 与已通过真实验收的载荷一致，不重复执行未改变的 Runtime 验收。
 - 未执行新版安装：用户负责重装。尝试独立临时原生 UI 副本时，正式 RC.10 正在运行，单实例机制使测试副本无法取得 WebView2 调试目标，验收脚本退出码 1，未执行界面检查（原始记录 `.desktop-build/rc11-native-ui/native-ui-report.json`）。Computer Use 确认正式版 Runtime 已就绪，保留其服务运行。RC.11 原生 UI/实际升级验证待用户安装后进行；不把 RC.10 的 13/13 代替本轮验收。
 
 ## RC.10 历史安装证据
