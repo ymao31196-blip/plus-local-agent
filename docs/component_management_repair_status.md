@@ -16,7 +16,10 @@
 - PASS：实际 Edge DOM 验证三页签、合并完整性检查及 SHA 绑定卸载、草稿/DOM 保留、仓库浏览联动、搜索宽度及组合筛选。管理 RPC 为模拟，不能代替真实安装验收。
 - PASS：现有组件界面 smoke 回归；常用包、桌面管理、用户组件、版本一致性等选定回归 50 项（与上述仓库项重叠）。
 - PASS：源码真实 Python 仓库安装、Broker 调用、升级、停用、卸载，再次安装/启用/调用/卸载，共 7 项；证据 C:\Users\26286\AppData\Local\Temp\pla-repository-e2e-77mytdg0\repository-evidence.json。
-- RC.11 全量回归与新构建仍待本轮完成。用户负责重装，不自动安装新候选。
+- PASS：RC.11 全量源码回归 931 项，无警告，174.74 秒；日志 `.desktop-build/rc11-source-tests.log`。
+- PASS：RC.11 冻结运行时实际 Python 仓库安装/升级/Broker 调用/卸载/再次安装 7 项，以及 Node 实际安装/调用/卸载 2 项。证据分别为 `C:\Users\26286\AppData\Local\Temp\pla-repository-e2e-kerll6b1\repository-evidence.json` 和 `C:\Users\26286\AppData\Local\Temp\pla-node-repository-e2e-05cdd3ti\node-repository-evidence.json`。复现工具 `desktop/verification/repository_frozen.py --resources desktop/src-tauri/resources --fixture python`（或 node），仅使用新 Temp 数据。
+- PASS：完整构建退出码 0，固定资源 MCP 验收通过；发行资源中已无 `developer-source.zip`。候选 `dist/desktop-v1/PLA Desktop_1.0.0-rc.11_x64-setup.exe`，源码提交 `bca65cda9eb887150f863f00cf0b603cf4f25056`，构建时工作树干净；SHA-256 `b06242a1b3de1788c6006a2385ce133a7c922b143704085a21d34b2e67bf14f9`。
+- 未执行新版安装：用户负责重装。尝试独立临时原生 UI 副本时，正式 RC.10 正在运行，单实例机制使测试副本无法取得 WebView2 调试目标，验收脚本退出码 1，未执行界面检查（原始记录 `.desktop-build/rc11-native-ui/native-ui-report.json`）。Computer Use 确认正式版 Runtime 已就绪，保留其服务运行。RC.11 原生 UI/实际升级验证待用户安装后进行；不把 RC.10 的 13/13 代替本轮验收。
 
 ## RC.10 历史安装证据
 
