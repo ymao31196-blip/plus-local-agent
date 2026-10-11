@@ -234,7 +234,7 @@ async function installSelectedComponent(){
 }
 $('start-install').onclick=()=>action(installSelectedComponent);
 $('installation-refresh').onclick=()=>action(refreshInstallationStatus);
-setInterval(()=>{if(!$('providers').classList.contains('hidden')&&!busy)action(refreshInstallationStatus);},2000);
+setInterval(()=>{if(!$('component-management').classList.contains('hidden')&&!$('providers').classList.contains('hidden')&&!busy)action(refreshInstallationStatus);},2000);
 
 async function loadSkills(){
   await loadSkillPermissions();

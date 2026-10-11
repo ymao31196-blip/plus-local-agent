@@ -1,0 +1,10 @@
+{
+  "files": {
+    "assets/providers/test_echo_provider.py": "sha256:d91c723aef40070d7e099dd3c731834e4539f2aaea86c992a6b415281e8763c8",
+    "manifest.json": "sha256:8347b257aaa3c43e63868ccfb3dfe9e7ee47addd764c1bcb6d169908c9dd3d8c",
+    "spec.json": "sha256:3a97419836aa4709e4bd27b02bf1fcfec209fad43ee229588722b4eccd84dbf3"
+  },
+  "provider_id": "test-echo-provider",
+  "schema_version": 1,
+  "version": "1.0.0"
+}

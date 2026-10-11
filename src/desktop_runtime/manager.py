@@ -384,6 +384,8 @@ class Manager:
         if command == 'provider_action':
             capability_id, arguments = checked_provider_action(args)
             provider_id = args['provider_id']
+            if args['action'] in {'enable','reload'} and self._alive('installer:repository-' + str(provider_id)):
+                raise ValueError('Wait for the repository operation to finish before connecting this provider')
             if args['action'] == 'enable' and provider_id != 'browser':
                 catalog = self.components.catalog()['providers']
                 row = next((item for item in catalog if item['provider_id'] == provider_id), None)
@@ -498,13 +500,13 @@ class Manager:
                 with self.log_lock:
                     log_lines = [line for line in self.logs if line.startswith(f'[{name}]')][-30:]
                 jobs.append({'job': name, 'provider_id': provider_id, 'pid': child.pid,
-                             'exit_code': code, 'state': 'running' if code is None else 'installed' if installed else 'failed',
+                             'exit_code': code, 'state': 'running' if code is None else ('completed' if provider_id.startswith('repository-') else 'installed') if installed else 'failed',
                              'logs': log_lines})
             receipts = self.components.root / 'receipts'
             records = []
             if receipts.is_dir():
                 for path in sorted(receipts.glob('*.json')):
-                    if path.stem.isascii() and path.stem.replace('-', '').replace('_', '').isalnum():
+                    if not path.stem.startswith('repository-') and path.stem.isascii() and path.stem.replace('-', '').replace('_', '').isalnum():
                         records.append(path.stem)
             return {'jobs': jobs, 'installed_receipts': records}
         if command == 'skill_permissions':
@@ -543,6 +545,77 @@ class Manager:
             if set(args) != {'path', 'confirmed', 'expected_sha256'}:
                 raise ValueError('Expected source preparation preview and confirmation')
             return prepare_source(self.config.root, self.resources, **args)
+        # Component repository management
+        if command == 'repository_list':
+            if args:
+                raise ValueError('Repository list takes no arguments')
+            return self.components.list_repositories()
+
+        if command == 'repository_add':
+            if set(args) != {'url', 'name', 'enabled'} or type(args['enabled']) is not bool:
+                raise ValueError('Expected repository URL, name, and enabled flag')
+            return self.components.add_repository(args['url'], args['name'], args['enabled'])
+
+        if command == 'repository_remove':
+            if set(args) != {'url'}:
+                raise ValueError('Expected repository URL')
+            return self.components.remove_repository(args['url'])
+
+        if command == 'provider_discover':
+            if set(args) - {'repository_url'} != set():
+                raise ValueError('Expected optional repository_url')
+            return self.components.discover_providers(args.get('repository_url'))
+
+        if command == 'provider_details_remote':
+            if set(args) != {'provider_id', 'repository_url'}:
+                raise ValueError('Expected provider_id and repository_url')
+            return self.components.get_provider_details(args['provider_id'], args['repository_url'])
+
+        if command in {'provider_install_remote', 'provider_upgrade_remote', 'provider_uninstall_remote'}:
+            from desktop_runtime.repository_jobs import prepare, load
+            operation = {'provider_install_remote':'install', 'provider_upgrade_remote':'upgrade',
+                         'provider_uninstall_remote':'uninstall'}[command]
+            fields = {'provider_id','confirmed','expected_sha256'}
+            version_key = 'to_version' if operation == 'upgrade' else 'version'
+            if operation != 'uninstall':
+                fields |= {'repository_url',version_key}
+            if set(args) != fields or type(args['confirmed']) is not bool:
+                raise ValueError('Expected a reviewed repository operation and SHA-256 confirmation')
+            provider_id = args['provider_id']
+            repository_url = args.get('repository_url')
+            version = args.get(version_key)
+            if not args['confirmed']:
+                return prepare(self.components,operation,provider_id,repository_url,version)
+            digest = args['expected_sha256']
+            plan = load(self.components,digest,operation,provider_id,repository_url,version)
+            if self._alive('runtime'):
+                actual = self._invoke_management_capability('runtime.provider_catalog', {})['data']['providers']
+                if any(row['provider_id'] == provider_id and row.get('lifecycle',{}).get('enabled') for row in actual if row.get('lifecycle')):
+                    raise ValueError('Provider is currently enabled; disable it first')
+            role = 'installer:repository-' + provider_id
+            if self._alive(role):
+                raise ValueError('Repository operation is already running')
+            receipt = self.components.root / 'receipts' / ('repository-' + provider_id + '.json')
+            if receipt.exists():
+                if not receipt.resolve().is_relative_to(self.components.root):
+                    raise ValueError('Receipt escapes private components')
+                receipt.unlink()
+            command_line = self._command('repository_job') + ['--data-dir',str(self.config.root),
+                '--resources',str(self.resources),'--expected-plan-sha256',digest]
+            self.dispatch('installation_status', {})
+            self._spawn_installer(role,command_line)
+            return {'provider_id':provider_id,'operation':operation,'sha256':digest,'started':True,'job':role}
+
+        if command == 'provider_health_check':
+            if set(args) != {'provider_id'}:
+                raise ValueError('Expected provider_id')
+            return self.components.check_provider_health(args['provider_id'])
+
+        if command == 'provider_installed_list':
+            if args:
+                raise ValueError('Installed provider list takes no arguments')
+            return self.components.list_installed_providers()
+
         if command == 'development_configure':
             if set(args) != {'enabled', 'path', 'confirmed', 'expected_sha256'} or type(args['enabled']) is not bool or args['confirmed'] is not True:
                 raise ValueError('Review the development workspace grant before saving')

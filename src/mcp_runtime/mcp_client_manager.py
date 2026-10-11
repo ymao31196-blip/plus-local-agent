@@ -117,15 +117,24 @@ class MCPClientManager:
             pass
 
     async def close_provider_session(self, provider_id: str) -> None:
+        async def close_owned_transport():
+            await self._drop_persistent_client(provider_id)
+            # StdioTransport keeps its subprocess alive by default even when
+            # Client contexts are short lived. Release it on explicit disable,
+            # reload and removal so the interpreter is no longer locked.
+            from fastmcp.client.transports import StdioTransport
+            source = self._sources.get(provider_id)
+            if isinstance(source, StdioTransport):
+                await source.close()
         lock = self._persistent_locks.get(provider_id)
         if lock is None:
-            await self._drop_persistent_client(provider_id)
+            await close_owned_transport()
             return
         async with lock:
-            await self._drop_persistent_client(provider_id)
+            await close_owned_transport()
 
     async def close_all_persistent_sessions(self) -> None:
-        for provider_id in sorted(list(self._persistent_clients)):
+        for provider_id in sorted(set(self._sources) | set(self._persistent_clients)):
             await self.close_provider_session(provider_id)
 
     async def _ensure_persistent_client(self, provider_id: str) -> Client:

@@ -1,0 +1,24 @@
+{
+  "autostart": false,
+  "id": "test-echo-provider",
+  "mode": "auto",
+  "routing_authority": "recommendation",
+  "runtime": {
+    "args": [
+      "-m",
+      "test_echo_provider"
+    ],
+    "cwd": ".",
+    "discovery_timeout_seconds": 10.0,
+    "invoke_timeout_seconds": 60.0,
+    "kind": "isolated_python_stdio",
+    "persistent_session": false,
+    "python": ".provider_envs/test-echo-provider/Scripts/python.exe"
+  },
+  "schema_version": 1,
+  "tool_allowlist": [
+    "echo_message",
+    "echo_structured"
+  ],
+  "tool_overrides": {}
+}

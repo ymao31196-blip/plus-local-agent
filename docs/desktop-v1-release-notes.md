@@ -1,3 +1,21 @@
+# PLA Desktop 1.0.0-rc.10 — unsigned local test candidate
+
+RC.10 merges repository components and existing MCP Provider controls into one **组件与 MCP 插件** entry with four tabs. Existing live status, enable/disable/reload, manifest editing, tool allowlists and complete capability schemas remain available. Skill List, Skills Management, multiple workspace roots and opt-in self-development remain separate supported workflows.
+
+Repository installation now uses the private management RPC allowlist, complete verified package snapshots, SHA-256-bound review and confirmation, and a fixed owned background worker. Confirmed requests return a job promptly rather than blocking the native management bridge for dependency installation. Python and Node dependencies use isolated version directories. Installation never auto-enables a provider.
+
+Upgrades preserve previous-version ownership. Uninstall rejects modified registered files, preserves unrelated files, verifies ownership and stages reversible changes before committing state. Explicit Provider disable/reload/removal now closes the owned stdio transport even without a persistent Client, releasing Windows interpreter locks.
+
+Actual source-mode Python and Node repository install/Broker-call/uninstall checks passed in fresh private Temp directories. Python upgrade/reconnect and enabled-uninstall rejection also passed. Browser navigation tests passed for four tabs, preserved manifest drafts and original controls. Full source regression and RC.10 frozen, native UI and NSIS acceptance are recorded in [the repair status](component_management_repair_status.md); pending checks are not inferred from earlier releases.
+
+Limitations: only local file and HTTPS repository URLs are supported; Git sources and signed indexes are not implemented. Checksums bind reviewed content but do not authenticate a publisher. Dependency isolation is not an OS sandbox. Exact PyPI/npm dependency pins are required; npm lifecycle scripts and repository executable hooks are disabled. File health checks are installation-integrity checks; actual connection status is read from Runtime.
+
+This is an unsigned local test candidate with automatic updates disabled. Existing data and credentials are retained on upgrade/uninstall. Clean Windows10/11, OS reboot, public signing and distribution require separate evidence; no public push or Release is authorized. Skill Library still requires the user's matching source/wheel because redistribution permission is not established.
+
+Expected installer: `PLA Desktop_1.0.0-rc.10_x64-setup.exe`. Actual SHA-256 and source revision are emitted into SHA256SUMS.txt and build-manifest.json beside the built installer. See the final validation record for the actual result.
+
+## Historical RC.5 notes
+
 # PLA Desktop 1.0.0-rc.5 — unsigned local test candidate
 
 RC.5 exposes the complete live capability catalog through the existing capability_invoke wrapper as runtime.capability_catalog. Clients which do not expose the additional standalone wrapper can still retrieve full schemas and availability without the 100-item search bound. This read-only path preserves the original Broker and policy checks.

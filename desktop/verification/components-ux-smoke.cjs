@@ -276,5 +276,32 @@ function setup(rpc) {
   assert.equal(customCalls.filter(x => x.command === 'provider_package').length, 2);
   assert.equal(customCalls.find(x => x.command === 'provider_package' && x.args.confirmed).args.expected_sha256, 'custom-hash');
 
-  console.log('PASS: installer flow; WPS status; Skill list; RC7 starter bundle; RC7 custom MCP plans');
+  // Repository jobs must preserve review digests, wait for completion, and
+  // treat cancellation as cancellation rather than successful installation.
+  const repositoryCalls=[];
+  let approve=true, repositoryJobState='completed';
+  const repoScope={module:{exports:{}}, Error, console, setTimeout,
+    confirm:()=>approve};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/component-manager.js'),'utf8'),repoScope);
+  const RepoManager=repoScope.module.exports;
+  const repoManager=new RepoManager({showNotification(){},invoke:async(command,args)=>{
+    repositoryCalls.push({command,args});
+    if(command==='provider_installed_list')return {providers:[]};
+    if(command==='installation_status')return {jobs:[{job:'installer:repository-echo',state:repositoryJobState,logs:['owned worker failed']}]};
+    if(command.endsWith('_remote'))return args.confirmed
+      ? {started:true,job:'installer:repository-echo'}
+      : {sha256:'complete-package-review',spec:{dependencies:{python_packages:['mcp==2.2.0']}}};
+    throw Error('Unexpected repository RPC');
+  }});
+  await repoManager.installProvider('echo','file:///test');
+  assert.equal(repositoryCalls.find(c=>c.command==='provider_install_remote'&&c.args.confirmed).args.expected_sha256,'complete-package-review');
+  await repoManager.uninstallProvider('echo');
+  assert.equal(repositoryCalls.find(c=>c.command==='provider_uninstall_remote'&&c.args.confirmed).args.expected_sha256,'complete-package-review');
+  const count=repositoryCalls.filter(c=>c.args?.confirmed).length;
+  approve=false;
+  assert.equal(await repoManager.upgradeProvider('echo','file:///test'),null);
+  assert.equal(repositoryCalls.filter(c=>c.args?.confirmed).length,count);
+  approve=true;repositoryJobState='failed';
+  await assert.rejects(()=>repoManager.installProvider('echo','file:///test'),/owned worker failed/);
+  console.log('PASS: installer flow; WPS status; Skill list; starter bundle; custom plans; repository SHA jobs/cancellation/failure');
 })().catch(error => {console.error(error); process.exitCode = 1;});

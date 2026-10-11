@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import tempfile
 
-VERSION = "1.0.0-rc.9"
+VERSION = "1.0.0-rc.10"
 
 
 def atomic_write(path: Path, content: bytes):

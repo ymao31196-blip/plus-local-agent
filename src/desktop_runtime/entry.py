@@ -19,6 +19,8 @@ def main():
         from desktop_runtime.manager import main as run
     elif role == "component_install":
         from desktop_runtime.installer import main as run
+    elif role == "repository_job":
+        from desktop_runtime.repository_jobs import main as run
     elif role == "indicator":
         from host.computer_use_indicator import main as run
     elif role == "browser_keeper":
