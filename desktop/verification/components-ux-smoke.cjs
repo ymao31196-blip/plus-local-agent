@@ -13,14 +13,20 @@ const source = fs.readFileSync(path.join(__dirname, '../ui/components.js'), 'utf
 function setup(rpc) {
   const els = new Map();
   function create(tag = 'div', id) {
-    return {
-      tagName: tag.toUpperCase(), id, value: '', textContent: '', children: [],
+    let ownText = '';
+    const element = {
+      tagName: tag.toUpperCase(), id, value: '', children: [],
       classList: {contains: () => false, add() {}, remove() {}},
       append(...children) { this.children.push(...children); },
-      replaceChildren(...children) { this.children = [...children]; },
+      replaceChildren(...children) { this.children = [...children]; ownText=''; },
       scrollIntoView() {}, addEventListener() {},
       querySelectorAll: () => [],
     };
+    Object.defineProperty(element, 'textContent', {
+      get() { return ownText + this.children.map(child=>child.textContent||'').join(''); },
+      set(text) { ownText=String(text); this.children=[]; },
+    });
+    return element;
   }
   function $(id) {
     if (!els.has(id)) els.set(id, create('div', id));
@@ -92,12 +98,13 @@ function setup(rpc) {
   await w.$('reload-providers').onclick();
   const card = w.$('provider-list').children[0];
   assert.ok(card, 'Expected a WPS provider card');
-  const quick = card.children.find(x => x.className === 'actions provider-quick');
+  const quick = card.children.find(x => x.className === 'provider-quick-actions');
   const advanced = card.children.find(x => x.tagName === 'DETAILS');
-  const controls = advanced.children.find(x => x.className === 'actions');
+  const content = advanced.children.find(x => x.className === 'provider-advanced-content');
+  const controls = content.children.find(x => x.className === 'provider-advanced-actions');
   const labels = controls.children.map(x => x.textContent);
-  assert.ok(quick.children.some(x => x.textContent === '安装 / 修复组件'));
-  assert.ok(labels.includes('安装组件…'));
+  assert.ok(quick.children.some(x => x.textContent === '安装组件'));
+  assert.ok(labels.includes('安装组件'));
   assert.ok(!labels.includes('启用') && !labels.includes('重载工具'));
   const statusText=card=>card.children[0].children[1].children.map(x=>x.textContent).join(' ');
   assert.match(statusText(card), /连接：缺少运行组件/);
@@ -121,7 +128,7 @@ function setup(rpc) {
   assert.match(statusText(stoppedCard), /启停：已停用/);
   assert.match(statusText(stoppedCard), /连接：未连接/);
   assert.doesNotMatch(statusText(stoppedCard), /MCP 已连接/);
-  const stoppedQuick=stoppedCard.children.find(x=>x.className==='actions provider-quick');
+  const stoppedQuick=stoppedCard.children.find(x=>x.className==='provider-quick-actions');
   assert.ok(stoppedQuick.children.some(x=>x.textContent==='启用并连接'));
   await stoppedSkill.$('reload-skill-list').onclick();
   assert.match(stoppedSkill.$('skill-list-status').textContent, /未启用/);
@@ -149,7 +156,7 @@ function setup(rpc) {
     throw Error('Unexpected toggle RPC: '+command);
   });
   const toggleCard=()=>toggle.$('provider-list').children[0];
-  const toggleQuick=()=>toggleCard().children.find(x=>x.className==='actions provider-quick');
+  const toggleQuick=()=>toggleCard().children.find(x=>x.className==='provider-quick-actions');
   await toggle.$('reload-providers').onclick();
   assert.match(statusText(toggleCard()), /启停：已启用/);
   assert.match(statusText(toggleCard()), /连接：MCP 已连接/);
@@ -182,7 +189,7 @@ function setup(rpc) {
   assert.match(statusText(failedCard), /启停：已启用/);
   assert.match(statusText(failedCard), /连接：连接失败/);
   assert.match(failedCard.children.map(x=>x.textContent).join(' '), /Connection closed/);
-  const failedQuick=failedCard.children.find(x=>x.className==='actions provider-quick');
+  const failedQuick=failedCard.children.find(x=>x.className==='provider-quick-actions');
   assert.ok(failedQuick.children.some(x=>x.textContent==='重试连接'));
   assert.ok(failedQuick.children.some(x=>x.textContent==='修复依赖'));
   assert.ok(!failedQuick.children.some(x=>x.textContent==='启用并连接'));

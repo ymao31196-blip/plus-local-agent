@@ -1,88 +1,89 @@
-"""RC.8+ component installation UI: one review/confirmation, no repeated preview gate."""
+"""Desktop component UI invariants across readable formatting and refactoring.
+
+Real click-order and state transitions are covered in components-ux-smoke.cjs.
+Keep these checks semantic: whitespace, badge component names and copy may change.
+"""
 from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[1]
+JS = (ROOT / "desktop/ui/components.js").read_text(encoding="utf-8")
+HTML = (ROOT / "desktop/ui/index.html").read_text(encoding="utf-8")
+SMOKE = (ROOT / "desktop/verification/components-ux-smoke.cjs").read_text(encoding="utf-8")
+CSS = (ROOT / "desktop/ui/style.css").read_text(encoding="utf-8")
 
 
-def test_install_main_action_performs_fresh_digest_preview_and_confirmation():
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "desktop/ui/components.js").read_text(encoding="utf-8")
-    html = (root / "desktop/ui/index.html").read_text(encoding="utf-8")
-    assert 'id="start-install" class="primary">安装 / 修复' in html
-    assert 'id="preview-install">查看依赖详情（可选）' in html
-    assert "const plan=await previewInstall({detail:false})" in js
-    assert "window.confirm(installReviewText(plan,needsDisable))" in js
-    assert "const needsDisable=active?.lifecycle?.enabled===true" in js
-    assert "if(needsDisable)" in js
-    assert "action:'disable',provider_id:plan.provider_id,confirmed:true" in js
-    assert "confirmed:true,expected_sha256:plan.sha256" in js
-    assert "async function installSelectedComponent()" in js
-    assert "if(!installPreview)throw '请先查看当前安装计划。'" not in js
-    assert "安装条件不满足" in js
+def compact(value):
+    return re.sub(r"\s+", "", value)
 
 
-def test_failed_provider_distinguishable_from_missing_runtime():
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "desktop/ui/components.js").read_text(encoding="utf-8")
-    assert "error:'连接失败'" in js
-    assert "const installedFiles=row.execution_files_present===true" in js
-    assert "lifecycle?.error_message||'连接未建立'" in js
-    assert "quick.append(button('重试连接'" in js
-    assert "quick.append(button('修复依赖'" in js
-    assert "if(failed && installedFiles)" in js
+def has_js(fragment):
+    assert compact(fragment) in compact(JS), fragment
 
 
-def test_skill_disabled_ready_does_not_masquerade_as_live_and_shows_recovery():
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "desktop/ui/components.js").read_text(encoding="utf-8")
-    smoke = (root / "desktop/verification/components-ux-smoke.cjs").read_text(encoding="utf-8")
-    assert "lifecycle?.enabled===false||row.temporarily_disabled===true" in js
-    assert "lifecycle?.state==='ready'&&!disabled&&lifecycle?.enabled===true" in js
-    assert "disabled?'未连接'" in js
-    assert "Provider已停用；历史工具发现记录不代表当前可调用" in js
-    assert "Capability is unavailable: skill-library." in js
-    assert "请前往「MCP插件与Provider」点击「启用并连接」" in js
-    assert "if(installed)" in js and "providerCatalog.providers.findIndex" in js
-    assert "await stoppedSkill.$('reload-providers').onclick()" in smoke
-    assert "await stoppedSkill.$('reload-skill-list').onclick()" in smoke
-    assert "temporarily_disabled:true" in smoke
+def test_install_action_uses_fresh_sha_plan_one_confirmation_and_disable_before_repair():
+    for control in ('start-install', 'preview-install', 'installation-refresh'):
+        assert f'id="{control}"' in HTML
+    has_js("const plan = await previewInstall({ detail: false });")
+    has_js("window.confirm(installReviewText(plan, needsDisable))")
+    has_js("const needsDisable = active?.lifecycle?.enabled === true")
+    has_js("if (needsDisable)")
+    has_js("action: 'disable', provider_id: plan.provider_id, confirmed: true")
+    has_js("confirmed: true, expected_sha256: plan.sha256")
+    has_js("async function installSelectedComponent()")
+    assert "请先查看当前安装计划" not in JS
+    assert "安装条件不满足" in JS
+    assert "repairCalls[installAt].args.expected_sha256" in SMOKE
 
 
-def test_every_provider_card_shows_separate_enablement_and_connection_with_quick_toggle():
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "desktop/ui/components.js").read_text(encoding="utf-8")
-    css = (root / "desktop/ui/style.css").read_text(encoding="utf-8")
-    smoke = (root / "desktop/verification/components-ux-smoke.cjs").read_text(encoding="utf-8")
-    assert "for(const row of providerCatalog.providers)" in js
-    assert "node('div',undefined,'provider-statuses')" in js
-    assert "启停：${enableLabel}" in js
-    assert "连接：${currentStatus}" in js
-    assert "provider-enable-status ${enableClass}" in js
-    assert "quick.append(button('停用'" in js
-    assert "quick.append(button('启用并连接'" in js
-    assert "action:'disable',provider_id:row.provider_id,confirmed:true" in js
-    assert "action:'enable',provider_id:row.provider_id,confirmed:true" in js
-    assert ".provider-statuses" in css
-    assert ".provider-enable-status.is-enabled" in css
-    assert ".provider-enable-status.is-disabled" in css
-    assert "const toggleCard=()" in smoke
-    assert "toggleCalls[0].action,'disable'" in smoke
-    assert "toggleCalls[1].action,'enable'" in smoke
+def test_missing_failed_disabled_ready_have_distinct_states_and_recovery():
+    has_js("const installedFiles = row.execution_files_present === true")
+    has_js("const disabled = lifecycle?.enabled === false || row.temporarily_disabled === true")
+    has_js("const live = lifecycle?.state === 'ready' && !disabled && lifecycle?.enabled === true")
+    has_js("const failed = !disabled && ['error', 'failed'].includes(lifecycle?.state)")
+    assert "缺少运行组件" in JS
+    assert "Connection closed" in SMOKE
+    assert "Provider 已停用" in JS
+    assert "Capability is unavailable: skill-library." in JS
+    assert "启用并连接" in JS
+    assert "已连接，但尚未添加Skill来源" in JS
+    assert "await stoppedSkill.$('reload-providers').onclick()" in SMOKE
 
 
-def test_connected_empty_skill_library_explains_missing_source():
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "desktop/ui/components.js").read_text(encoding="utf-8")
-    smoke = (root / "desktop/verification/components-ux-smoke.cjs").read_text(encoding="utf-8")
-    assert "Skill Library已连接，但尚未添加Skill来源" in js
-    assert "安装Skill Library程序不会自动导入个人Skill" in js
-    assert "await emptySkill.$('reload-skill-list').onclick()" in smoke
+def test_provider_badges_and_visible_enable_disable_controls():
+    has_js("for (const row of providerCatalog.providers)")
+    has_js("createStatusBadge(`连接：${status.connectionStatus.text}`")
+    has_js("createStatusBadge(`启停：${status.enableStatus.text}`")
+    has_js("handlePrimaryAction(row, 'disable', status)")
+    has_js("handlePrimaryAction(row, status.primaryAction.type, status)")
+    for action in ("'enable'", "'disable'", "'reload'"):
+        assert action in JS
+    assert ".provider-statuses" in (ROOT / "desktop/ui/provider-cards.css").read_text(encoding="utf-8")
+    assert "toggleCalls[0].action" in SMOKE
+    assert "toggleCalls[1].action" in SMOKE
 
 
-def test_bundle_also_one_click_and_skill_source_still_required():
-    root = Path(__file__).resolve().parents[1]
-    js = (root / "desktop/ui/components.js").read_text(encoding="utf-8")
-    html = (root / "desktop/ui/index.html").read_text(encoding="utf-8")
-    assert 'id="start-bundle" class="primary">准备常用组件' in html
-    assert "starterBundlePreview=await rpc('provider_bundle',{confirmed:false,expected_sha256:null})" in js
-    assert "if(!starterBundlePreview)throw '请先预览常用组件安装计划。'" not in js
-    assert "if(provider_id==='skill-library'&&!skill_package)throw" in js
-    assert "点击「安装 / 修复」" in js
+def test_skill_empty_state_and_source_permissions_are_not_dropped():
+    assert "Skill Library已连接，但尚未添加Skill来源" in JS
+    assert "安装Skill Library程序不会自动导入个人Skill" in JS
+    assert "await emptySkill.$('reload-skill-list').onclick()" in SMOKE
+    for ident in ('skill-quick-id', 'skill-quick-path', 'skill-quick-add', 'save-skill-permissions'):
+        assert f"id=\"{ident}\"" in HTML
+
+
+def test_bundle_is_one_click_digest_bound_and_skill_source_is_explicit():
+    assert 'id="start-bundle"' in HTML
+    has_js("starterBundlePreview = await rpc('provider_bundle', { confirmed: false, expected_sha256: null })")
+    has_js("confirmed: true, expected_sha256: starterBundlePreview.sha256")
+    has_js("provider_id === 'skill-library' && !skill_package")
+    assert "请先预览常用组件安装计划" not in JS
+    assert "点击「安装 / 修复」" in JS
+
+
+def test_active_css_and_unique_controls_match_the_shipped_page():
+    assert 'href="style.css"' in HTML
+    assert 'href="provider-cards.css"' in HTML
+    assert 'href="style-v2.css"' not in HTML
+    assert 'id="start-install"' in HTML
+    assert 'data-command="stop"' in HTML
+    assert ':root' in CSS

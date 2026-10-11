@@ -89,4 +89,4 @@ def test_installed_tauri_ui_contract_exposes_bundle_and_custom_packages():
     assert "details" in html and "provider-card" in js
     assert "Skill Library已安装的文件不会丢失" in js
     assert "Skill Library已连接，但尚未添加Skill来源" in js
-    assert "启停：${enableLabel}" in js and "连接：${currentStatus}" in js
+    assert "启停：${status.enableStatus.text}" in js and "连接：${status.connectionStatus.text}" in js
