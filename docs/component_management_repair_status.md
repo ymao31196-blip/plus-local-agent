@@ -39,3 +39,5 @@ RC.10 源码全量 929 PASS，无警告；构建来源 3668134d8cac4fe3c7f222875
 用户已自行完成 RC.11 更新。Computer Use 和文件摘要对比证据见 `.desktop-build/rc11-installed-observations.json`；原生测试副本先前因单实例未启动的失败记录保留。正式 Runtime 与多个 Provider 曾观察就绪，三个工作区存在；未替用户停止服务或改密钥。
 
 重启后的正式 Tunnel 客户端仍持续收到 401 invalid_api_key。DPAPI 保存值与用户此前提供的 test.txt 密钥一致，不含掩码或空白。PLA-TEST 指向同一桌面 Tunnel，返回 tunnel_client_not_seen；plus-local-agent 插件实际通向另一套源码 root，不能计为桌面远程通过。需要有效 runtime API key 才能继续该链路验收。
+
+随后已通过实际安装版的本地 MCP 验收：校验监听进程 PID 28900 和 RC.11 Runtime 摘要，发现 24 个工具，实际读取 test root 文件，在新的私有 workspace 验收目录创建并回读两个文件，执行 SHA 绑定两文件事务并回读，再运行受控的打包 Python 打印唯一标记，共 5 PASS。命令行参数化复现工具为 `desktop/verification/installed_rc11_mcp.py`；证据 `.desktop-build/rc11-installed-mcp-diagnostic-cli.json`，验收文件保留在报告列出的唯一目录。未启动/停止服务或修改凭据。远程控制端最新轮询仍为 401，不能把这些本地调用标为 Tunnel/ChatGPT 通过。
