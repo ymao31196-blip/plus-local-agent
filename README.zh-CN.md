@@ -1,29 +1,36 @@
 # plus-local-agent
 
-## PLA Desktop V1 测试候选
-
-RC.11 保留多 root、完整 Provider 清单、热插拔和工具参数。组件与 MCP 插件入口合并为「本机组件」「仓库管理」「浏览组件」三个页签；本机组件统一展示安装与运行状态。独立「Skill 列表」包含所有已缓存条目与停用项，Skills 管理保留 17 项服务工作流。可选自开发模块已删除，常用六组件包不再包含 DOCX；既有源码目录、授权工作区及单独 DOCX 安装保留。参阅 [RC.11 验收记录](docs/desktop-v1-rc11-acceptance.md)。
-
-Windows 桌面候选安装包在本地构建输出 `dist/desktop-v1` 中。安装包包含 Runtime、Python
-执行组件和官方 Tunnel 客户端；普通用户无需安装 Python、Node 或 Rust，也无需运行开发脚本。
-首次图形配置向导会初始化独立用户数据目录、使用 Windows DPAPI 加密保存 runtime API key、
-管理工作区读写执行权限，并进行真实本地 MCP 诊断调用。用户需配置自己的 Tunnel，并在
-ChatGPT 侧完成账户授权和端到端验收。浏览器组件默认关闭，可在界面启用；此候选未包含
-Office 与 Skills 的独立外部环境，可在 MCP 页预览计划后独立安装。Skill Library 需选择用户自己的 v0.5.0 源码或 wheel，目前未确立再分发许可。先设置 Skill 专用 root、启用 Provider，再在 Skills 管理中添加并同步来源，列表即可展示缓存目录；不会自动导入私人 Skill。
-
-当前为**未签名测试候选**，自动更新已禁用，尚不能宣称已经满足正式可信分发或完整人工验收。
-参阅[最终验收手册](docs/desktop-v1-acceptance.md)、[架构及权限边界](docs/desktop-v1-architecture.md)
-和[实施证据](docs/desktop-v1-progress.md)。下文原有源码与无界面安装方式继续支持。
-
 **ChatGPT是界面；PLA是运行时。**
 
-[English](README.md) | **简体中文**
+PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows电脑，包括本地文件、程序、浏览器、桌面软件和按需安装的MCP组件。ChatGPT负责理解任务和决定工具调用，PLA负责在授权范围内执行。只要目标电脑运行PLA和Secure MCP Tunnel，你也能在手机等其他设备上使用ChatGPT操控它。
 
-plus-local-agent（PLA）为ChatGPT提供一个运行在你自己Windows电脑上的受控本地执行环境。ChatGPT继续承担推理、规划与编排；PLA负责经过审查的本地能力，包括文件、进程、Git、Python、浏览器自动化、Windows UI自动化、文档、应用管理、Artifact以及其他MCP Provider。
+**发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
 
-ChatGPT客户端不需要与PLA运行在同一台电脑上。只要Secure MCP Tunnel保持连接，你可以从手机、网页端或桌面端与ChatGPT对话，而实际本地执行发生在目标Windows电脑上的PLA中。
+[**下载Windows桌面版（GitHub Releases）**](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装](#源码安装进阶)
 
-## 快速开始
+## PLA Desktop：推荐普通用户使用
+
+适用于Windows 10/11 x64。桌面安装包已包含PLA Runtime、受控Python执行环境和Tunnel客户端，**普通用户不需要下载GitHub源码，也不需要自己安装Python、Node.js或Rust**。若电脑缺少Microsoft WebView2，首次安装可能需要联网获取该组件。
+
+1. 打开[GitHub Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)，选择最新的**PLA Desktop Pre-release**，下载Windows x64安装包和同一版本的`SHA256SUMS.txt`。
+2. 核对安装包SHA-256与Release提供的校验值是否一致。由于尚未购买代码签名证书，Windows可能提示**未知发布者或SmartScreen警告**。先确认文件来自正确的GitHub仓库且校验一致，不建议关闭系统整体安全防护。
+3. 运行安装包，打开**PLA Desktop**。跟随首次配置向导设置这台电脑专属的Secure MCP Tunnel ID和runtime API key；明确添加需要授权的工作区目录，按需选择读取、写入和受控执行权限。
+4. 启动Runtime和Tunnel，通过界面的真实本地MCP诊断；随后在ChatGPT中连接对应Tunnel，并尝试读取授权测试文件。**本地诊断通过不等于ChatGPT远端连接已经通过**。
+5. 浏览器、Office、Skill Library和其他MCP组件按需启用。Skill Library目前要求用户自行提供符合版本要求的安装包或源码，因为其再分发许可尚未确认；私人Skill和目录不会自动导入。
+
+更详细的安装/连接步骤见[桌面版验收与使用说明](docs/desktop-v1-acceptance.md)，权限、凭据保存和进程管理见[架构及安全边界](docs/desktop-v1-architecture.md)。
+
+### 关于预发布版本
+
+- **手动升级**：完全退出桌面程序，再安装新版本；建议保留上一版安装包。当前不承诺自动回滚。
+- **未签名**：SHA-256可帮助检查下载文件是否与Release提供的校验值一致，但无法证明发布者身份。
+- **权限限制**：工作区授权、程序允许清单和确认机制能约束PLA工具行为，但它不是操作系统沙箱；经允许启动的程序仍拥有当前Windows账户的权限。启用第三方MCP和Skill前应审查来源。
+- **配置保留**：Tunnel密钥使用Windows DPAPI加密保存在当前账户的数据目录。升级和卸载通常保留独立用户数据与授权工作区文件；仍建议定期备份重要配置。
+- **按需维护**：预发布版本可能存在尚未验证的边界情况；可选功能需要独立依赖时，界面会显示相应状态。每个版本以Release说明为准。
+
+## 源码安装（进阶）
+
+下面是原有源码版/无界面版的安装方式，适合希望自行部署或开发PLA的用户。**桌面版不需要执行以下命令。**
 
 ### 环境要求
 

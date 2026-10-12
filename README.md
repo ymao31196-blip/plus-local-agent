@@ -2,37 +2,35 @@
 
 **ChatGPT is the interface; PLA is the runtime.**
 
-plus-local-agent (PLA) gives ChatGPT a controlled execution environment on your own Windows PC.
-ChatGPT remains the reasoning and orchestration layer; PLA provides reviewed local capabilities for
-files, processes, Git, Python, browser automation, Windows UI automation, documents, application
-management, artifacts, and other MCP providers.
+PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop applications and optional MCP providers on your own Windows PC, within explicitly configured permissions. ChatGPT handles reasoning and tool selection; PLA runs the local tools. The ChatGPT app can be on another device, including your phone, while the Windows PC runs PLA through Secure MCP Tunnel.
 
-The ChatGPT client does not need to run on the same computer as PLA. With the Secure MCP Tunnel
-running, you can talk to ChatGPT from mobile, web, or desktop while PLA executes on the target PC.
+**Release channel: Pre-release / experimental.** PLA Desktop is distributed as an unsigned Windows installer, with manual updates and no automatic updater. It is not a security sandbox or a commercially supported product.
 
-**Language:** English | [简体中文](README.zh-CN.md)
+[**Download PLA Desktop for Windows (GitHub Releases)**](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Source installation](#source-installation-advanced)
 
-**Installation:** [English](#quick-start) | [中文安装指南](#中文安装指南)
+## PLA Desktop — recommended for most users
 
-## Quick start
+The Windows 10/11 x64 installer bundles the PLA Runtime, a controlled Python execution interpreter and the Tunnel client. **You do not need to clone the repository or install Python, Node.js or Rust** to use the desktop app. An internet connection may be needed to install the Microsoft WebView2 prerequisite.
 
-### PLA Desktop V1 test candidate
+1. Open [GitHub Releases](https://github.com/ymao31196-blip/plus-local-agent/releases), select the newest **PLA Desktop Pre-release**, and download the Windows x64 setup EXE and its accompanying `SHA256SUMS.txt`.
+2. Verify the installer SHA-256 against the checksum published in that same release. The installer is unsigned, so Windows may show an **Unknown publisher / SmartScreen** warning. Confirm the download source and checksum; do not disable system-wide security protections.
+3. Install and open **PLA Desktop**. In the first-run wizard, configure a device-specific Secure MCP Tunnel ID and runtime API key, then explicitly authorize only the local workspace folders and read/write/execute permissions you need.
+4. Start the Runtime and Tunnel, run the app's local MCP diagnostic, and connect the corresponding Tunnel in ChatGPT. **Local readiness alone does not prove remote ChatGPT access**; verify by asking ChatGPT to read a test file in an authorized workspace.
+5. Add optional MCP components, browser automation, Office tools or Skill sources only as needed. The Skill Library currently requires your own matching package because redistribution rights have not been established; no private Skills or directories are imported automatically.
 
-RC.11 retains multiple named workspace roots, the full Provider catalog, hot enable/disable/reload and complete tool schemas. The unified component entry has three tabs: local components, repositories and marketplace. Local cards combine installation versions and live connection controls. Skill List includes cached disabled entries; Skills Management retains all 17 workflows. Optional self-development is removed and DOCX is excluded from the six-component starter bundle; existing directories, workspace grants and separate DOCX installations are preserved. See [RC.11 acceptance](docs/desktop-v1-rc11-acceptance.md).
+For a full walkthrough, consult the [desktop acceptance and setup guide](docs/desktop-v1-acceptance.md). For details of process ownership, stored credentials and limitations, see the [architecture and security boundaries](docs/desktop-v1-architecture.md).
 
-For the Windows desktop candidate, use the locally built NSIS installer in
-`dist/desktop-v1`. It bundles the Runtime, Python execution interpreter and official
-Tunnel client. Users do not need to install Python, Node or Rust. The GUI wizard
-initializes private user data, saves a Windows DPAPI-protected runtime key, manages
-workspace permissions, and performs a real local MCP diagnostic call. Configure your
-own Tunnel and complete ChatGPT authorization separately. Browser support is opt-in;
-Office and Skills use independent optional environments installed through reviewed plans in the MCP page. Skill Library requires the user's own v0.5.0 source or wheel because redistribution permission is not established. Select Skill-specific roots, enable its Provider, then add and synchronize sources in Skills Management to populate the list. No personal Skills are imported automatically.
+### What to expect from a Pre-release
 
-This is an **unsigned test candidate**, not a publicly approved stable release.
-Automatic updates are disabled. See the [desktop acceptance handbook](docs/desktop-v1-acceptance.md),
-[architecture and boundaries](docs/desktop-v1-architecture.md), and
-[implementation evidence](docs/desktop-v1-progress.md). The source installation below
-remains supported.
+- **Manual updates:** close PLA Desktop before installing a newer release; keep a copy of the previous installer if you need to roll back. The app does not promise automatic rollback.
+- **Unsigned builds:** SHA-256 detects a changed download relative to the published checksum; it does not identify a legally verified software publisher.
+- **Permission boundaries:** workspace roots, allowlists and confirmation policies restrict PLA operations, but they do not provide an operating-system sandbox. Authorized processes run with your Windows account's privileges. Review external MCP providers and Skills before use.
+- **User-controlled configuration:** Tunnel credentials are stored using Windows DPAPI under your account; external Tunnel/account authorization is still required. Upgrading or uninstalling the app normally preserves its separate user data and authorized workspace files.
+- **Testing:** each Pre-release is a development snapshot. Some optional features require separate dependencies and may be unavailable until installed. See the release notes for version-specific evidence and limitations.
+
+## Source installation (advanced)
+
+The instructions below are for developers or users who prefer the original source/headless setup. Unlike PLA Desktop, this route requires development prerequisites.
 
 ### Requirements
 
