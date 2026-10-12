@@ -77,12 +77,52 @@ class Manager:
         self._installer_locks[role] = ownership
         return process
 
+    def _reconcile_skill_permissions(self):
+        """Revoke stale Skill grants when a workspace root is removed or restricted.
+
+        Never infer replacement roots from matching paths: re-authorization is
+        always an explicit user decision. Preserve malformed files for review.
+        """
+        path = self.components.root / "config/skill-library.desktop.json"
+        if not path.is_file():
+            return {"revoked_read": [], "revoked_write": []}
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(value, dict)
+                or set(value) != {"local_roots", "writable_roots"}
+                or any(not isinstance(value[key], list)
+                       or any(not isinstance(item, str) or not item
+                              for item in value[key])
+                       for key in ("local_roots", "writable_roots"))):
+            raise ValueError("Invalid desktop Skill permissions; file preserved")
+        roots = workspace_registry_status(self.config.workspace_path, self.resources)["roots"]
+        roots["workspace"] = {"path": str(self.config.root / "workspace"),
+                              "read": True, "write": True, "execute": True}
+        readable = {name for name, root in roots.items() if root.get("read") is True}
+        writable = {name for name, root in roots.items()
+                    if root.get("read") is True and root.get("write") is True}
+        old_read, old_write = set(value["local_roots"]), set(value["writable_roots"])
+        new_read = old_read & readable
+        new_write = old_write & new_read & writable
+        revoked_read = sorted(old_read - new_read)
+        revoked_write = sorted(old_write - new_write)
+        if revoked_read or revoked_write:
+            atomic_write(path, json.dumps({
+                "local_roots": sorted(new_read),
+                "writable_roots": sorted(new_write),
+            }).encode("utf-8"))
+            self._record("Revoked stale Skill Library workspace grants: "
+                         f"read={revoked_read}, write={revoked_write}. "
+                         "No new grants were added.")
+        return {"revoked_read": revoked_read, "revoked_write": revoked_write}
+
     def _environment(self):
         # Never inherit developer provider/Tunnel overrides or unrelated credentials.
         env = {k: v for k, v in os.environ.items() if not k.startswith(("PLA_", "AGENT_", "CONTROL_PLANE_", "CLOUDFLARED_", "MCP_", "SKILL_LIBRARY_"))
                and k not in {"OPENAI_API_KEY", "PYTHONPATH", "PYTHONHOME"}}
         root = self.config.root
         self.components.stage(self.config.value["browser_port"])
+        # The provider rejects removed workspace names during startup.
+        self._reconcile_skill_permissions()
         selected = set(self.components.preferences()["enabled"])
         if self.config.value["browser_enabled"]:
             selected.add("browser")
@@ -516,6 +556,7 @@ class Manager:
                         records.append(path.stem)
             return {'jobs': jobs, 'installed_receipts': records}
         if command == 'skill_permissions':
+            reconciliation = self._reconcile_skill_permissions()
             path = self.components.root / 'config/skill-library.desktop.json'
             roots = workspace_registry_status(self.config.workspace_path, self.resources)['roots']
             roots['workspace'] = {'path': str(self.config.root / 'workspace'), 'read': True, 'write': True, 'execute': True}
@@ -533,7 +574,8 @@ class Manager:
                         raise ValueError('Disable Skill Library before changing its permissions')
                 atomic_write(path, json.dumps({'local_roots': sorted(set(read)), 'writable_roots': sorted(set(write))}).encode())
             value = json.loads(path.read_text()) if path.exists() else {'local_roots': [], 'writable_roots': []}
-            return {**value, 'available_roots': roots}
+            return {**value, 'available_roots': roots,
+                    'revoked_stale_roots': reconciliation}
         # Component repository management
         if command == 'repository_list':
             if args:
@@ -659,8 +701,12 @@ class Manager:
                     raise ValueError("Select an existing directory")
                 if target == self.config.root or target in self.config.root.parents or self.config.root in target.parents:
                     raise ValueError("Workspace must not overlap private application data")
-                return workspace_registry_upsert(self.config.workspace_path, self.resources, **fields)
-            return workspace_registry_remove(self.config.workspace_path, self.resources, **args)
+                result = workspace_registry_upsert(self.config.workspace_path, self.resources, **fields)
+            else:
+                result = workspace_registry_remove(self.config.workspace_path, self.resources, **args)
+            # Workspace removal or narrowing also revokes its Skill permissions.
+            self._reconcile_skill_permissions()
+            return result
         if command == "verify":
             if not self._alive("runtime"):
                 raise ValueError("Runtime is stopped")
