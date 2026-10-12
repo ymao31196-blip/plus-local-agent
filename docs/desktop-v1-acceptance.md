@@ -4,7 +4,7 @@ This handbook separates local packaged checks from the required clean Windows an
 
 ## 安装与首次使用
 
-1. 从最终交付目录取得 `PLA Desktop_1.0.0-rc.11_x64-setup.exe` 与 `SHA256SUMS.txt`，核对安装包 SHA-256。它是未签名测试候选，不是已签名正式发行。
+1. 从[GitHub PLA Desktop RC.13预发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13)下载Windows x64的`PLA.Desktop_1.0.0-rc.13_x64-setup.exe`与`SHA256SUMS.txt`，核对安装包SHA-256。桌面用户无需下载源码；它是未签名预发布版本。
 2. 双击安装包，以当前用户安装。无需安装 Python、Node 或 Rust。若系统没有 WebView2，安装器使用内置 Microsoft bootstrapper 联网安装；应确保可以连接 Microsoft。
 3. 打开 PLA Desktop。首次启动进入「首次配置与连接」。用户数据默认位于 `%LOCALAPPDATA%\io.pla.desktop`。
    如有既有源码安装，可填写其目录并检查布局。该操作仅报告文件是否存在，不读取或导入凭据，也不接管现有服务。
@@ -26,7 +26,7 @@ Skill Library 是可选独立组件。当前未确立其再分发许可，需在
 
 原管理页保留搜索、资源阅读、验证、草稿准备/应用、改名、归档/恢复、发布方案和仓库转移等 17 项服务工作流。应用类操作须先审阅原服务的预览，再确认 ID 与版本 hash。发布准备不会自动创建远程仓库或 push。Skill 内容不能授予工作区或工具权限。
 
-## RC.11 组件入口
+## 桌面版组件入口
 
 「本机组件」统一展示安装版本、启停、真实连接状态、完整工具参数、仓库安装完整性检查及卸载；仓库管理和浏览组件仍独立为页签。常用组件包含 Computer、PDF、MarkItDown、Office Enhancement、Windows Management、Software Migration 六项；DOCX 可单独安装。可选自开发模块已移除，已有源码目录和工作区授权保留。
 
@@ -81,4 +81,4 @@ For this host's GNU toolchain, prepend its compiler directory and `%USERPROFILE%
 
 ## Known external dependencies
 
-Tunnel account/organization access, runtime credentials and ChatGPT authorization are personal/account operations. They cannot be automatically supplied by the app. Office and Skills use reviewed independent optional installation plans. Skill Library requires the user's own matching package; its frozen independent installation and real service workflows passed, while Office artifact-tool remains unavailable without an independent dependency. Windows Authenticode and Tauri updater signatures are separate; neither is configured. A trusted public release additionally needs the owner's distribution/license decision, a certificate/signing route, and all P0 acceptance evidence. Current RC.11 evidence and remaining gates are recorded in [the candidate acceptance ledger](desktop-v1-rc11-acceptance.md). Older candidate passes do not qualify the new installation.
+Tunnel account/organization access, runtime credentials and ChatGPT authorization are personal/account operations. They cannot be automatically supplied by the app. Office and Skills use reviewed independent optional installation plans. Skill Library requires the user's own matching package; its frozen independent installation and real service workflows passed, while Office artifact-tool remains unavailable without an independent dependency. Windows Authenticode and Tauri updater signatures are separate; neither is configured. A trusted public release additionally needs the owner's distribution/license decision, a certificate/signing route, and all P0 acceptance evidence. Historical RC.11 evidence is retained in [the candidate acceptance ledger](desktop-v1-rc11-acceptance.md). It does not qualify later Pre-release installers.

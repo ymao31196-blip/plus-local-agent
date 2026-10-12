@@ -6,19 +6,51 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 **Release channel: Pre-release / experimental.** PLA Desktop is distributed as an unsigned Windows installer, with manual updates and no automatic updater. It is not a security sandbox or a commercially supported product.
 
-[**Download PLA Desktop for Windows (GitHub Releases)**](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Source installation](#source-installation-advanced)
+[**Download Windows installer — current RC.13**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
-## PLA Desktop — recommended for most users
+## PLA Desktop: download, install and connect
 
-The Windows 10/11 x64 installer bundles the PLA Runtime, a controlled Python execution interpreter and the Tunnel client. **You do not need to clone the repository or install Python, Node.js or Rust** to use the desktop app. An internet connection may be needed to install the Microsoft WebView2 prerequisite.
+**For Windows 10/11 x64.** The graphical installer bundles PLA Runtime, the minimal Python execution environment and the official Secure MCP Tunnel client. **Normal desktop users do not need Git, a source checkout, Python, Node.js or Rust.** Those prerequisites belong to source/developer installation below.
 
-1. Open [GitHub Releases](https://github.com/ymao31196-blip/plus-local-agent/releases), select the newest **PLA Desktop Pre-release**, and download the Windows x64 setup EXE and its accompanying `SHA256SUMS.txt`.
-2. Verify the installer SHA-256 against the checksum published in that same release. The installer is unsigned, so Windows may show an **Unknown publisher / SmartScreen** warning. Confirm the download source and checksum; do not disable system-wide security protections.
-3. Install and open **PLA Desktop**. In the first-run wizard, configure a device-specific Secure MCP Tunnel ID and runtime API key, then explicitly authorize only the local workspace folders and read/write/execute permissions you need.
-4. Start the Runtime and Tunnel, run the app's local MCP diagnostic, and connect the corresponding Tunnel in ChatGPT. **Local readiness alone does not prove remote ChatGPT access**; verify by asking ChatGPT to read a test file in an authorized workspace.
-5. Add optional MCP components, browser automation, Office tools or Skill sources only as needed. The Skill Library currently requires your own matching package because redistribution rights have not been established; no private Skills or directories are imported automatically.
+### 1. Download the correct file
 
-For a full walkthrough, consult the [desktop acceptance and setup guide](docs/desktop-v1-acceptance.md). For details of process ownership, stored credentials and limitations, see the [architecture and security boundaries](docs/desktop-v1-architecture.md).
+1. Go to [PLA Desktop RC.13 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
+2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.13 asset: [`PLA.Desktop_1.0.0-rc.13_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.13/PLA.Desktop_1.0.0-rc.13_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.13/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+3. Open PowerShell, run the command below (change the filename if using another version), and compare the resulting hash with the *hash* inside `SHA256SUMS.txt`. GitHub may replace spaces in uploaded asset names with dots; compare the hash, not only the filename.
+
+~~~powershell
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.13_x64-setup.exe"
+~~~
+
+For RC.13 the expected SHA-256 is `4f884bcd2e1bea483a1508a1d7dfed3b5a958648fcb12b9cbda703bbe0e00763`. Do not run an unexpected or mismatching installer.
+
+### 2. Install and open PLA
+
+Double-click the EXE, follow the installer, then launch **PLA Desktop** from the Start menu. Installation is per-user; administrator elevation is not expected. If Microsoft WebView2 is missing, the bootstrapper needs Internet access. This build is **unsigned**: Windows may display an “Unknown publisher” / SmartScreen warning. Check the source and SHA-256 before deciding whether to continue; do not disable system-wide protection.
+
+### 3. Prepare your own Secure MCP Tunnel credentials
+
+Open [OpenAI Tunnel management](https://platform.openai.com/settings/organization/tunnels) using the intended organization/project, create or select a Tunnel for **this PC**, and copy its `tunnel_...` ID. At [API Keys](https://platform.openai.com/api-keys), create a dedicated **secret runtime API key** with appropriate Tunnel access. Tunnel management requires *Tunnels Read + Manage*; running the client requires *Tunnels Read + Use*. If these permissions are absent, ask the organization administrator. Never use an organization-admin key, share a key between unrelated computers, or paste it into a public issue.
+
+The packaged desktop already includes `tunnel-client.exe`: **do not download a separate Tunnel client or make a `control-plane-api-key.txt` file for this desktop workflow.** Those steps apply only to the source installation below. See the [official Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
+
+### 4. Configure the PLA Desktop GUI
+
+1. In **首次配置 (First setup)**, leave the default Runtime/Tunnel health ports unless there is a conflict. Enter the **Tunnel ID** and **Runtime API Key** and click **保存连接配置 (Save connection)**. The key is stored under your Windows account using DPAPI, not in the project repository.
+2. Open **工作区 (Workspaces)**, give one folder a unique **Root name** (for example `demo`) and its full local path (for example `D:\PLA-Test`). Grant **Read** first; select **Write** and **Controlled execution** only if actually needed. Click **添加 root**. To change workspace permissions later, stop Runtime first. Do **not** grant the entire `C:\` / `D:\` drive or private credentials directory.
+3. Return to **总览 (Overview)** or **首次配置**: click **启动 Runtime (Start Runtime)**, verify **MCP 已就绪**, then **运行验证 (Run verification)**. Next click **连接 Tunnel (Connect Tunnel)** and confirm the remote connection status. A local PASS is not yet proof of ChatGPT authorization.
+
+### 5. Connect ChatGPT and test the full path
+
+In ChatGPT's applicable **Apps / connectors / MCP** settings, add or authorize the connection associated with your Tunnel according to the [official guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). The precise menu and eligibility depend on the ChatGPT account. Do not confuse a Platform API key with authorization inside ChatGPT.
+
+With PLA and Tunnel running, ask ChatGPT to **list the files in your authorized `demo` folder**. If it succeeds, optionally test creating and reading a harmless file after granting Write. This is the real end-to-end test; a connected-looking status alone is insufficient. You can use ChatGPT on a different computer or phone while PLA continues to run on the Windows host.
+
+### Troubleshooting and optional tools
+
+If Runtime is not ready, check **日志诊断 (Logs/Diagnostics)** and local port conflicts. If the Tunnel does not connect, check the saved ID/key, organization permissions, network/proxy and then restart the connection. If ChatGPT cannot discover the tools, check its MCP authorization and run the test from a new conversation. For a clean exit, use the PLA system-tray **退出 (Exit)** action; closing the main window may leave the app running in the tray.
+
+For browser, Office, Skill Library or other MCP components, open **组件管理 → 本机组件**, review installation plans and then enable/verify each component separately. Skill Library requires a source/wheel you are authorized to use; no private Skills are imported automatically. The [detailed desktop handbook](docs/desktop-v1-acceptance.md) and [security boundaries](docs/desktop-v1-architecture.md) cover additional cases.
 
 ### What to expect from a Pre-release
 

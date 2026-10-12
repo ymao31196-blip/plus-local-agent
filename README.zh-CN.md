@@ -6,19 +6,61 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 **发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
 
-[**下载Windows桌面版（GitHub Releases）**](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装](#源码安装进阶)
+[**下载Windows安装包（当前RC.13）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
-## PLA Desktop：推荐普通用户使用
+## PLA Desktop：软件下载、安装与连接教程
 
-适用于Windows 10/11 x64。桌面安装包已包含PLA Runtime、受控Python执行环境和Tunnel客户端，**普通用户不需要下载GitHub源码，也不需要自己安装Python、Node.js或Rust**。若电脑缺少Microsoft WebView2，首次安装可能需要联网获取该组件。
+**适用于Windows 10/11 x64。** 桌面安装包已包含PLA Runtime、基础Python执行环境和Secure MCP Tunnel客户端。**普通用户无需下载GitHub源码，也无需提前安装Git、Python、Node.js或Rust**；这些是下方源码部署与开发方式才需要的依赖。
 
-1. 打开[GitHub Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)，选择最新的**PLA Desktop Pre-release**，下载Windows x64安装包和同一版本的`SHA256SUMS.txt`。
-2. 核对安装包SHA-256与Release提供的校验值是否一致。由于尚未购买代码签名证书，Windows可能提示**未知发布者或SmartScreen警告**。先确认文件来自正确的GitHub仓库且校验一致，不建议关闭系统整体安全防护。
-3. 运行安装包，打开**PLA Desktop**。跟随首次配置向导设置这台电脑专属的Secure MCP Tunnel ID和runtime API key；明确添加需要授权的工作区目录，按需选择读取、写入和受控执行权限。
-4. 启动Runtime和Tunnel，通过界面的真实本地MCP诊断；随后在ChatGPT中连接对应Tunnel，并尝试读取授权测试文件。**本地诊断通过不等于ChatGPT远端连接已经通过**。
-5. 浏览器、Office、Skill Library和其他MCP组件按需启用。Skill Library目前要求用户自行提供符合版本要求的安装包或源码，因为其再分发许可尚未确认；私人Skill和目录不会自动导入。
+### 第一步：正确下载安装包
 
-更详细的安装/连接步骤见[桌面版验收与使用说明](docs/desktop-v1-acceptance.md)，权限、凭据保存和进程管理见[架构及安全边界](docs/desktop-v1-architecture.md)。
+1. 打开[PLA Desktop RC.13发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
+2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.13对应[`PLA.Desktop_1.0.0-rc.13_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.13/PLA.Desktop_1.0.0-rc.13_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.13/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+3. 在PowerShell中运行以下命令（安装到其他下载目录或使用其他版本时请调整文件路径），把输出的`Hash`与`SHA256SUMS.txt`里的哈希值对照。GitHub上传后可能把原文件名中的空格替换成点，因此请核对哈希值，不只核对文件名。
+
+~~~powershell
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.13_x64-setup.exe"
+~~~
+
+RC.13的预期SHA-256为`4f884bcd2e1bea483a1508a1d7dfed3b5a958648fcb12b9cbda703bbe0e00763`。如不一致，请勿运行该文件。
+
+### 第二步：安装并启动软件
+
+双击下载的EXE，按照安装向导完成安装，再从Windows开始菜单打开**PLA Desktop**。采用当前用户安装，正常情况下不需要管理员权限。如果缺少Microsoft WebView2，安装器需要联网获取该组件。
+
+当前安装包**未进行代码签名**，Windows可能显示“未知发布者”或SmartScreen警告。请先核对GitHub下载来源及SHA-256，按自身安全判断决定是否继续，不建议关闭Windows整体安全防护。
+
+### 第三步：准备你自己的Tunnel账号信息
+
+进入[OpenAI Tunnel管理页面](https://platform.openai.com/settings/organization/tunnels)，选择正确的组织/项目，为**这台电脑**新建或选择Tunnel，复制形如`tunnel_...`的Tunnel ID。再进入[API Keys页面](https://platform.openai.com/api-keys)，创建具备所需权限的**专用Secret Runtime API Key**。创建/管理Tunnel需要`Tunnels Read + Manage`，运行Tunnel客户端需要`Tunnels Read + Use`；权限不足时需联系组织管理员。
+
+**桌面安装包已经包含Tunnel客户端，不需要另外下载`tunnel-client.exe`，也不需要手动创建`control-plane-api-key.txt`文件。** 那是下方源码安装方式的操作。不要使用Organization Admin Key，也不要在GitHub Issue、聊天截图或公开文件中暴露API Key。详见[Secure MCP Tunnel官方文档](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)。
+
+### 第四步：完成PLA Desktop首次配置
+
+1. 打开左侧**首次配置**。Runtime端口和Tunnel健康端口可以先保留默认值；填写**Tunnel ID**和**Runtime API Key**，点击**保存连接配置**。密钥由Windows DPAPI保存在当前用户的独立数据目录，不会写入项目源码。
+2. 打开左侧**工作区**，填写唯一的**Root名称**（如`demo`）和本机的**目录绝对路径**（如`D:\PLA-Test`），初次只勾选**读取**；确有需要再勾选**写入**和**受控执行**，点击**添加root**。变更授权前先停止Runtime。不要为了省事直接授权整个C盘、D盘或保存私人凭据的目录。
+3. 返回**总览**或**首次配置**，点击**启动Runtime**，确认状态显示**MCP已就绪**；点击**运行验证**，完成真实本地MCP调用检查；再点击**连接Tunnel**，等待远端连接成功。**本地验证通过不等于ChatGPT已经授权并能调用工具。**
+
+### 第五步：连接ChatGPT，完成真实验收
+
+按照[官方连接说明](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)，在ChatGPT账户可用的**应用/连接器/MCP连接设置**中添加或授权与此Tunnel对应的连接。具体菜单和可用性以账户界面与官方说明为准；Platform API Key和ChatGPT侧的授权是两个不同环节。
+
+保持电脑上的PLA Runtime与Tunnel运行，在ChatGPT中提出一个简单请求，例如：
+
+> 调用我的PLA，列出已授权的`demo`工作区中的文件。
+
+确认工具被真实调用且返回文件列表后，可以为这个测试目录开启写入权限，再试着新建并读取一份无关紧要的文本文件。完成这一步才算打通“ChatGPT→Tunnel→本机PLA”的实际链路。手机、网页端或其他设备上的ChatGPT也可以控制运行PLA的这台Windows电脑。
+
+### 常见问题与组件安装
+
+- **Runtime未就绪**：在**日志诊断**检查错误、端口占用和服务状态。
+- **Tunnel连接不上**：核对Tunnel ID、API Key、组织权限与网络代理，必要时停止后重启服务。
+- **ChatGPT发现不了PLA**：检查ChatGPT侧的MCP连接是否已授权、是否选中了正确的Tunnel，并在新对话里重新尝试。
+- **关闭窗口后服务仍在**：PLA可能仍在系统托盘中运行；需要彻底关闭时，在托盘菜单选择**退出**。
+- **需要浏览器、Office或Skills**：进入**组件管理→本机组件**，按需审查安装计划、安装依赖，再分别启用并检查连接。Skill Library需要你自行提供有权使用的源码或wheel，不会自动导入私人Skill。
+
+更多细节见[桌面安装与验收说明](docs/desktop-v1-acceptance.md)以及[架构和安全边界](docs/desktop-v1-architecture.md)。
 
 ### 关于预发布版本
 
