@@ -16,6 +16,10 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 1. Go to [PLA Desktop RC.16 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
 2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.16 asset: [`PLA.Desktop_1.0.0-rc.16_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/PLA.Desktop_1.0.0-rc.16_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+
+   ![Windows setup EXE and SHA256SUMS in GitHub Release Assets](docs/images/pla-desktop/01-release-assets.png)
+
+   *RC16 release assets: download the Windows installer and checksum, not the Source code archives.*
 3. Open PowerShell, run the command below (change the filename if using another version), and compare the resulting hash with the *hash* inside `SHA256SUMS.txt`. GitHub may replace spaces in uploaded asset names with dots; compare the hash, not only the filename.
 
 ~~~powershell
@@ -37,8 +41,20 @@ The packaged desktop already includes `tunnel-client.exe`: **do not download a s
 ### 4. Configure the PLA Desktop GUI
 
 1. In **首次配置 (First setup)**, leave the default Runtime/Tunnel health ports unless there is a conflict. Enter the **Tunnel ID** and **Runtime API Key** and click **保存连接配置 (Save connection)**. The key is stored under your Windows account using DPAPI, not in the project repository.
+
+   ![PLA Desktop first setup screen: Tunnel ID and runtime API key fields](docs/images/pla-desktop/02-first-setup.png)
+
+   *First setup screen (example data; no real Tunnel credentials are shown).*
 2. Open **工作区 (Workspaces)**, give one folder a unique **Root name** (for example `demo`) and its full local path (for example `D:\PLA-Test`). Grant **Read** first; select **Write** and **Controlled execution** only if actually needed. Click **添加 root**. To change workspace permissions later, stop Runtime first. Do **not** grant the entire `C:\` / `D:\` drive or private credentials directory.
+
+   ![PLA Desktop workspace screen with per-root read write and execution permissions](docs/images/pla-desktop/03-workspace-permissions.png)
+
+   *Workspace example: grant Read first, and add Write or Execute only when necessary.*
 3. Return to **总览 (Overview)** or **首次配置**: click **启动 Runtime (Start Runtime)**, verify **MCP 已就绪**, then **运行验证 (Run verification)**. Next click **连接 Tunnel (Connect Tunnel)** and confirm the remote connection status. A local PASS is not yet proof of ChatGPT authorization.
+
+   ![PLA Desktop Runtime and Tunnel connection status overview](docs/images/pla-desktop/04-runtime-and-tunnel.png)
+
+   *Illustrative connected state; verify your real connection by calling a PLA tool from ChatGPT.*
 
 ### 5. Connect ChatGPT and test the full path
 
@@ -50,7 +66,20 @@ With PLA and Tunnel running, ask ChatGPT to **list the files in your authorized 
 
 If Runtime is not ready, check **日志诊断 (Logs/Diagnostics)** and local port conflicts. If the Tunnel does not connect, check the saved ID/key, organization permissions, network/proxy and then restart the connection. If ChatGPT cannot discover the tools, check its MCP authorization and run the test from a new conversation. For a clean exit, use the PLA system-tray **退出 (Exit)** action; closing the main window may leave the app running in the tray.
 
-For browser, Office, Skill Library or other MCP components, open **组件管理 → 本机组件**, review installation plans and then enable/verify each component separately. New Desktop builds include a reviewed, SHA-256-checked Skill Library v0.5.0 Wheel; ordinary users need no server source checkout. Personal Skill Sources are never imported or authorized automatically. In the RC16 candidate, **Skill Library** is one simplified page for browsing, enabling/disabling, synchronizing and managing Sources; create/edit/publish Skills through ChatGPT using the existing governed MCP capabilities. The [detailed desktop handbook](docs/desktop-v1-acceptance.md) and [security boundaries](docs/desktop-v1-architecture.md) cover additional cases.
+For browser, Office, Skill Library or other MCP components, open **组件管理 → 本机组件**, review installation plans and then enable/verify each component separately. New Desktop builds include a reviewed, SHA-256-checked Skill Library v0.5.0 Wheel; ordinary users need no server source checkout. Personal Skill Sources are never imported or authorized automatically. In RC16, **Skill Library** is one simplified page for browsing, enabling/disabling, synchronizing and managing Sources; create/edit/publish Skills through ChatGPT using the existing governed MCP capabilities. The [detailed desktop handbook](docs/desktop-v1-acceptance.md) and [security boundaries](docs/desktop-v1-architecture.md) cover additional cases.
+
+<details>
+<summary>See component and Skill Library screenshots</summary>
+
+![PLA Desktop component management: Provider installation, enablement and connection](docs/images/pla-desktop/05-components.png)
+
+*Components must be enabled and connected after installation.*
+
+![PLA Desktop Skill Library: available and disabled Skills](docs/images/pla-desktop/06-skill-library.png)
+
+*Skill Library example data: browse, toggle and synchronize Skills; delegate authoring and publishing to ChatGPT.*
+
+</details>
 
 ### What to expect from a Pre-release
 
