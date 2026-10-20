@@ -13,6 +13,7 @@ UI = ROOT / "desktop/ui"
 HTML = (UI / "index.html").read_text(encoding="utf-8")
 APP = (UI / "app.js").read_text(encoding="utf-8")
 COMP = (UI / "components.js").read_text(encoding="utf-8")
+SKILL_UI = (UI / "skill-library-page.js").read_text(encoding="utf-8")
 NATIVE = (ROOT / "desktop/verification/native-ui.cjs").read_text(encoding="utf-8")
 
 
@@ -47,7 +48,7 @@ def test_live_assets_exist_and_are_not_untracked_v2_duplicates():
     p.feed(HTML)
     assert not [name for name, count in Counter(p.ids).items() if count > 1]
     assert set(p.assets) == {"style.css", "provider-cards.css", "component-manager.css",
-                             "app.js", "components.js", "component-manager.js"}
+                             "app.js", "components.js", "component-manager.js", "skill-library-page.js"}
     assert all((UI / asset).is_file() for asset in p.assets)
     assert not [f for f in UI.glob("*-old.*") if f.is_file()]
     assert not [f for f in UI.glob("*-v2.*") if f.is_file()]
@@ -71,7 +72,7 @@ def test_native_runtime_badges_and_service_controls_really_exist():
 def test_all_top_level_dom_bindings_resolve_or_are_created_before_access():
     p = Elements()
     p.feed(HTML)
-    refs = set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", APP + COMP))
+    refs = set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", APP + COMP + SKILL_UI))
     absent = refs - set(p.ids)
     # These two are created at startup as part of the optional legacy detector.
     assert absent == {"legacy-root", "detect-legacy"} or not absent

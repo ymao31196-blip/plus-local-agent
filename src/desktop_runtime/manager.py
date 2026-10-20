@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import deque
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ from desktop_runtime.components import ComponentProject
 from desktop_runtime.capability_bridge import checked_provider_action, checked_skill_action
 from host.workspace_manager import workspace_registry_status, workspace_registry_upsert, workspace_registry_remove
 from runtime.runtime_context import terminate_owned_process_tree
+from runtime.activity_runtime import recent_activity
 
 
 class Manager:
@@ -36,6 +38,7 @@ class Manager:
         self.logs = deque(maxlen=500)
         self.log_lock = Lock()
         self.local_verified = False
+        self.runtime_started_at = None  # This manager's current owned Runtime session.
         self.last_error = ""
         self._secret = ""
         self.readers = {}
@@ -196,7 +199,11 @@ class Manager:
         if self.config.value["browser_enabled"] and not self._alive("browser"):
             self._free_port(self.config.value["browser_port"])
             self._spawn("browser", self._command("browser"), self._environment())
+        # Record a session boundary *before* spawning: older SQLite events cannot
+        # certify a newly launched Runtime, and an exited Runtime never counts.
+        started_at = datetime.now(timezone.utc).isoformat()
         process = self._spawn("runtime", self._command("runtime") + ["--http", "--host", "127.0.0.1", "--port", str(port)], self._environment())
+        self.runtime_started_at = started_at
         deadline = time.monotonic() + 35
         while process.poll() is None and time.monotonic() < deadline:
             try:
@@ -242,6 +249,7 @@ class Manager:
             ownership.release()
         self._installer_locks.clear()
         self.local_verified = False
+        self.runtime_started_at = None
         self._secret = ""
         return self.config.public()
 
@@ -350,6 +358,13 @@ class Manager:
             raise ValueError("Arguments must be an object")
         if command == "status":
             return self.status()
+        if command == "activity_recent":
+            if args:
+                raise ValueError("Recent activity takes no arguments")
+            activity = recent_activity(self.config.root / "state" / "events.sqlite3", limit=5)
+            alive = self._alive("runtime")
+            return {**activity, "runtime_alive": alive,
+                    "runtime_started_at": self.runtime_started_at if alive else None}
         if command == "provider_catalog":
             if args:
                 raise ValueError("Provider catalog takes no arguments")

@@ -1,37 +1,27 @@
-# PLA Desktop 1.0.0-rc.11 — unsigned local test candidate
+# PLA Desktop v1.0.0-rc.16（Windows x64 预发布）
 
-RC.11 merges repository components and existing MCP Provider controls into one **组件与 MCP 插件** entry with three tabs: 本机组件、仓库管理、浏览组件. Existing live status, enable/disable/reload, manifest editing, tool allowlists and complete capability schemas remain available. Skill List, Skills Management and multiple workspace roots remain supported. The optional self-development UI, RPCs and bundled source snapshot are removed at the user’s request. Existing source directories and workspace grants are preserved. DOCX is excluded from the six-component starter bundle and remains available separately.
+RC16 将 Skill 列表和 Skills 管理合并为一个轻量化 **Skill Library** 界面。安装后请先在「组件与 MCP 插件」安装并连接 Skill Library，再添加自己的来源。
 
-Repository installation now uses the private management RPC allowlist, complete verified package snapshots, SHA-256-bound review and confirmation, and a fixed owned background worker. Confirmed requests return a job promptly rather than blocking the native management bridge for dependency installation. Python and Node dependencies use isolated version directories. Installation never auto-enables a provider.
+## 本次更新
 
-Upgrades preserve previous-version ownership. Uninstall rejects modified registered files, preserves unrelated files, verifies ownership and stages reversible changes before committing state. Explicit Provider disable/reload/removal now closes the owned stdio transport even without a persistent Client, releasing Windows interpreter locks.
+- **统一管理界面**：直接查看缓存 Skill 列表与正文，按来源、名称和启停状态筛选，支持单项启用/停用、同步及仅刷新缓存。
+- **本地与 GitHub 来源**：「管理来源与权限」提供来源添加、自动生成 ID、重复来源识别、同步、整体启停与移除登记。移除登记清理缓存和单项状态，保留原始文件与远端仓库。
+- **授权与同步状态**：读取、写入分别授权；默认不导入个人 Skill、不自动授予本地访问权限。同步失败明确提示沿用旧缓存，停用来源不显示为同步成功。权限调整需停用并重新连接 Provider；工作区移除或缩减权限继续撤销失效 Skill 授权。
+- **智能体负责创作**：GUI 聚焦浏览、启停、同步和来源管理。Skill 创建、编辑、删除、恢复、发布与转移继续由 ChatGPT 智能体通过原有 17 项 MCP 能力完成，保留计划预览、SHA-256、确认和受控目录边界。
+- **服务安装**：包含固定 SHA-256 的 Skill Library v0.5.0 服务 Wheel，普通用户无需下载服务端源码。安装不自动启用；修复/升级在新环境校验后替换，失败恢复旧环境，来源与权限数据单独保留。构建使用临时源码快照，不修改独立 Skill Library 仓库。
+- **状态反馈**：增加仅含工具元数据的近期活动，修正旧会话活动误判当前调用验证的问题；通知固定显示、可关闭并自动隐藏。
 
-Actual source-mode Python and Node repository install/Broker-call/uninstall checks passed in fresh private Temp directories. Python upgrade/reconnect and enabled-uninstall rejection also passed. Browser navigation tests passed for three tabs and merged repository integrity/uninstall controls, preserved manifest drafts and original controls. Full source regression and historical RC.10 frozen, native UI and NSIS acceptance are recorded in [the repair status](component_management_repair_status.md); pending checks are not inferred from earlier releases.
+## 安装与校验
 
-Limitations: only local file and HTTPS repository URLs are supported; Git sources and signed indexes are not implemented. Checksums bind reviewed content but do not authenticate a publisher. Dependency isolation is not an OS sandbox. Exact PyPI/npm dependency pins are required; npm lifecycle scripts and repository executable hooks are disabled. File health checks are installation-integrity checks; actual connection status is read from Runtime.
+下载 Assets 中的 Windows x64 `setup.exe`、`SHA256SUMS.txt` 和 `build-manifest.json`。请勿将 GitHub 自动生成的 Source code 压缩包当作安装包。运行安装程序前，用 PowerShell `Get-FileHash -Algorithm SHA256 -LiteralPath <安装包路径>` 核对校验文件。构建清单记录本次版本、源码提交和 `source_dirty=false`。
 
-This is an unsigned local test candidate with automatic updates disabled. Existing data and credentials are retained on upgrade/uninstall. Clean Windows10/11, OS reboot, public signing and distribution require separate evidence; no public push or Release is authorized. Skill Library still requires the user's matching source/wheel because redistribution permission is not established.
+安装包未签名，自动更新关闭；建议先在测试环境验证，再手动升级。升级与卸载保留用户数据和凭据。
 
-The user will reinstall the application; no RC.11 installation is performed automatically.
+## 当前限制与已知问题
 
-Expected installer: `PLA Desktop_1.0.0-rc.11_x64-setup.exe`. Actual SHA-256 and source revision are emitted into SHA256SUMS.txt and build-manifest.json beside the built installer. See the final validation record for the actual result.
-
-## Historical RC.5 notes
-
-# PLA Desktop 1.0.0-rc.5 — unsigned local test candidate
-
-RC.5 exposes the complete live capability catalog through the existing capability_invoke wrapper as runtime.capability_catalog. Clients which do not expose the additional standalone wrapper can still retrieve full schemas and availability without the 100-item search bound. This read-only path preserves the original Broker and policy checks.
-
-The license packager now preserves British LICENCE names and nested notices, supplements known omitted wheel/crate texts from version-specific reviewed hash-bound assets, checks required target dependency evidence, and includes the five MPL dependencies' original checksum-verified Cargo source archives. Delivery notices are refreshed from the actual build.
-
-RC.4 introduced full Provider management/import/configuration/hot-plug, independent optional component installation, the separate cached Skill List alongside 17 Skills Management workflows, and opt-in source self-development. RC.3's multi-root add/edit fix is retained. No separate agent engine is added.
-
-844 source tests passed on the RC.5 code. A real license audit preserved texts for77 Python distributions and229 normal/build Cargo dependencies required by the Windows GNU target, plus5 MPL source archives with valid lock-file checksums. RC.5 packaged/install/ChatGPT verification is recorded separately as it executes; older RC.4 passes are historical evidence, not automatically substituted.
-
-RC.4 actual ChatGPT Provider-directory/file/process/transaction acceptance passed, along with its frozen MCP, Skill service, authenticated network-loss/recovery and native Skill List checks. See [the RC.4 record](desktop-v1-rc4-followup.md).
-
-This release is not fully qualified. Clean Windows10/11, actual OS reboot and complete tray-menu acceptance remain open. Skill Library lacks established redistribution permission and requires the user's own matching v0.5.0 source or wheel. Optional missing dependencies, including Office artifact-tool, remain explicitly unavailable. No developer environments or personal Skills are imported.
-
-The installer is unsigned; automatic updates are disabled. Windows Authenticode and Tauri updater signing are separate and unconfigured. Manual upgrade retains user data and requires verifying source and SHA-256 before running the reviewed installer. No public push, Release or hosting is performed.
-
-Installer: `PLA Desktop_1.0.0-rc.5_x64-setup.exe`. The authoritative SHA-256 and exact source commit are emitted into `SHA256SUMS.txt` and `build-manifest.json` alongside the installer; the final build result is recorded in its verification report. Earlier candidate packages and evidence remain separate.
+- 这是 Windows x64 **Pre-release**，并非正式稳定版。未完成全新 Windows 10/11、真实系统重启及完整托盘场景的本轮验收。
+- GUI 的来源同步状态只保留本次 WebView 会话；跨重启的历史同步时间尚未提供。GitHub 来源需网络和对应仓库访问权限，私有仓库不会自动获得授权。
+- 本地来源必须位于明确登记且授权的工作区；写入需独立授权。变更权限前停用 Skill Library，保存后重新连接。
+- Skill 是建议性工作流，不能扩张 PLA 权限或自动执行其中脚本。Python 依赖环境隔离不等同于操作系统沙箱；哈希校验不等同于发布者身份认证。
+- 创建 GitHub 仓库、提交和推送仍经受控 Git/GitHub 能力单独执行，Skill 发布准备或复制不会自动推送。
+- 可选组件的安装与可用性依赖各自环境。历史版本通过的安装、Tunnel 和远程 ChatGPT 验证不替代 RC16 本轮证据；本轮结果参见 [RC16 验收记录](desktop-v1-rc16-validation.md)。

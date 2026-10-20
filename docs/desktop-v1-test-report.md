@@ -1,5 +1,7 @@
 # PLA Desktop V1 acceptance report — 2026-10-09
 
+RC16 当前发布验收见 [RC16 验收记录](desktop-v1-rc16-validation.md)。以下为历史证据，不代表 RC16 本轮安装、系统重启或远程 ChatGPT 验收。
+
 This report records the RC.1 baseline. Current RC.11 requirements and artifact-specific evidence are in [the candidate acceptance ledger](desktop-v1-rc11-acceptance.md). Current RC.4 Provider, Skill List, independent installation and installed GUI evidence is in [the RC.4 follow-up](desktop-v1-rc4-followup.md). The latest RC.3 multi-root fix and actual installed GUI verification are recorded in [the RC.3 follow-up](desktop-v1-rc3-followup.md). Earlier real ChatGPT evidence is recorded in [the RC.2 follow-up](desktop-v1-rc2-followup.md). Real ChatGPT file/process/transaction E2E passed on 2026-10-10; clean Windows and OS restart acceptance remain open.
 
 ## Result

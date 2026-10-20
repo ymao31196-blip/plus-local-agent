@@ -2,6 +2,7 @@
 param(
     [string]$Python = "python.exe",
     [string]$ToolchainBin = "",
+    [string]$SkillLibrarySource = "",
     [switch]$SkipRuntime,
     [switch]$SkipAcceptance
 )
@@ -75,8 +76,26 @@ try {
             & node.exe (Join-Path $projectRoot "desktop\verification\components-ux-smoke.cjs") 2>&1 |
                 Out-File -FilePath (Join-Path $buildRoot "components-ux-smoke.log") -Encoding utf8 -ErrorAction Stop
         }
+        Invoke-LoggedNative "Skill quick source UI smoke" {
+            & node.exe (Join-Path $projectRoot "desktop\verification\skill-quick-source-smoke.cjs") 2>&1 |
+                Out-File -FilePath (Join-Path $buildRoot "skill-quick-source-smoke.log") -Encoding utf8 -ErrorAction Stop
+        }
+    }
+    if (-not $SkipAcceptance) {
+        foreach ($smoke in @("activity-toast-smoke.cjs", "verification-status-smoke.cjs")) {
+            Invoke-LoggedNative $smoke {
+                & node.exe (Join-Path $projectRoot "desktop\verification\$smoke") 2>&1 |
+                    Out-File -FilePath (Join-Path $buildRoot "$smoke.log") -Encoding utf8 -ErrorAction Stop
+            }
+        }
     }
     New-Item -ItemType Directory -Force -Path $resources | Out-Null
+    # Build-time-only reviewed source; Desktop end users never need the checkout.
+    $skillSource = if ($SkillLibrarySource) { $SkillLibrarySource } else { Join-Path $projectRoot "workspace\skill-library" }
+    Invoke-LoggedNative "Reviewed Skill Library Wheel" {
+        & $Python (Join-Path $PSScriptRoot "prepare_skill_library.py") --source $skillSource --resources $resources 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "skill-library-wheel.log") -Encoding utf8 -ErrorAction Stop
+    }
     $packPython = Join-Path $buildRoot "venv\Scripts\python.exe"
     if (-not $SkipRuntime) {
         if (-not (Test-Path -LiteralPath $packPython)) {

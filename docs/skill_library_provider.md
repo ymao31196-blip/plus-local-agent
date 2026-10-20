@@ -2,9 +2,21 @@
 
 Skill Library是PLA的可选Provider，代码位于独立的`chatgpt-skill-library`项目中。PLA不会把开发者个人的GitHub仓库当作用户的默认Skill来源。
 
-## 运行前提
+## Desktop一键安装（新版构建）
 
-PLA的`setup_providers.ps1 -Provider skill-library`负责安装该Provider的Python运行依赖；Skill Library自身的Python包需要独立安装。任选一种：
+新版PLA Desktop的安装包在构建时包含审核过的`chatgpt_skill_library-0.5.0-py3-none-any.whl`。在**组件与MCP插件**选择`skill-library`，直接点击**安装 / 修复**并审阅SHA-256计划即可；安装后仍须单独**启用并连接**，再登记自己的Skill Source。普通用户无需下载Skill Library服务端源码，也不会获得开发者的私人Skill或访问权限。
+
+安装包只包含v0.5.0服务端模块。其SHA-256固定为`5fee6f1cfd32c896b6d951e69b9631c167398d26e04bccfa9f18536d67611909`，校验失败会拒绝安装。升级时先建立新的独立Python环境并完成前后校验，失败会尝试恢复旧环境；Source配置、缓存、访问授权保留在环境目录之外。高级安装依然支持指定已审阅的本地源码或Wheel。
+
+构建安装包的开发者需要一份干净的独立仓库检出（已验证的commit `9c7f1844835c72a976950f5c6f088756e4875853`）。默认位置为`workspace/skill-library`，也可在`desktop/packaging/build.ps1`指定`-SkillLibrarySource`；构建脚本生成并校验Wheel后嵌入Desktop资源。该开发期输入**不应出现在终端用户安装流程中**。在公开分发新安装包前需确认独立项目授权和第三方依赖许可。本说明描述当前待发布源码；已安装旧版Desktop不会自动获得新能力。
+
+RC16候选版的Desktop把「Skill列表」与「Skills管理」合并为唯一「Skill Library」主导航入口。列表直接提供查看正文、单项启停、筛选、同步来源以及「仅刷新缓存」；「管理来源与权限」二级页面提供本地/GitHub来源登记、自动生成来源ID、重复来源识别、来源同步、整体启停、移除登记与独立读写授权。移除来源会删除其服务端登记、缓存与单项启停记录，但不会删除原始文件或远端仓库；保存权限后需重新连接Provider生效。来源草稿在当前WebView本地存储中保留，上次未填写的字段保持空白并显示提示占位。
+
+GUI不再展示17项MCP接口的参数表单。ChatGPT仍可调用原有的`prepare`、`apply-local`、`plan-change`、`apply-change`、`restore-local`及发布/转移能力，按原有预览、哈希检查和确认机制处理创建、编辑、删除和发布。用户用自然语言向智能体提出这些任务即可，不必直接填写内部计划ID或SHA-256。同步失败时提示保留上次有效缓存；当前GUI只呈现本次会话的同步结果，不声称记录跨重启的历史同步时间。
+
+## PLA源码版安装（进阶）
+
+原有PLA源码部署与Desktop安装方式不同。`setup_providers.ps1 -Provider skill-library`负责安装Provider的Python依赖；独立Skill Library Python包可以按以下方式安装：
 
 1. 将已取得访问权限的Skill Library源码放到`workspace/skill-library`，保留`src/skill_library/server.py`。PLA入口会在该位置加载源码。
 2. 运行`setup_skill_library.ps1`，向`.provider_envs/skill-library/Scripts/python.exe`安装Skill Library 0.5.0包。PLA入口会在没有本地源码目录时使用已安装的包。

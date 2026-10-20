@@ -23,10 +23,29 @@ $('detect-legacy').onclick = () => action(async () => {
     : '未识别 PLA 源码安装；该目录未被修改。');
 });
 
-// Notification system
+// Notification state is independent of the page scroll position.
+let noticeTimer = null;
+let lastErrorNotice = '';
+let lastBackendError = '';
+
+function closeNotice() {
+  clearTimeout(noticeTimer);
+  noticeTimer = null;
+  $('notice').hidden = true;
+}
+$('notice-close').onclick = closeNotice;
+
 function notice(text, error = false) {
-  $('notice').textContent = text;
-  $('notice').className = error ? 'error' : '';
+  const message = String(text);
+  if (error && !$('notice').hidden && lastErrorNotice === message) return;
+  if (error) lastErrorNotice = message;
+  clearTimeout(noticeTimer);
+  $('notice-text').textContent = message;
+  $('notice').classList.toggle('error', error);
+  $('notice').setAttribute('role', error ? 'alert' : 'status');
+  $('notice').setAttribute('aria-live', error ? 'assertive' : 'polite');
+  $('notice').hidden = false;
+  noticeTimer = setTimeout(closeNotice, error ? 10000 : 4000);
 }
 
 // Friendly error messages
@@ -67,6 +86,7 @@ async function rpc(command, args = {}) {
 // View switching
 function view(name) {
   // Handle legacy provider view redirect
+  if (name === 'skills') name = 'skill-list';
   if (name === 'providers') {
     name = 'component-management';
     currentComponentView = 'runtime';
@@ -81,8 +101,7 @@ function view(name) {
     workspaces: '工作区',
     providers: 'MCP 插件',
     'component-management': '组件与 MCP 插件',
-    'skill-list': 'Skill 列表',
-    skills: 'Skills 管理',
+    'skill-list': 'Skill Library',
     logs: '日志诊断',
     about: '设置'
   };
@@ -93,6 +112,7 @@ function view(name) {
   if (name === 'component-management') {
     renderComponentManagement();
   }
+  if (name === 'overview') refreshActivity();
 }
 
 // Navigation setup
@@ -135,17 +155,8 @@ function updateStatusDisplay() {
   const tunnelCard = $('tunnel-card');
   tunnelCard.className = `status-card ${tunnelState.type === 'success' ? 'ready' : tunnelState.type === 'error' ? 'error' : ''}`;
 
-  // Update verification status
-  const verifiedBadge = $('verified-status');
-  if (snapshot.local_mcp_verified) {
-    verifiedBadge.textContent = '本地调用通过';
-    verifiedBadge.className = 'status-badge success';
-    $('verification-card').className = 'status-card ready';
-  } else {
-    verifiedBadge.textContent = '未验证';
-    verifiedBadge.className = 'status-badge neutral';
-    $('verification-card').className = 'status-card';
-  }
+  // A verification is meaningful only for this Manager-owned Runtime session.
+  renderVerification();
 
   // Update system components
   const browserStates = {
@@ -185,9 +196,9 @@ async function refresh() {
 
   renderWorkspaces();
 
-  if (snapshot.last_error) {
-    notice(friendlyError(snapshot.last_error), true);
-  }
+  const newError = snapshot.last_error ? friendlyError(snapshot.last_error) : '';
+  if (newError && newError !== lastBackendError) notice(newError, true);
+  lastBackendError = newError;
 }
 
 // Workspace rendering with modern cards
@@ -498,6 +509,128 @@ if ($('view-marketplace')) {
   };
 }
 
+// Activity polling never invokes the expensive full status/probe path.
+let activityLoading = false;
+let lastActivityRows = [];
+let lastActivitySuccess = null;
+let activityResponse = null;
+
+function renderVerification() {
+  const badge = $('verified-status');
+  const card = $('verification-card');
+  let label = '等待Runtime状态';
+  let kind = 'neutral';
+
+  if (!snapshot || snapshot.runtime === 'stopped' || snapshot.runtime === 'exited'
+      || (activityResponse && !activityResponse.runtime_alive)) {
+    label = '未连接';
+  } else if (snapshot.runtime !== 'ready') {
+    label = '等待Runtime就绪';
+  } else if (!activityResponse || activityResponse.available !== true) {
+    label = '活动状态不可用';
+    kind = 'warning';
+  } else {
+    const start = Date.parse(activityResponse.runtime_started_at);
+    // Never trust old events or a missing session marker.
+    const session = Number.isFinite(start)
+      ? activityResponse.activities.filter(entry => {
+          const when = Date.parse(entry.started_at);
+          return Number.isFinite(when) && when >= start;
+        })
+      : [];
+    const latest = session[0];
+    if (latest && latest.outcome === 'failed') {
+      label = '最近调用失败';
+      kind = 'error';
+    } else if (latest && latest.outcome === 'success') {
+      label = '本地调用已验证';
+      kind = 'success';
+    } else if (latest) {
+      label = '调用进行中';
+      kind = 'warning';
+    } else if (snapshot.local_mcp_verified && Number.isFinite(start)) {
+      // Keep the explicit diagnostic available as another valid proof.
+      label = '本地诊断已通过';
+      kind = 'success';
+    } else {
+      label = '等待工具调用';
+    }
+  }
+  badge.textContent = label;
+  badge.className = 'status-badge ' + kind;
+  card.className = 'status-card ' + (
+    kind === 'success' ? 'ready' : kind === 'error' ? 'error' : ''
+  );
+}
+
+function activityClock(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '时间未知' : date.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+function renderActivity(available) {
+  const list = $('activity-list');
+  list.replaceChildren();
+  if (!available && !lastActivityRows.length) {
+    list.textContent = '活动数据暂不可用';
+  } else if (!lastActivityRows.length) {
+    list.textContent = '暂无近期工具活动';
+  } else {
+    for (const activity of lastActivityRows) {
+      const row = document.createElement('div');
+      row.className = 'activity-row';
+      const meta = document.createElement('div');
+      meta.className = 'activity-meta';
+      const tool = document.createElement('strong');
+      tool.className = 'activity-tool';
+      tool.textContent = activity.tool;
+      const when = document.createElement('small');
+      when.className = 'text-muted';
+      when.textContent = activityClock(activity.started_at) + ' · ' + (
+        { native_mcp: 'MCP工具', local_action: '内部Action', capability: '组件能力' }[activity.source] || '本地执行'
+      );
+      meta.append(tool, when);
+      const result = document.createElement('span');
+      const age = Date.now() - new Date(activity.started_at).getTime();
+      const state = activity.outcome === 'success' ? '成功'
+        : activity.outcome === 'failed' ? '失败'
+        : age > 120000 ? '结束状态未知' : '尚无结束记录';
+      result.className = 'activity-outcome ' + activity.outcome;
+      result.textContent = state;
+      row.append(meta, result);
+      list.append(row);
+    }
+  }
+  $('activity-fetched').textContent = lastActivitySuccess
+    ? (available ? '最近读取：' : '数据未更新，最后成功读取：') + activityClock(lastActivitySuccess)
+    : '尚未成功读取';
+}
+
+async function refreshActivity() {
+  if (activityLoading || $('overview').classList.contains('hidden')) return;
+  activityLoading = true;
+  try {
+    const response = await rpc('activity_recent');
+    if (response && response.available === true && Array.isArray(response.activities)) {
+      lastActivityRows = response.activities;
+      activityResponse = response;
+      lastActivitySuccess = new Date().toISOString();
+      renderActivity(true);
+      renderVerification();
+    } else {
+      activityResponse = null;
+      renderActivity(false);
+      renderVerification();
+    }
+  } catch (_error) {
+    activityResponse = null;
+    renderActivity(false);
+    renderVerification();
+  } finally {
+    activityLoading = false;
+  }
+}
+
 // Initialize on load
 if (typeof ComponentManager !== 'undefined') {
   initComponentManager();
@@ -506,6 +639,7 @@ if (typeof ComponentManager !== 'undefined') {
 // Initialize app
 action(async () => {
   await refresh();
+  if (!$('overview').classList.contains('hidden')) await refreshActivity();
   if (!snapshot.config.onboarding_complete) {
     view('setup');
   }
@@ -517,3 +651,6 @@ setInterval(() => {
     action(refresh);
   }
 }, 10000);
+
+// Light, UI-only read. Do not run status probes or global button disabling.
+setInterval(refreshActivity, 3000);

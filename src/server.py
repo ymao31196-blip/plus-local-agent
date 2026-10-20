@@ -71,6 +71,7 @@ from artifacts.artifact_bridge import (
 )
 from capabilities.capability_registry import CapabilityRegistry
 from runtime.event_runtime import EVENT_STORE
+from runtime.activity_runtime import record_native_activity
 from hooks.observer_hook_runtime import OBSERVER_HOOK_RUNTIME
 from host.computer_use_indicator import computer_use_indicator_observer
 from hooks.gate_hook_runtime import GATE_HOOK_RUNTIME
@@ -353,12 +354,14 @@ def revoke_artifact(artifact_id: str) -> dict:
 
 
 @mcp.tool
+@record_native_activity
 def list_directory(path: str = ".", root: str = "workspace") -> list[str]:
     """列出指定受控 root 内的文件和子目录。"""
     return internal_list_directory(path, root)
 
 
 @mcp.tool
+@record_native_activity
 def read_text(
     path: str, start_line: int = 1, end_line: int = 400,
     root: str = "workspace",
@@ -368,6 +371,7 @@ def read_text(
 
 
 @mcp.tool
+@record_native_activity
 def extract_document_text(
     path: str,
     start: int = 1,
@@ -380,6 +384,7 @@ def extract_document_text(
 
 
 @mcp.tool
+@record_native_activity
 def write_text(
     path: str, content: str, expected_sha256: str | None = None,
     root: str = "workspace",
@@ -389,6 +394,7 @@ def write_text(
 
 
 @mcp.tool
+@record_native_activity
 def replace_text(
     path: str,
     old: str,
@@ -402,6 +408,7 @@ def replace_text(
 
 
 @mcp.tool
+@record_native_activity
 def search_text(
     query: str,
     path: str = ".",
@@ -415,12 +422,14 @@ def search_text(
 
 
 @mcp.tool
+@record_native_activity
 def git_status(cwd: str = ".", root: str = "workspace") -> dict:
     """返回受控 root 内 Git 仓库的结构化只读状态。"""
     return internal_git_status(cwd, root)
 
 
 @mcp.tool
+@record_native_activity
 def git_diff(
     cwd: str = ".", staged: bool = False, path: str | None = None,
     root: str = "workspace",
@@ -654,6 +663,7 @@ def project_verifications_get(
 
 
 @mcp.tool
+@record_native_activity
 def run_process(
     program: str,
     args: list[str] | None = None,
@@ -672,6 +682,7 @@ def run_process(
 
 
 @mcp.tool
+@record_native_activity
 def run_powershell(
     command: str,
     parameters: dict | None = None,
@@ -684,6 +695,7 @@ def run_powershell(
 
 
 @mcp.tool
+@record_native_activity
 def apply_patch(
     path: str, patch: str, expected_sha256: str | None = None,
     root: str = "workspace",
@@ -693,6 +705,7 @@ def apply_patch(
 
 
 @mcp.tool
+@record_native_activity
 def apply_changeset(
     changes: list[ChangeRequest], root: str = "workspace",
 ) -> dict:

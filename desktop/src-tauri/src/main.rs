@@ -47,7 +47,7 @@ fn quit_app(app: tauri::AppHandle) { app.exit(0); }
 
 #[tauri::command]
 async fn manage(command: String, args: Value, state: State<'_, Backend>) -> Result<Value,String> {
-    const ALLOWED: &[&str] = &["status","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","verify","diagnose","logs","detect_legacy","provider_catalog","provider_import","provider_package","provider_bundle","provider_configuration","provider_details","provider_action","skill_action","provider_install","installation_status","skill_permissions","repository_list","repository_add","repository_remove","provider_discover","provider_details_remote","provider_install_remote","provider_upgrade_remote","provider_uninstall_remote","provider_health_check","provider_installed_list"];
+    const ALLOWED: &[&str] = &["activity_recent","status","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","verify","diagnose","logs","detect_legacy","provider_catalog","provider_import","provider_package","provider_bundle","provider_configuration","provider_details","provider_action","skill_action","provider_install","installation_status","skill_permissions","repository_list","repository_add","repository_remove","provider_discover","provider_details_remote","provider_install_remote","provider_upgrade_remote","provider_uninstall_remote","provider_health_check","provider_installed_list"];
     if !ALLOWED.contains(&command.as_str()) { return Err("Unsupported management command".into()); }
     state.0.lock().map_err(|_| "Manager lock unavailable")?.call(&command,args)
 }

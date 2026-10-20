@@ -11,6 +11,7 @@ from typing_extensions import TypedDict
 from tooling.local_tools import LOCAL_TOOL_FUNCTIONS
 from diagnostics.e2e_debug import E2EDebugTrace
 from runtime.runtime_context import CURRENT, checkpoint, observe
+from runtime.activity_runtime import record_internal_action_start, record_internal_action_finish
 
 
 EXECUTABLE_LOCAL_TOOLS = frozenset(LOCAL_TOOL_FUNCTIONS)
@@ -361,8 +362,16 @@ def _execute_local_tool(tool_name: str, arguments: dict[str, Any]) -> LocalToolR
 
 
 def execute_local_tool(tool_name: str, arguments: dict[str, Any]) -> LocalToolResult:
+    # Unrecognized caller strings may contain user data; never persist them.
+    activity_name = tool_name if tool_name in EXECUTABLE_LOCAL_TOOLS else "unknown_local_tool"
+    call_id = record_internal_action_start(activity_name)
     observe("action_started", tool=tool_name)
-    outcome = _execute_local_tool(tool_name, arguments)
+    try:
+        outcome = _execute_local_tool(tool_name, arguments)
+    except BaseException:
+        record_internal_action_finish(activity_name, call_id, False)
+        raise
+    record_internal_action_finish(activity_name, call_id, outcome.ok)
     if tool_name in {"run_process", "run_powershell"} and isinstance(outcome.result, dict):
         for stream in ("stdout", "stderr"):
             value = outcome.result

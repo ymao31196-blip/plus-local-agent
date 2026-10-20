@@ -23,7 +23,7 @@ def _fixture(tmp_path, monkeypatch):
 
 def test_skill_source_preview_requires_package_and_binds_source_bytes(tmp_path, monkeypatch):
     broker, source = _fixture(tmp_path, monkeypatch)
-    with pytest.raises(ValueError, match="Select the reviewed Skill Library"):
+    with pytest.raises(ValueError, match="Reviewed Skill Library wheel missing"):
         broker.install_preview("skill-library")
     reviewed = broker.install_preview("skill-library", str(source))
     assert reviewed["provider_id"] == "skill-library"

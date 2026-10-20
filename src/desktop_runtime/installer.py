@@ -7,10 +7,12 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tomllib
 import zipfile
 import urllib.request
+from uuid import uuid4
 
 from desktop_runtime.components import ComponentProject, PROVIDER_ID
 from desktop_runtime.config import atomic_write
@@ -19,6 +21,19 @@ UV_SHA256 = '1e9d1e0a766024a212d165dc67db2d7f71831a5ff4bb60ab7e6863391871c1d5'
 UV_ARCHIVE_SHA256 = '7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019'
 UV_URL = 'https://releases.astral.sh/github/uv/releases/download/0.12.24/uv-x86_64-pc-windows-msvc.zip'
 PYTHON_VERSION = '3.11.9'
+SKILL_LIBRARY_WHEEL_NAME = 'chatgpt_skill_library-0.5.0-py3-none-any.whl'
+SKILL_LIBRARY_WHEEL_SHA256 = '5fee6f1cfd32c896b6d951e69b9631c167398d26e04bccfa9f18536d67611909'
+
+
+def bundled_skill_package(resources):
+    """Resolve a pinned shipped wheel without consulting user Skill directories."""
+    root = Path(resources).resolve()
+    path = root / 'provider-assets' / 'packages' / SKILL_LIBRARY_WHEEL_NAME
+    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+        raise ValueError('Reviewed Skill Library wheel missing; repair PLA Desktop or use an advanced local package')
+    if hashlib.sha256(path.read_bytes()).hexdigest() != SKILL_LIBRARY_WHEEL_SHA256:
+        raise ValueError('Reviewed Skill Library wheel hash mismatch; installation refused')
+    return validate_skill_package(str(path))
 
 
 def validate_skill_package(raw):
@@ -90,7 +105,8 @@ class ComponentInstaller:
         present = get_spec_paths(self.project, provider_id)
         if not present:
             raise ValueError('No reviewed bundled installer spec exists for this provider')
-        package = validate_skill_package(skill_package) if provider_id == 'skill-library' else None
+        package = (validate_skill_package(skill_package) if skill_package
+                   else bundled_skill_package(self.resources)) if provider_id == 'skill-library' else None
         if skill_package and provider_id != 'skill-library':
             raise ValueError('A local package is accepted only for Skill Library')
         return {'provider_id': provider_id, 'python_version': PYTHON_VERSION,
@@ -99,6 +115,7 @@ class ComponentInstaller:
                 'specs': [{'name': path.name, 'content': path.read_text(encoding='utf-8'),
                            'sha256': hashlib.sha256(path.read_bytes()).hexdigest()} for path in present],
                 'skill_package': str(package) if package else None,
+                'skill_package_origin': ('local' if skill_package else 'bundled') if package else None,
                 'skill_package_sha256': package_sha256(package) if package else None,
                 'installer_tool': {'name': 'uv', 'version': '0.12.24', 'source': UV_URL,
                                    'archive_sha256': UV_ARCHIVE_SHA256, 'download_on_demand': True} if provider_id != 'browser' else None,
@@ -138,6 +155,74 @@ class ComponentInstaller:
         subprocess.run(command, cwd=self.project.root, env=self.env, check=True,
                        timeout=600, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 
+    def _install_skill_library(self, plan, python_spec):
+        """Install into a fresh environment and preserve the previous one on failure.
+
+        Only the managed environment is swapped; Skill sources, caches and
+        permissions are stored separately and are never touched.
+        """
+        if python_spec is None:
+            raise ValueError('Missing reviewed Skill Library dependency specification')
+        lines = [row.strip() for row in python_spec.read_text(encoding='utf-8').splitlines()
+                 if row.strip() and not row.lstrip().startswith('#')]
+        if not lines or any(not re.fullmatch(
+                r'[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?==[A-Za-z0-9_.+-]+', row)
+                for row in lines):
+            raise ValueError('Invalid reviewed Skill Library dependency specification')
+        self.ensure_uv()
+        target = Path(plan['environment']).resolve()
+        if not target.is_relative_to(self.project.root) or target.name != 'skill-library':
+            raise ValueError('Skill Library environment escapes managed component data')
+        if target.exists() and not target.is_dir():
+            raise ValueError('Existing Skill Library environment is not a directory')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        stage = target.with_name('.skill-library-stage-' + uuid4().hex)
+        backup = target.with_name('.skill-library-previous-' + uuid4().hex)
+        if stage.exists() or backup.exists():
+            raise ValueError('Unexpected Skill Library installation staging path')
+        stage_python = stage / 'Scripts/python.exe'
+        smoke = ('from importlib.metadata import version; '
+                 'from skill_library.server import mcp; '
+                 'assert version("chatgpt-skill-library") == "0.5.0"; '
+                 'assert mcp.name == "Skill Library"')
+        old_moved = False
+        new_moved = False
+        try:
+            self.run([str(self.uv), 'venv', '--no-config', '--no-project',
+                      '--python', PYTHON_VERSION, '--managed-python', str(stage)])
+            self.run([str(self.uv), 'pip', 'install', '--no-config',
+                      '--only-binary', ':all:', '--python', str(stage_python),
+                      '--index-url', 'https://pypi.org/simple', '-r', str(python_spec)])
+            self.run([str(self.uv), 'pip', 'install', '--no-config',
+                      '--python', str(stage_python), '--no-deps',
+                      plan['skill_package']])
+            self.run([str(stage_python), '-I', '-c', smoke])
+            if target.exists():
+                os.replace(target, backup)
+                old_moved = True
+            try:
+                os.replace(stage, target)
+                new_moved = True
+                # A Windows venv may behave differently after directory promotion.
+                self.run([str(target / 'Scripts/python.exe'), '-I', '-c', smoke])
+            except BaseException:
+                if new_moved:
+                    os.replace(target, stage)
+                if old_moved:
+                    os.replace(backup, target)
+                    old_moved = False
+                raise
+        finally:
+            if stage.is_dir():
+                shutil.rmtree(stage, ignore_errors=True)
+        if old_moved:
+            # Cleanup failure cannot invalidate a working promoted environment;
+            # leave the private backup for supervised recovery.
+            try:
+                shutil.rmtree(backup)
+            except OSError:
+                pass
+
     def install(self, provider_id, skill_package=None):
         plan = self.plan(provider_id, skill_package)
         self.project.stage(int(os.environ.get('PLA_BROWSER_PORT', '18931')))
@@ -156,7 +241,9 @@ class ComponentInstaller:
                 raise ValueError('Bundled browser version does not match its reviewed specification; repair installation')
             return {'status': 'bundled_files_verified', 'provider_id': provider_id, 'version': version,
                     'activated': False, 'mcp_connection_verified': False, 'private_duplicate_not_installed': True}
-        if python_spec is not None:
+        if provider_id == 'skill-library':
+            self._install_skill_library(plan, python_spec)
+        elif python_spec is not None:
             lines = [line.strip() for line in python_spec.read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')]
             if not lines or any(not re.fullmatch(r'[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?==[A-Za-z0-9_.+-]+', line) for line in lines):
                 raise ValueError('Bundled Python specifications must pin exact package versions')

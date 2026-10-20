@@ -131,17 +131,24 @@ def test_install_and_skill_onboarding_buttons_have_real_handlers():
     ids = IDs()
     ids.feed((repo / "desktop/ui/index.html").read_text(encoding="utf-8"))
     scripts = (repo / "desktop/ui/components.js").read_text(encoding="utf-8")
+    skill_ui = (repo / "desktop/ui/skill-library-page.js").read_text(encoding="utf-8")
     for element_id in (
         "install-panel", "install-live", "preview-install", "start-install",
-        "installation-refresh", "skill-install-link", "skill-quick-add",
-        "skill-quick-id", "skill-quick-path", "skill-list-items",
+        "installation-refresh",
     ):
         assert element_id in ids.names
         assert f"$('{element_id}')" in scripts, element_id
+    for element_id in (
+        "skill-install-link", "skill-source-add", "skill-source-location",
+        "skill-list-items", "skill-open-sources", "skill-sync-all",
+        "save-skill-permissions",
+    ):
+        assert element_id in ids.names
+        assert f"$('{element_id}')" in skill_ui, element_id
     assert "watchedInstallJob" in scripts
     assert "refreshInstallationStatus" in scripts
-    assert "action:'manage'" in scripts
-    assert "action:'sync'" in scripts
+    assert "skillRpc('manage'" in skill_ui
+    assert "skillRpc('sync'" in skill_ui
 
 
 def test_desktop_release_version_consistent_across_build_systems():
@@ -161,7 +168,7 @@ def test_desktop_release_version_consistent_across_build_systems():
         VERSION, tauri["version"], package["version"], npm_lock["version"],
         npm_lock["packages"][""]["version"], cargo["package"]["version"],
         locked[0]["version"],
-    } == {"1.0.0-rc.13"}
+    } == {VERSION}
 
 
 def test_desktop_build_discovers_existing_rustup_and_mingw_without_persistent_path_change():
@@ -184,7 +191,9 @@ def test_desktop_build_uses_native_exit_codes_instead_of_powershell_51_stderr():
     assert '$exitCode = $LASTEXITCODE' in script
     assert 'if ($null -eq $exitCode -or $exitCode -ne 0)' in script
     # Includes the mandatory UI smoke preflight before the expensive build.
-    assert script.count('Invoke-LoggedNative "') == 8
-    assert script.count('2>&1 |') == 8
-    assert script.count('-Encoding utf8 -ErrorAction Stop') == 8
+    assert script.count('Invoke-LoggedNative "') == 10
+    assert script.count('2>&1 |') == 11
+    assert script.count('-Encoding utf8 -ErrorAction Stop') == 11
+    assert 'Invoke-LoggedNative "Skill quick source UI smoke"' in script
+    assert 'Invoke-LoggedNative "Reviewed Skill Library Wheel"' in script
     assert '*>' not in script, "Old PowerShell native-output redirections must not reappear"

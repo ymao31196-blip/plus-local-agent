@@ -6,7 +6,7 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 **发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
 
-[**下载Windows安装包（当前RC.13）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+[**下载Windows安装包（当前RC.16）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
 ## PLA Desktop：软件下载、安装与连接教程
 
@@ -14,15 +14,15 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 ### 第一步：正确下载安装包
 
-1. 打开[PLA Desktop RC.13发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.13)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
-2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.13对应[`PLA.Desktop_1.0.0-rc.13_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.13/PLA.Desktop_1.0.0-rc.13_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.13/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+1. 打开[PLA Desktop RC.16发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
+2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.16对应[`PLA.Desktop_1.0.0-rc.16_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/PLA.Desktop_1.0.0-rc.16_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
 3. 在PowerShell中运行以下命令（安装到其他下载目录或使用其他版本时请调整文件路径），把输出的`Hash`与`SHA256SUMS.txt`里的哈希值对照。GitHub上传后可能把原文件名中的空格替换成点，因此请核对哈希值，不只核对文件名。
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.13_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.16_x64-setup.exe"
 ~~~
 
-RC.13的预期SHA-256为`4f884bcd2e1bea483a1508a1d7dfed3b5a958648fcb12b9cbda703bbe0e00763`。如不一致，请勿运行该文件。
+RC.16的准确SHA-256见本次Release附件`SHA256SUMS.txt`与`build-manifest.json`，运行安装包前请核对两者。
 
 ### 第二步：安装并启动软件
 
@@ -58,7 +58,7 @@ RC.13的预期SHA-256为`4f884bcd2e1bea483a1508a1d7dfed3b5a958648fcb12b9cbda703b
 - **Tunnel连接不上**：核对Tunnel ID、API Key、组织权限与网络代理，必要时停止后重启服务。
 - **ChatGPT发现不了PLA**：检查ChatGPT侧的MCP连接是否已授权、是否选中了正确的Tunnel，并在新对话里重新尝试。
 - **关闭窗口后服务仍在**：PLA可能仍在系统托盘中运行；需要彻底关闭时，在托盘菜单选择**退出**。
-- **需要浏览器、Office或Skills**：进入**组件管理→本机组件**，按需审查安装计划、安装依赖，再分别启用并检查连接。Skill Library需要你自行提供有权使用的源码或wheel，不会自动导入私人Skill。
+- **需要浏览器、Office或Skills**：进入**组件管理→本机组件**，按需审查安装计划、安装依赖，再分别启用并检查连接。新版Desktop可从安装包内的已审查Wheel直接安装Skill Library，不要求用户另行下载服务端源码；私人Skill及其来源仍需单独授权。RC16候选版将Skill管理合并到一个「Skill Library」页面，直接查看、启停、同步与管理来源；新建、编辑或发布Skill交给ChatGPT经现有MCP安全流程处理。
 
 更多细节见[桌面安装与验收说明](docs/desktop-v1-acceptance.md)以及[架构和安全边界](docs/desktop-v1-architecture.md)。
 

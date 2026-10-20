@@ -10,16 +10,19 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '../ui/components.js'), 'utf8');
 
-function setup(rpc) {
+function setup(rpc, localStorage) {
   const els = new Map();
   function create(tag = 'div', id) {
     let ownText = '';
+    const listeners = new Map();
     const element = {
       tagName: tag.toUpperCase(), id, value: '', children: [],
       classList: {contains: () => false, add() {}, remove() {}},
       append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = [...children]; ownText=''; },
-      scrollIntoView() {}, addEventListener() {},
+      scrollIntoView() {},
+      addEventListener(event, listener) {listeners.set(event, [...(listeners.get(event)||[]), listener]);},
+      fire(event) {for(const listener of listeners.get(event)||[]) listener();},
       querySelectorAll: () => [],
     };
     Object.defineProperty(element, 'textContent', {
@@ -37,12 +40,12 @@ function setup(rpc) {
     querySelectorAll: () => [],
   };
   const scope = {
-    $, rpc, document, window: {confirm: () => true},
+    $, rpc, document, window: {confirm: () => true, localStorage},
     action: fn => Promise.resolve().then(fn), view: () => {},
     friendlyError: e => String(e), notice: () => {}, setInterval: () => 0,
   };
   vm.runInNewContext(source, scope, {filename: 'components.js', timeout: 4000});
-  return {els, $};
+  return {els, $, scope};
 }
 
 (async () => {
@@ -82,6 +85,36 @@ function setup(rpc) {
   jobState = 'installed';
   await h.$('installation-refresh').onclick();
   assert.match(h.$('install-live').textContent, /已安装/);
+
+  // Skill Library installs with no user source path. The confirmation must
+  // preserve the bundled plan identity instead of reclassifying it as local.
+  const bundledSkillCalls = [];
+  let bundledStarted = false;
+  const bundled = setup(async (command, args = {}) => {
+    bundledSkillCalls.push({command, args});
+    if (command === 'provider_install') {
+      if (args.confirmed) {
+        bundledStarted = true;
+        return {provider_id: 'skill-library', started: true, job: 'installer:skill-library'};
+      }
+      return {provider_id: 'skill-library', skill_package: 'C:/resources/skill-library.whl',
+        skill_package_origin: 'bundled', sha256: 'built-in-skill-hash',
+        environment: 'isolated', specs: [{name: 'skill-library.txt', content: 'fastmcp==4.0.3'}]};
+    }
+    if (command === 'provider_catalog') return {providers: []};
+    if (command === 'installation_status') return {jobs: bundledStarted ? [{
+      job: 'installer:skill-library', provider_id: 'skill-library', state: 'running', pid: 44
+    }] : [], installed_receipts: []};
+    throw Error('Unexpected bundled Skill Library RPC: ' + command);
+  });
+  bundled.$('install-provider').value = 'skill-library';
+  await bundled.$('start-install').onclick();
+  const bundledInstall = bundledSkillCalls.filter(x => x.command === 'provider_install');
+  assert.equal(bundledInstall.length, 2);
+  assert.equal(bundledInstall[0].args.skill_package, null);
+  assert.equal(bundledInstall[1].args.skill_package, null);
+  assert.equal(bundledInstall[1].args.expected_sha256, 'built-in-skill-hash');
+  assert.match(bundled.$('install-live').textContent, /正在安装/);
 
   // Missing WPS working directory must be visible, not enableable, and show
   // its reviewed install route without claiming a live MCP connection.
@@ -130,10 +163,7 @@ function setup(rpc) {
   assert.doesNotMatch(statusText(stoppedCard), /MCP 已连接/);
   const stoppedQuick=stoppedCard.children.find(x=>x.className==='provider-quick-actions');
   assert.ok(stoppedQuick.children.some(x=>x.textContent==='启用并连接'));
-  await stoppedSkill.$('reload-skill-list').onclick();
-  assert.match(stoppedSkill.$('skill-list-status').textContent, /未启用/);
-  assert.match(stoppedSkill.$('skill-list-items').children[0].textContent, /启用并连接/);
-  assert.doesNotMatch(stoppedSkill.$('skill-list-items').children[0].textContent, /Capability is unavailable/);
+  // Individual Skill Library UI belongs to skill-quick-source-smoke.cjs.
 
   // Every installed Provider shows BOTH enablement and real connection
   // at a glance, with a one-click action to reverse its current enable state.
@@ -218,37 +248,8 @@ function setup(rpc) {
   assert.ok(disableAt >= 0 && disableAt < installAt, 'Repair must disable before launching installer');
   assert.equal(repairCalls[installAt].args.expected_sha256, 'wps-plan-sha');
 
-  // Skill setup must register, sync and query the cached Skill list in order.
-  const skillCalls = [];
-  const s = setup(async (command, args = {}) => {
-    if (command !== 'skill_action') throw Error('Unexpected RPC: ' + command);
-    skillCalls.push(args.action);
-    if (args.action === 'manage') return {data: {action: 'added'}};
-    if (args.action === 'sync') return {data: {results: {demo: {status: 'updated'}}}};
-    if (args.action === 'states') return {data: {skills: [{
-      source_id: 'demo', name: 'demo-skill', ref: 'demo:demo-skill',
-      effective_enabled: true,
-    }]}};
-    if (args.action === 'sources') return {data: {sources: [{
-      id: 'demo', kind: 'local', location: 'D:\\MySkills', enabled: true,
-    }]}};
-    throw Error('Unexpected Skill operation');
-  });
-  s.$('skill-quick-id').value = 'demo';
-  s.$('skill-quick-path').value = 'D:\\MySkills';
-  await s.$('skill-quick-add').onclick();
-  assert.deepEqual(skillCalls, ['manage', 'sync', 'states', 'sources']);
-  assert.match(s.$('skill-list-status').textContent, /共 1 个已缓存 Skill/);
-  // A connected, but empty, Skill Library is a missing source configuration
-  // rather than a failed MCP installation.
-  const emptySkill=setup(async (command,args={}) => {
-    if(command==='skill_action'&&args.action==='states')return {data:{skills:[]}};
-    if(command==='skill_action'&&args.action==='sources')return {data:{sources:[]}};
-    throw Error('Unexpected empty Skill RPC: '+command);
-  });
-  await emptySkill.$('reload-skill-list').onclick();
-  assert.match(emptySkill.$('skill-list-status').textContent,/已连接，但尚未添加Skill来源/);
-  assert.match(emptySkill.$('skill-list-items').children[0].textContent,/不会自动导入个人Skill/);
+  // Skill-specific GUI coverage moved to skill-quick-source-smoke.cjs.
+
   // RC.7 reviewed 7-component bundle: one digest-bound confirmation
   // starts one real-install job, without silently enabling providers.
   const bundleCalls = [];

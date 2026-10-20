@@ -523,27 +523,64 @@ button.sm {
   user-select: none;
 }
 
-/* Notification */
-#notice {
-  padding: var(--space-md);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-lg);
-  font-size: var(--text-sm);
-  line-height: 1.6;
+/* Fixed, dismissible notification: independent of document scroll. */
+#notice.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 14px 16px;
+  border: 1px solid var(--color-success-border);
   border-left: 4px solid var(--color-brand);
+  border-radius: var(--radius-md);
   background: var(--color-brand-light);
+  box-shadow: var(--shadow-lg);
   color: #065f46;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
-#notice.error {
-  border-left-color: var(--color-error);
+#notice.toast[hidden] { display: none; }
+#notice.toast.error {
+  border-color: var(--color-error-border);
+  border-left: 4px solid var(--color-error);
   background: var(--color-error-bg);
   color: #991b1b;
 }
-
-#notice:empty {
-  display: none;
+#notice-close {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
 }
+
+.activity-header { display: flex; align-items: center; justify-content: space-between; }
+.activity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  padding: 10px 0;
+}
+.activity-row:first-child { padding-top: 0; }
+.activity-row:last-child { border-bottom: none; padding-bottom: 0; }
+.activity-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.activity-tool { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.activity-outcome { font-size: var(--text-xs); text-align: right; flex: 0 0 auto; color: var(--color-text-secondary); }
+.activity-outcome.success { color: #047857; }
+.activity-outcome.failed { color: #b91c1c; }
+.activity-note { margin-top: 10px; }
 
 /* Code & Pre */
 code {
@@ -673,3 +710,22 @@ details > *:not(summary) {
     flex-direction: column;
   }
 }
+
+/* Skill Library: compact rows and source cards. */
+.skill-library-list { display: flex; flex-direction: column; gap: 8px; }
+.skill-library-row, .skill-source-card {
+  background: var(--color-bg-primary); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.skill-library-meta { flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+.skill-library-meta strong { font-size: var(--text-base); }
+.skill-library-meta span { font-size: var(--text-xs); }
+.skill-source-list { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 18px; }
+.skill-source-card .skill-library-meta { flex-basis: 260px; }
+.skill-source-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.skill-source-summary { padding: 14px 18px; font-weight: 600; cursor: pointer; }
+.skill-library-row button, .skill-source-actions button { padding: 7px 11px; white-space: nowrap; }
+.skill-library-row .status-badge { margin-left: auto; }
+#skill-list-content { max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+#skill-sources-panel > .card { margin-bottom: 16px; }
