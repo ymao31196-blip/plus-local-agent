@@ -80,6 +80,50 @@ function analyzeProviderStatus(row) {
   return { installStatus, enableStatus, connectionStatus, primaryAction, warnings, errors, installedFiles, disabled, live, failed };
 }
 
+// A managed Desktop companion shares the components page but does not expose
+// ChatGPT MCP tools. Lifecycle is owned by Desktop Runtime, never by AI calls.
+function renderPetCompanion(row) {
+  const card = node('div', undefined, 'provider-card');
+  card.dataset.companion = 'agent-pet';
+  const header = node('div', undefined, 'provider-card-header');
+  header.append(node('h3', 'PLA Agent Pet · 桌宠'));
+  const badges = node('div', undefined, 'provider-statuses');
+  const stateText = {
+    running: '运行中', waiting_runtime: '等待 Runtime', disabled: '已停用',
+    not_installed: '缺少素材', not_running: '已关闭',
+  };
+  badges.append(
+    createStatusBadge('本地伴随组件', 'neutral'),
+    createStatusBadge(stateText[row.state] || '未知状态', row.state === 'running' ? 'success' : 'neutral')
+  );
+  header.append(badges);
+  card.append(header);
+  card.append(node('p', 'Q版角色实时展示PLA工具调用；不占用ChatGPT工具名额。', 'provider-description'));
+  if (!row.installed) {
+    card.append(node('div', '首次启用前需准备自有或获授权的32张PNG素材，详见桌宠使用说明；不会从网络自动下载。', 'provider-warning'));
+  }
+  if (row.error) card.append(node('div', row.error, 'provider-warning'));
+  const actions = node('div', undefined, 'provider-quick-actions');
+  const label = row.enabled ? '停用桌宠' : '启用桌宠';
+  const toggle = button(label, async () => {
+    const enabled = !row.enabled;
+    if (!window.confirm(enabled
+      ? '启用PLA桌宠？Runtime运行时将在桌面显示宠物；不会启动额外的ChatGPT工具。'
+      : '停用PLA桌宠？将关闭由PLA管理的桌宠窗口。')) return;
+    const result = await rpc('pet_action', { enabled, confirmed: true });
+    output('provider-result', result);
+    await loadProviders();
+    notice(result.state === 'waiting_runtime' ? '桌宠已启用，启动Runtime后会自动出现。'
+      : result.state === 'running' ? '桌宠已启动。'
+      : '桌宠已停用。');
+  });
+  toggle.disabled = !row.enabled && !row.installed;
+  if (!row.enabled && row.installed) toggle.classList.add('primary');
+  actions.append(toggle);
+  card.append(actions);
+  return card;
+}
+
 // Render modern provider card
 function renderProviderCard(row) {
   const status = analyzeProviderStatus(row);
@@ -287,6 +331,12 @@ async function loadProviders() {
 
   for (const row of providerCatalog.providers) {
     list.append(renderProviderCard(row));
+  }
+  // A desktop-only companion is intentionally not a fake MCP provider.
+  try {
+    list.append(renderPetCompanion(await rpc('pet_status')));
+  } catch (error) {
+    console.warn('Agent Pet component status unavailable', error);
   }
 
   await refreshInstallationStatus();

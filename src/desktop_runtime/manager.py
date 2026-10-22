@@ -18,6 +18,7 @@ import urllib.request
 from desktop_runtime.config import DesktopConfig, atomic_write, redact
 from desktop_runtime.health import TunnelReadiness
 from desktop_runtime.components import ComponentProject
+from desktop_runtime.pet_companion import PetCompanion
 from desktop_runtime.capability_bridge import checked_provider_action, checked_skill_action
 from host.workspace_manager import workspace_registry_status, workspace_registry_upsert, workspace_registry_remove
 from runtime.runtime_context import terminate_owned_process_tree
@@ -33,6 +34,7 @@ class Manager:
         self.config = DesktopConfig(data)
         self.resources = resources.resolve()
         self.components = ComponentProject(data, resources)
+        self.pet = PetCompanion(data)
         self.children = {}
         self._installer_locks = {}
         self.logs = deque(maxlen=500)
@@ -168,6 +170,34 @@ class Manager:
         child = self.children.get(role)
         return child is not None and child.poll() is None
 
+    def _stop_pet(self):
+        # Terminate only the exact child owned by this manager, never arbitrary
+        # python/pythonw processes belonging to the user.
+        process = self.children.pop("agent-pet", None)
+        if process is not None:
+            terminate_owned_process_tree(process)
+        reader = self.readers.pop("agent-pet", None)
+        if reader is not None:
+            reader.join(timeout=5)
+
+    def _start_pet_if_selected(self):
+        if not self._alive("runtime") or not self.pet.enabled() or not self.pet.installed():
+            return False
+        if self._alive("agent-pet"):
+            return True
+        # If the user closed the pet manually this session, leave it closed.
+        if "agent-pet" in self.children:
+            return False
+        env = self._environment()
+        env["PLA_PET_FRAMES_DIR"] = str(self.pet.frames)
+        env["PLA_PET_EVENT_DB"] = str(self.config.root / "state" / "events.sqlite3")
+        process = self._spawn("agent-pet", self._command("pet"), env)
+        time.sleep(0.2)
+        if process.poll() is not None:
+            self._stop_pet()
+            raise RuntimeError("Agent Pet GUI exited during startup; see Desktop logs")
+        return True
+
     @staticmethod
     def _free_port(port):
         with socket.socket() as connection:
@@ -209,6 +239,12 @@ class Manager:
             try:
                 asyncio.run(self._probe())
                 self.last_error = ""
+                # A visual companion is optional and must never prevent MCP
+                # Runtime from starting successfully.
+                try:
+                    self._start_pet_if_selected()
+                except Exception as exc:
+                    self._record(f"[agent-pet] start failed: {type(exc).__name__}")
                 return self.status()
             except Exception:
                 time.sleep(0.3)
@@ -238,6 +274,7 @@ class Manager:
         return self.status()
 
     def stop(self):
+        self._stop_pet()
         for role in (*[name for name in self.children if name.startswith('installer:')], "tunnel", "runtime", "browser"):
             process = self.children.pop(role, None)
             if process is not None:
@@ -256,6 +293,7 @@ class Manager:
     def status(self):
         alive = self._alive("runtime")
         if not alive:
+            self._stop_pet()
             self.local_verified = False
             if "runtime" in self.children:
                 self.last_error = f"Runtime exited with code {self.children['runtime'].returncode}; restart it to recover"
@@ -295,13 +333,14 @@ class Manager:
             except Exception as exc:
                 self.last_error = redact(str(exc), self._secret)
         skill_state = observed_providers.get('skill-library')
-        office_states = {name: observed_providers.get(name) for name in ('docx', 'pdf', 'office-enhancement', 'wps-office')}
+        office_states = {name: observed_providers.get(name) for name in ('pdf', 'office-enhancement', 'wps-office')}
         return {"config": self.config.public(), "runtime": "ready" if ready else "starting" if alive else "exited" if "runtime" in self.children else "stopped",
                 "owned_processes": {role: {"pid": process.pid, "exit_code": process.poll()} for role, process in self.children.items()},
                 "tunnel": tunnel, "chatgpt_authorization": "not_observable_locally",
                 "tunnel_last_successful_poll": self.tunnel_readiness.last_success,
                 "chatgpt_e2e": "not_verified", "local_mcp_verified": self.local_verified,
                 "browser": browser, "office": office_states,
+                "agent_pet": self.pet.status(runtime_alive=alive, process=self.children.get("agent-pet")),
                 "skills": skill_state or {'state': 'not_connected' if ready else 'not_observed'}, "last_error": self.last_error,
                 "workspaces": workspace_registry_status(self.config.workspace_path, self.resources)}
 
@@ -365,6 +404,25 @@ class Manager:
             alive = self._alive("runtime")
             return {**activity, "runtime_alive": alive,
                     "runtime_started_at": self.runtime_started_at if alive else None}
+        if command == "pet_status":
+            if args:
+                raise ValueError("Pet status takes no arguments")
+            if not self._alive("runtime"):
+                self._stop_pet()
+            return self.pet.status(runtime_alive=self._alive("runtime"),
+                                   process=self.children.get("agent-pet"))
+        if command == "pet_action":
+            if set(args) != {"enabled", "confirmed"} or type(args["enabled"]) is not bool or args["confirmed"] is not True:
+                raise ValueError("Pet toggle needs explicit user confirmation and an enabled boolean")
+            selected = self.pet.set_enabled(args["enabled"])
+            if selected:
+                if not self._alive("agent-pet"):
+                    self._stop_pet()
+                self._start_pet_if_selected()
+            else:
+                self._stop_pet()
+            return self.pet.status(runtime_alive=self._alive("runtime"),
+                                   process=self.children.get("agent-pet"))
         if command == "provider_catalog":
             if args:
                 raise ValueError("Provider catalog takes no arguments")

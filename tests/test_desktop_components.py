@@ -84,6 +84,32 @@ def test_staging_preserves_user_changes_to_existing_manifest(tmp_path):
     assert path.read_bytes() == before
 
 
+@pytest.mark.parametrize('customized', [False, True])
+def test_retired_docx_cleanup_preserves_user_edits_and_environment(tmp_path, customized):
+    resources = tmp_path / 'resources'
+    template(resources, 'docx')
+    project = ComponentProject(tmp_path / 'data', resources)
+    project.stage(18931)
+    project.select('docx', True)
+    manifest = project.manifest_dir / 'docx.json'
+    if customized:
+        value = json.loads(manifest.read_text())
+        value['runtime']['args'] = ['-m', 'custom_docx']
+        manifest.write_text(json.dumps(value))
+    environment = project.root / '.provider_envs/docx/user-note.txt'
+    environment.parent.mkdir(parents=True)
+    environment.write_text('user-owned')
+    (resources / 'provider-assets/provider_manifests/docx.json').unlink()
+    spec = project.root / 'provider_specs/docx.txt'
+    spec.parent.mkdir(parents=True)
+    spec.write_bytes(b'docx-mcp-server==0.7.4\nmcp==1.30.0\n')
+    project.stage(18931)
+    assert manifest.exists() == customized
+    assert ('docx' in project.preferences()['enabled']) == customized
+    assert spec.exists() == customized
+    assert environment.read_text() == 'user-owned'
+
+
 def test_owned_builtin_paths_migrate_but_reviewed_user_edits_survive(tmp_path):
     for label in ('old-install', 'new-install'):
         resources = tmp_path / label

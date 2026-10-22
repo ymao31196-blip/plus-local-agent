@@ -55,7 +55,7 @@ directory remains constrained to the PLA project root.
 ## Selection
 
 `PLA_EXTERNAL_PROVIDERS=*` enables every manifest with `autostart: true`.
-A comma-separated value such as `markitdown,docx` explicitly selects providers.
+A comma-separated value such as `markitdown,pdf` explicitly selects providers.
 An unknown provider id is rejected.
 
 ## Security constraints

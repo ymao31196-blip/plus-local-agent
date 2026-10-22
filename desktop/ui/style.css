@@ -175,12 +175,20 @@ footer {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* Main Content */
+/* Main Content: occupy the full area beside the fixed sidebar. */
 main {
   margin-left: 240px;
   width: calc(100% - 240px);
+  min-width: 0;
   padding: var(--space-xl);
-  max-width: 1400px;
+}
+
+/* Keep page content readable and centered within that area on wide screens. */
+main > header,
+main > .view {
+  width: 100%;
+  max-width: 1336px;
+  margin-inline: auto;
 }
 
 header {

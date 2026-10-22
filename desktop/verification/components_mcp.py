@@ -88,7 +88,11 @@ def main():
         return result
     try:
         catalog = manager.dispatch('provider_catalog', {})
-        assert len(catalog['providers']) == 11 and not catalog['runtime_observed']
+        assert {row['provider_id'] for row in catalog['providers']} == {
+            'browser', 'computer', 'markitdown', 'office-enhancement', 'pdf',
+            'skill-library', 'software-migration', 'winget', 'windows-management', 'wps-office',
+        }
+        assert not catalog['runtime_observed']
         assert all(not item['requested_enabled'] for item in catalog['providers'])
         record('all_builtin_manifests_visible_without_borrowed_dependencies', len(catalog['providers']))
         install_args = {'provider_id': 'skill-library', 'skill_package': str(args.skill_package.resolve()), 'confirmed': False, 'expected_sha256': None}

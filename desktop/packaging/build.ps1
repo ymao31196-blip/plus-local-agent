@@ -82,7 +82,7 @@ try {
         }
     }
     if (-not $SkipAcceptance) {
-        foreach ($smoke in @("activity-toast-smoke.cjs", "verification-status-smoke.cjs")) {
+        foreach ($smoke in @("activity-toast-smoke.cjs", "verification-status-smoke.cjs", "wide-layout-smoke.cjs")) {
             Invoke-LoggedNative $smoke {
                 & node.exe (Join-Path $projectRoot "desktop\verification\$smoke") 2>&1 |
                     Out-File -FilePath (Join-Path $buildRoot "$smoke.log") -Encoding utf8 -ErrorAction Stop
@@ -148,8 +148,13 @@ try {
     Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\browser-component\node_modules") -Destination $browserDir -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $projectRoot "provider_manifests\browser-playwright.json") -Destination (Join-Path $resources "browser-playwright.json") -Force
     # Public reviewed assets only; developer environments and local settings are never bundled.
+    # Recreate generated provider directories: copying over older builds retains
+    # removed manifests (for example the retired independent DOCX provider).
     foreach ($folder in @("provider_manifests", "provider_specs", "providers")) {
         $assetTarget = Join-Path $resources "provider-assets\$folder"
+        $resolvedAssets = [IO.Path]::GetFullPath($assetTarget)
+        if (-not $resolvedAssets.StartsWith($resources + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe generated provider assets target" }
+        if (Test-Path -LiteralPath $resolvedAssets) { Remove-Item -LiteralPath $resolvedAssets -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $assetTarget | Out-Null
         Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) -File | Where-Object {
             $_.Extension -in @(".json", ".txt", ".py", ".mjs") -and $_.Name -notlike "*.local.*"

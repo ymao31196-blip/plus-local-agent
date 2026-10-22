@@ -2,6 +2,15 @@
 
 All notable PLA release changes are recorded here.
 
+## Desktop 1.0.0-rc.17 - 2026-10-22
+
+- Added an opt-in Agent Pet tied to Runtime lifecycle, with local read-only tool activity and user-supplied PNG frames. No third-party character artwork is distributed; Tkinter is bundled.
+- Preserved component/source and Skill management; improved wide-window layout beside the fixed sidebar.
+- Retired the independent DOCX MCP manifest and dependency spec. WPS Office, PDF, MarkItDown and general DOCX text extraction remain available.
+- Recreate generated provider assets to prevent retired components from leaking into incremental installer builds; bundle the pinned PDF text-reading dependency.
+- Isolate damaged pet preferences from Runtime startup/status and allow explicit restart after manually closing the pet.
+- See [RC17 release notes](docs/desktop-v1-rc17-release-notes.md) and [validation](docs/desktop-v1-rc17-validation.md) for evidence and limitations. Core Runtime remains v2.0.1.
+
 ## 2.0.0 - 2026-10-06
 
 ### Added

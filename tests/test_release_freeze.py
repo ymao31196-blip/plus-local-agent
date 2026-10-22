@@ -13,7 +13,6 @@ def test_release_version_and_provider_catalog():
     assert set(manifests) == {
         "browser",
         "computer",
-        "docx",
         "markitdown",
         "office-enhancement",
         "pdf",

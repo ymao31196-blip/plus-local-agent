@@ -137,6 +137,22 @@ def main():
         assert rpc('start')['runtime'] == 'ready'
         assert rpc('verify')['local_mcp'] == 'PASS'
         report['tests'] = asyncio.run(exercise(port, args.browser, data))
+        # Exercise the actual frozen importer, not the host's pypdf module.
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.add_blank_page(width=72, height=72)
+        with (authorized / 'sample.pdf').open('wb') as handle:
+            writer.write(handle)
+        async def read_pdf():
+            async with Client(f'http://127.0.0.1:{port}/mcp', timeout=15) as client:
+                result = await client.call_tool('extract_document_text', {
+                    'root': 'approved', 'path': 'sample.pdf', 'start': 2, 'end': 2})
+                assert not result.is_error, result
+                assert result.data['format'] == 'pdf' and result.data['unit_count'] == 2, result
+                assert result.data['content'].startswith('[Page 2]'), result
+        asyncio.run(read_pdf())
+        report['tests'].append({'test': 'frozen PDF text extraction with bundled pypdf', 'status': 'PASS'})
         rpc('stop')
         assert rpc('start')['runtime'] == 'ready'
         report['tests'].append({'test': 'frozen stop/restart and persistent configuration', 'status': 'PASS'})

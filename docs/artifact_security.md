@@ -88,14 +88,8 @@ destinations.
 
 ## Current production policies
 
-`docx.create_from_markdown`:
-
-- Markdown/plain-text input only
-- 8 MiB input limit
-- one DOCX output
-- 32 MiB output/aggregate limit
-- 600 second output TTL
-- DOCX MIME only
+The legacy `docx.create_from_markdown` MCP provider was retired; its former
+artifact contract is no longer offered by the production component catalog.
 
 `markitdown.convert_to_markdown`:
 

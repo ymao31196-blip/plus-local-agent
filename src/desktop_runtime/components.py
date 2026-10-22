@@ -65,6 +65,21 @@ class ComponentProject:
         asset_records = json.loads(self.asset_record_path.read_text()) if self.asset_record_path.exists() else {}
         if not isinstance(asset_records, dict) or any(not isinstance(key, str) or not PROVIDER_ID.fullmatch(key) or not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value) for key, value in asset_records.items()):
             raise ValueError('Invalid builtin manifest provenance record; existing files preserved')
+        # Retire only the unchanged, provenance-tracked builtin DOCX manifest.
+        # User imports/edits and installed environments remain user-owned.
+        retired = self.manifest_dir / 'docx.json'
+        if (retired.is_file() and not retired.is_symlink()
+                and hashlib.sha256(retired.read_bytes()).hexdigest() == asset_records.get('docx')
+                and not (templates / 'provider_manifests/docx.json').exists()):
+            preferences = self.preferences()
+            preferences['enabled'] = [name for name in preferences['enabled'] if name != 'docx']
+            atomic_write(self.preferences_path, json.dumps(preferences).encode())
+            retired.unlink()
+            asset_records.pop('docx', None)
+            spec = self.root / 'provider_specs/docx.txt'
+            if (spec.is_file() and not spec.is_symlink()
+                    and spec.read_bytes().replace(b'\r\n', b'\n') == b'docx-mcp-server==0.7.4\nmcp==1.30.0\n'):
+                spec.unlink()
         for folder, suffixes in (('providers', {'.py', '.mjs'}), ('provider_specs', {'.txt', '.json'})):
             source = templates / folder
             if source.is_dir():

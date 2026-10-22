@@ -28,7 +28,7 @@ Skill Library 是可选独立组件。当前未确立其再分发许可，需在
 
 ## 桌面版组件入口
 
-「本机组件」统一展示安装版本、启停、真实连接状态、完整工具参数、仓库安装完整性检查及卸载；仓库管理和浏览组件仍独立为页签。常用组件包含 Computer、PDF、MarkItDown、Office Enhancement、Windows Management、Software Migration 六项；DOCX 可单独安装。可选自开发模块已移除，已有源码目录和工作区授权保留。
+「本机组件」统一展示安装版本、启停、真实连接状态、完整工具参数、仓库安装完整性检查及卸载；仓库管理和浏览组件仍独立为页签。常用组件包含 Computer、PDF、MarkItDown、Office Enhancement、Windows Management、Software Migration 六项；旧的独立DOCX组件已移除。可选自开发模块已移除，已有源码目录和工作区授权保留。
 
 ## 真人 ChatGPT 验收 — 每项记录证据
 

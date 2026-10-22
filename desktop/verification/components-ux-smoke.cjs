@@ -58,21 +58,21 @@ function setup(rpc, localStorage) {
     if (command === 'provider_install') {
       if (args.confirmed) {
         jobState='running';
-        return {provider_id: args.provider_id, job: 'installer:docx', started: true};
+        return {provider_id: args.provider_id, job: 'installer:pdf', started: true};
       }
       return {provider_id: args.provider_id, skill_package: null, environment: 'TEST',
-        sha256: 'reviewed-plan', specs: [{name:'docx.txt',content:'fastmcp==4.0.3'}]};
+        sha256: 'reviewed-plan', specs: [{name:'pdf.txt',content:'fastmcp==4.0.3'}]};
     }
     if (command === 'installation_status') return {
-      jobs: jobState === 'idle' ? [] : [{job: 'installer:docx', provider_id: 'docx', pid: 123,
+      jobs: jobState === 'idle' ? [] : [{job: 'installer:pdf', provider_id: 'pdf', pid: 123,
         state: jobState, exit_code: jobState === 'installed' ? 0 : null, logs: []}],
-      installed_receipts: jobState === 'installed' ? ['docx'] : [],
+      installed_receipts: jobState === 'installed' ? ['pdf'] : [],
     };
     if (command === 'provider_catalog') return {manifest_directory: 'TEST',
       runtime_observed: false, providers: []};
     throw Error('Unexpected RPC: ' + command);
   });
-  h.$('install-provider').value = 'docx';
+  h.$('install-provider').value = 'pdf';
   await h.$('start-install').onclick();
   const installed = calls.filter(x => x.command === 'provider_install');
   assert.equal(installed.length, 2);
@@ -81,7 +81,7 @@ function setup(rpc, localStorage) {
   assert.equal(installed[1].args.expected_sha256, 'reviewed-plan');
   // Installation status refresh replaces the initial 'started' message with
   // the live running job. Assert the real state, not stale UI copy.
-  assert.match(h.$('install-live').textContent, /docx.+正在安装.*PID 123/);
+  assert.match(h.$('install-live').textContent, /pdf.+正在安装.*PID 123/);
   jobState = 'installed';
   await h.$('installation-refresh').onclick();
   assert.match(h.$('install-live').textContent, /已安装/);
@@ -256,8 +256,8 @@ function setup(rpc, localStorage) {
   const b = setup(async (command, args = {}) => {
     bundleCalls.push({command, args});
     if (command === 'provider_bundle') return args.confirmed
-      ? {started: true, job: 'installer:starter-pack', providers: ['docx']}
-      : {sha256: 'starter-hash', providers: ['docx'], started: false};
+      ? {started: true, job: 'installer:starter-pack', providers: ['pdf']}
+      : {sha256: 'starter-hash', providers: ['pdf'], started: false};
     if (command === 'installation_status') return {jobs: [], installed_receipts: []};
     throw Error('Unexpected bundle RPC: ' + command);
   });

@@ -23,6 +23,8 @@ def main():
         from desktop_runtime.repository_jobs import main as run
     elif role == "indicator":
         from host.computer_use_indicator import main as run
+    elif role == "pet":
+        from desktop_runtime.pet_viewer import run_gui as run
     elif role == "browser_keeper":
         from browser.browser_session_keeper import main as run_async
         import asyncio
