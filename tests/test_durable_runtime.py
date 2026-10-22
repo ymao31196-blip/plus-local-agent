@@ -443,7 +443,39 @@ def test_task_text_capture_counts_normalized_unicode(store):
     assert result["stdout_original_length"] == 24000
     assert len(result["stdout"]) == 20000
     assert "\r" not in result["stdout"]
+    # Dense line output should produce bounded durable events rather than
+    # thousands of SQLite commits on the pipe reader's thread.
+    observations = store.get(task_id, 0)
+    assert observations["events_truncated"] is False
+    events = [event for event in observations["events"]
+              if event["type"] == "process_output"]
+    assert events and len(events) <= 32
+    assert all(len(event["data"]["content"]) <= 4096 for event in events)
 
+
+
+def test_sparse_second_line_is_observed_before_process_exit(store):
+    # Sparse output should be visible promptly even if the child remains
+    # quiet after its second line, rather than waiting for EOF.
+    task_id = store.submit({"tool": "run_process", "arguments": {
+        "program": sys.executable, "backend": "in_process",
+        "args": ["-u", "-c",
+                 "import time;print('first',flush=True);time.sleep(.03);"
+                 "print('second',flush=True);time.sleep(3)"]}})["task_id"]
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        record = store.get(task_id, 0)
+        streamed = [event["data"]["content"]
+                    for event in record.get("events", [])
+                    if event["type"] == "process_output"]
+        if any("second" in content for content in streamed):
+            assert record["status"] == "running", record
+            break
+        time.sleep(.01)
+    else:
+        raise AssertionError({"status": store.get(task_id),
+                              "observations": store.get(task_id, 0)})
+    assert finish(store, task_id)["status"] == "completed"
 
 def test_cursor_mode_avoids_repeating_request_and_result(store):
     task_id = store.submit({"tool": "list_directory", "arguments": {}})["task_id"]
