@@ -197,3 +197,18 @@ def test_desktop_build_uses_native_exit_codes_instead_of_powershell_51_stderr():
     assert 'Invoke-LoggedNative "Skill quick source UI smoke"' in script
     assert 'Invoke-LoggedNative "Reviewed Skill Library Wheel"' in script
     assert '*>' not in script, "Old PowerShell native-output redirections must not reappear"
+
+
+def test_desktop_build_prepares_locked_playwright_before_real_browser_ui_smoke():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "desktop/packaging/build.ps1").read_text(encoding="utf-8")
+    package = root / "desktop/browser-component"
+    assert (package / "package-lock.json").is_file()
+    install = script.index('Invoke-LoggedNative "Pinned browser component"')
+    test = script.index('Invoke-LoggedNative "Skill quick source UI smoke"')
+    copy = script.index('Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\\browser-component\\node_modules")')
+    assert install < test < copy
+    assert script.count('Invoke-LoggedNative "Pinned browser component"') == 1
+    # An isolated CI checkout must install from the lockfile; never rely on
+    # untracked local node_modules that exist on a developer's workstation.
+    assert '& npm.cmd ci --prefix (Join-Path $projectRoot "desktop\\browser-component")' in script

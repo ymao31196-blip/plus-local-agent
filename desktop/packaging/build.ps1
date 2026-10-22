@@ -67,6 +67,12 @@ try {
     if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
         throw "npm.cmd not found. Install Node.js or specify the directory with -ToolchainBin."
     }
+    # Install locked Playwright dependencies before the real-Edge Skill UI
+    # smoke test. Clean CI runners have no developer node_modules cache.
+    Invoke-LoggedNative "Pinned browser component" {
+        & npm.cmd ci --prefix (Join-Path $projectRoot "desktop\browser-component") 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "browser-component.log") -Encoding utf8 -ErrorAction Stop
+    }
     if (-not $SkipAcceptance) {
         if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) {
             throw "node.exe not found; the required Desktop UI smoke test cannot run."
@@ -149,10 +155,6 @@ try {
     # keeps the base installer smaller and preserves the vendor distribution.
     $obsoleteUv = Join-Path $resources "uv.exe"
     if (Test-Path -LiteralPath $obsoleteUv) { Remove-Item -LiteralPath $obsoleteUv -Force }
-    Invoke-LoggedNative "Pinned browser component" {
-        & npm.cmd ci --prefix (Join-Path $projectRoot "desktop\browser-component") 2>&1 |
-            Out-File -FilePath (Join-Path $buildRoot "browser-component.log") -Encoding utf8 -ErrorAction Stop
-    }
     $browserDir = Join-Path $resources ".provider_envs\browser"
     New-Item -ItemType Directory -Force -Path $browserDir | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\browser-component\node_modules") -Destination $browserDir -Recurse -Force
