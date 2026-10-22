@@ -3,6 +3,7 @@
 All tests use isolated temporary directories; no live Desktop configuration is touched.
 """
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -212,3 +213,19 @@ def test_desktop_build_prepares_locked_playwright_before_real_browser_ui_smoke()
     # An isolated CI checkout must install from the lockfile; never rely on
     # untracked local node_modules that exist on a developer's workstation.
     assert '& npm.cmd ci --prefix (Join-Path $projectRoot "desktop\\browser-component")' in script
+
+def test_desktop_release_versions_are_consistent():
+    # The runtime status and both installer manifests must advertise exactly
+    # the same release candidate, including locked package metadata.
+    root = Path(__file__).resolve().parents[1]
+    config = (root / "src/desktop_runtime/config.py").read_text(encoding="utf-8")
+    package = json.loads((root / "desktop/package.json").read_text(encoding="utf-8"))
+    npm_lock = json.loads((root / "desktop/package-lock.json").read_text(encoding="utf-8"))
+    tauri = json.loads((root / "desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    cargo = tomllib.loads((root / "desktop/src-tauri/Cargo.toml").read_text(encoding="utf-8"))
+    cargo_lock = tomllib.loads((root / "desktop/src-tauri/Cargo.lock").read_text(encoding="utf-8"))
+    version = package["version"]
+    assert version == tauri["version"] == cargo["package"]["version"]
+    assert version == npm_lock["version"] == npm_lock["packages"][""]["version"]
+    assert [p["version"] for p in cargo_lock["package"] if p["name"] == "pla-desktop"] == [version]
+    assert f'VERSION = "{version}"' in config
