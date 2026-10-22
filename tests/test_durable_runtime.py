@@ -18,14 +18,21 @@ from tooling.internal_tool_executor import ACTION_LOCAL_TOOLS, INTERNAL_TOOL_SCH
 from server import mcp
 
 
-def finish(store, task_id):
-    deadline = time.monotonic() + 8
+def finish(store, task_id, *, wait_seconds=8):
+    # Most tasks must finish quickly. Windows CI subprocess startup and large
+    # captured output can take longer, so only explicitly selected tests get
+    # a larger, still bounded deadline.
+    deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
         record = store.get(task_id)
         if record["status"] in task_store.TERMINAL:
             return record
         time.sleep(.01)
-    raise AssertionError(record)
+    raise AssertionError({
+        "final_record": store.get(task_id),
+        "observations": store.get(task_id, 0).get("events", []),
+        "wait_seconds": wait_seconds,
+    })
 
 
 @pytest.fixture
@@ -421,7 +428,7 @@ def test_task_powershell_uses_controlled_capture(store, tmp_path):
     (tmp_path / "large.txt").write_text("x" * 21000, encoding="utf-8")
     task_id = store.submit({"tool": "run_powershell", "arguments": {
         "command": "Get-Content", "parameters": {"LiteralPath": "large.txt", "Raw": True}}})["task_id"]
-    record = finish(store, task_id)
+    record = finish(store, task_id, wait_seconds=40)
     assert record["status"] == "completed", record
     assert record["result"]["result"]["stdout_truncated"]
     assert len(record["result"]["result"]["stdout"]) == 20000
@@ -430,7 +437,7 @@ def test_task_powershell_uses_controlled_capture(store, tmp_path):
 def test_task_text_capture_counts_normalized_unicode(store):
     task_id = store.submit({"tool": "run_process", "arguments": {
         "program": sys.executable, "backend": "in_process", "args": ["-c", "import sys;sys.stdout.buffer.write(('你好\\r\\n'*8000).encode('utf-8'))"]}})["task_id"]
-    record = finish(store, task_id)
+    record = finish(store, task_id, wait_seconds=30)
     result = record["result"]["result"]
     assert record["status"] == "completed"
     assert result["stdout_original_length"] == 24000
