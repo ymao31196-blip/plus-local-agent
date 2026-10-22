@@ -17,6 +17,7 @@ from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 from mcp_runtime.mcp_client_manager import MCPClientManager
 from provider.provider_manifest import (
     ProviderManifest,
+    EXECUTABLE_STDIO,
     STREAMABLE_HTTP,
     load_provider_manifests,
 )
@@ -49,6 +50,13 @@ def _selected_provider_ids(
             "Unknown external provider ids: " + ", ".join(unknown)
         )
     return selected
+
+
+def _can_start(manifest: ProviderManifest) -> bool:
+    # Missing optional system programs remain visible in the catalog but must
+    # not be registered or launched until the executable actually exists.
+    return not (manifest.runtime_kind == EXECUTABLE_STDIO and
+                (manifest.command_path is None or not manifest.command_path.is_file()))
 
 
 def _register_manifest(
@@ -117,6 +125,8 @@ def configure_external_providers(
 
     configured: dict[str, dict[str, Any]] = {}
     for provider_id in sorted(selected):
+        if not _can_start(manifests[provider_id]):
+            continue
         configured[provider_id] = _register_manifest(
             manager,
             manifests[provider_id],
@@ -223,7 +233,8 @@ class ExternalProviderRuntime:
         # Forget ephemeral overrides for manifests that no longer exist.
         self._forced_enabled.intersection_update(manifests)
         self._forced_disabled.intersection_update(manifests)
-        return self._base_selected(manifests) | self._forced_enabled
+        return {provider_id for provider_id in self._base_selected(manifests) | self._forced_enabled
+            if _can_start(manifests[provider_id])}
 
     def configure_initial(self) -> dict[str, dict[str, Any]]:
         manifests = self._load_manifests()
@@ -231,6 +242,8 @@ class ExternalProviderRuntime:
         configured: dict[str, dict[str, Any]] = {}
         for provider_id in sorted(selected):
             manifest = manifests[provider_id]
+            if not _can_start(manifest):
+                continue
             configured[provider_id] = _register_manifest(
                 self._manager,
                 manifest,
@@ -423,10 +436,12 @@ class ExternalProviderRuntime:
             # A disabled provider may still report a historical 'ready' state.
             # Re-register its transport after a disable/enable cycle so changes
             # to Desktop Skill permissions and other launch context take effect.
+            manifest = manifests[provider_id]
+            if not _can_start(manifest):
+                raise ValueError(f"Provider executable is not installed: {provider_id}")
             was_disabled = provider_id in self._forced_disabled
             self._forced_disabled.discard(provider_id)
             self._forced_enabled.add(provider_id)
-            manifest = manifests[provider_id]
 
             if (
                 was_disabled

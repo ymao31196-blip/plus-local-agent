@@ -86,15 +86,6 @@ from capabilities.windows_action_capabilities import register_windows_action_cap
 from provider.provider_doctor import provider_doctor as run_provider_doctor
 
 
-OBSERVER_HOOK_RUNTIME.register(
-    "computer-use-indicator",
-    (
-        "capability.before_invoke",
-        "capability.succeeded",
-        "capability.failed",
-    ),
-    computer_use_indicator_observer,
-)
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
 register_browser_download_extension(MCP_CLIENT_MANAGER)
@@ -857,6 +848,20 @@ async def diagnose_client(ctx: Context) -> dict:
     }
     trace.emit("final_status", status="completed")
     return result
+
+
+# Register the process-wide observer only after module initialization succeeds.
+# A failed first import must not poison a subsequent pytest import with a
+# duplicate hook, and duplicate registration still remains a hard error.
+OBSERVER_HOOK_RUNTIME.register(
+    "computer-use-indicator",
+    (
+        "capability.before_invoke",
+        "capability.succeeded",
+        "capability.failed",
+    ),
+    computer_use_indicator_observer,
+)
 
 
 def main() -> None:

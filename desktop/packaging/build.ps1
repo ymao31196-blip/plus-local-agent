@@ -1,8 +1,9 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Python = "python.exe",
     [string]$ToolchainBin = "",
     [string]$SkillLibrarySource = "",
+    [string]$SkillLibraryWheel = "",
     [switch]$SkipRuntime,
     [switch]$SkipAcceptance
 )
@@ -90,10 +91,19 @@ try {
         }
     }
     New-Item -ItemType Directory -Force -Path $resources | Out-Null
-    # Build-time-only reviewed source; Desktop end users never need the checkout.
-    $skillSource = if ($SkillLibrarySource) { $SkillLibrarySource } else { Join-Path $projectRoot "workspace\skill-library" }
+    # Local releases rebuild from the exact reviewed source. CI can instead
+    # supply the identical SHA-256-verified wheel without private repo access.
+    if ($SkillLibrarySource -and $SkillLibraryWheel) {
+        throw "Specify either -SkillLibrarySource or -SkillLibraryWheel, not both."
+    }
+    $wheelInputArgs = if ($SkillLibraryWheel) {
+        @("--wheel", $SkillLibraryWheel)
+    } else {
+        $skillSource = if ($SkillLibrarySource) { $SkillLibrarySource } else { Join-Path $projectRoot "workspace\skill-library" }
+        @("--source", $skillSource)
+    }
     Invoke-LoggedNative "Reviewed Skill Library Wheel" {
-        & $Python (Join-Path $PSScriptRoot "prepare_skill_library.py") --source $skillSource --resources $resources 2>&1 |
+        & $Python (Join-Path $PSScriptRoot "prepare_skill_library.py") @wheelInputArgs --resources $resources 2>&1 |
             Out-File -FilePath (Join-Path $buildRoot "skill-library-wheel.log") -Encoding utf8 -ErrorAction Stop
     }
     $packPython = Join-Path $buildRoot "venv\Scripts\python.exe"

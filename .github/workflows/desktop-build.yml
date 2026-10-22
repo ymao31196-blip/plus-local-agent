@@ -31,7 +31,7 @@ jobs:
         run: node ./desktop/verification/components-ux-smoke.cjs
       - name: Freeze, verify packaged tools and build NSIS
         shell: pwsh
-        run: ./desktop/packaging/build.ps1
+        run: ./desktop/packaging/build.ps1 -SkillLibraryWheel (Join-Path $PWD "desktop/packaging/reviewed/chatgpt_skill_library-0.5.0-py3-none-any.whl")
       - uses: actions/upload-artifact@v4
         if: always()
         with:

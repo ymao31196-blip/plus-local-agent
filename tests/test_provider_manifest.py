@@ -344,3 +344,33 @@ def test_manifest_accepts_persistent_session_only_for_streamable_http(tmp_path):
 
     with pytest.raises(ValueError, match="only valid for streamable_http"):
         load_provider_manifest(stdio_path, tmp_path)
+
+
+
+def test_unavailable_path_command_keeps_catalog_but_strict_import_rejects(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest_module.shutil, "which", lambda _name: None)
+    path = write_manifest(
+        tmp_path, provider_id="optional",
+        runtime={"kind": "executable_stdio", "command": "uninstalled-mcp.exe",
+                 "args": [], "cwd": "."},
+    )
+    # Catalog discovery must not be blocked by optional system software.
+    manifests = load_provider_manifests(tmp_path)
+    assert set(manifests) == {"optional"}
+    assert manifests["optional"].command_path is None
+    assert manifests["optional"].summary()["command_exists"] is False
+    # An explicitly imported executable must still exist at validation time.
+    with pytest.raises(ValueError, match="not found on PATH"):
+        load_provider_manifest(path, tmp_path)
+
+
+def test_missing_optional_command_does_not_mask_other_manifest_errors(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest_module.shutil, "which", lambda _name: None)
+    write_manifest(
+        tmp_path, provider_id="optional",
+        runtime={"kind": "executable_stdio", "command": "uninstalled-mcp.exe",
+                 "args": [], "cwd": "."},
+    )
+    write_manifest(tmp_path, provider_id="broken", mode="invalid")
+    with pytest.raises(ValueError, match="mode"):
+        load_provider_manifests(tmp_path)

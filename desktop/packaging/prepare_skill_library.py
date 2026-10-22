@@ -88,12 +88,46 @@ def prepare(source: Path, resources: Path) -> Path:
     return output
 
 
+def prepare_prebuilt(wheel: Path, resources: Path) -> Path:
+    """Install a reviewed wheel when the separate source checkout is unavailable.
+
+    The pinned digest is identical to the independently rebuilt source wheel.
+    Untrusted or changed binary packages are never accepted as CI inputs.
+    """
+    wheel = wheel.resolve(strict=True)
+    if wheel.name != SKILL_LIBRARY_WHEEL:
+        raise ValueError("Expected the exact reviewed Skill Library wheel filename")
+    content = wheel.read_bytes()
+    digest = sha256(content).hexdigest()
+    if digest != SKILL_LIBRARY_SHA256:
+        raise ValueError(f"Reviewed Skill Library Wheel hash mismatch: {digest}")
+    with zipfile.ZipFile(wheel) as archive:
+        if any(name.startswith("skills/") for name in archive.namelist()):
+            raise ValueError("Unexpected private Skill content inside service package")
+    destination = resources.resolve() / "provider-assets" / "packages"
+    destination.mkdir(parents=True, exist_ok=True)
+    target = destination / SKILL_LIBRARY_WHEEL
+    staging = destination / (SKILL_LIBRARY_WHEEL + ".tmp")
+    try:
+        staging.write_bytes(content)
+        os.replace(staging, target)
+    finally:
+        staging.unlink(missing_ok=True)
+    print(f"Reviewed bundled Skill Library Wheel: {target} SHA256={digest}")
+    return target
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", type=Path, required=True)
+    source_option = parser.add_mutually_exclusive_group(required=True)
+    source_option.add_argument("--source", type=Path)
+    source_option.add_argument("--wheel", type=Path)
     parser.add_argument("--resources", type=Path, required=True)
     args = parser.parse_args()
-    prepare(args.source, args.resources)
+    if args.wheel is not None:
+        prepare_prebuilt(args.wheel, args.resources)
+    else:
+        prepare(args.source, args.resources)
 
 
 if __name__ == "__main__":
