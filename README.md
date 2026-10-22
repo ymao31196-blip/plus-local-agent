@@ -6,10 +6,9 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 **Release channel: Pre-release / experimental.** PLA Desktop is distributed as an unsigned Windows installer, with manual updates and no automatic updater. It is not a security sandbox or a commercially supported product.
 
-[**Download Windows installer — current RC.16**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
+[**Download Windows installer — current RC.18**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
-
-The unpublished RC17 candidate adds an optional **Agent Pet**, disabled by default, with user-supplied artwork and Runtime-linked lifecycle. It improves wide-window layout and retires the independent DOCX MCP; WPS Office, PDF, MarkItDown and general DOCX text reading remain available. Publication is blocked by clean CI regression; see [RC17 candidate notes](docs/desktop-v1-rc17-release-notes.md) and [Agent Pet setup](docs/desktop-agent-pet.md).
+**RC.18 release update:** Desktop UI and component management refinements, faster event persistence for background processes producing intensive output, and Windows build compatibility fixes. GitHub Windows CI passed 972 Python tests, Desktop UI checks, Runtime freezing and NSIS packaging. See the [RC.18 release notes](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18).
 
 ## PLA Desktop: download, install and connect
 
@@ -17,19 +16,16 @@ The unpublished RC17 candidate adds an optional **Agent Pet**, disabled by defau
 
 ### 1. Download the correct file
 
-1. Go to [PLA Desktop RC.16 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
-2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.16 asset: [`PLA.Desktop_1.0.0-rc.16_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/PLA.Desktop_1.0.0-rc.16_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+1. Go to [PLA Desktop RC.18 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
+2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.18 asset: [`PLA.Desktop_1.0.0-rc.18_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/PLA.Desktop_1.0.0-rc.18_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
 
-   ![Windows setup EXE and SHA256SUMS in GitHub Release Assets](docs/images/pla-desktop/01-release-assets.png)
-
-   *RC16 example release assets: download the Windows installer and checksum, not the Source code archives.*
 3. Open PowerShell, run the command below (change the filename if using another version), and compare the resulting hash with the *hash* inside `SHA256SUMS.txt`. GitHub may replace spaces in uploaded asset names with dots; compare the hash, not only the filename.
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.16_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.18_x64-setup.exe"
 ~~~
 
-The authoritative RC.16 SHA-256 is in the release Assets `SHA256SUMS.txt` and `build-manifest.json`; verify both before running the installer.
+The published RC.18 installer SHA-256 is `3c0e00ce34c564ef861de4be49c4b9ce15458c7019d44d412a744896f606e1c4`. Verify it against the release's `SHA256SUMS.txt` before running the installer.
 
 ### 2. Install and open PLA
 
@@ -69,7 +65,7 @@ With PLA and Tunnel running, ask ChatGPT to **list the files in your authorized 
 
 If Runtime is not ready, check **日志诊断 (Logs/Diagnostics)** and local port conflicts. If the Tunnel does not connect, check the saved ID/key, organization permissions, network/proxy and then restart the connection. If ChatGPT cannot discover the tools, check its MCP authorization and run the test from a new conversation. For a clean exit, use the PLA system-tray **退出 (Exit)** action; closing the main window may leave the app running in the tray.
 
-For browser, Office, Skill Library or other MCP components, open **组件管理 → 本机组件**, review installation plans and then enable/verify each component separately. New Desktop builds include a reviewed, SHA-256-checked Skill Library v0.5.0 Wheel; ordinary users need no server source checkout. Personal Skill Sources are never imported or authorized automatically. In RC16, **Skill Library** is one simplified page for browsing, enabling/disabling, synchronizing and managing Sources; create/edit/publish Skills through ChatGPT using the existing governed MCP capabilities. The [detailed desktop handbook](docs/desktop-v1-acceptance.md) and [security boundaries](docs/desktop-v1-architecture.md) cover additional cases.
+For browser, Office, Skill Library or other MCP components, open **组件管理 → 本机组件**, review installation plans and then enable/verify each component separately. New Desktop builds include a reviewed, SHA-256-checked Skill Library v0.5.0 Wheel; ordinary users need no server source checkout. Personal Skill Sources are never imported or authorized automatically. The **Skill Library** page supports browsing, enabling/disabling, synchronizing and managing Sources; create/edit/publish Skills through ChatGPT using the existing governed MCP capabilities. The [detailed desktop handbook](docs/desktop-v1-acceptance.md) and [security boundaries](docs/desktop-v1-architecture.md) cover additional cases.
 
 <details>
 <summary>See component and Skill Library screenshots</summary>
