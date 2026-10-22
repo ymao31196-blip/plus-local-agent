@@ -2,7 +2,9 @@
 
 All notable PLA release changes are recorded here.
 
-## Desktop 1.0.0-rc.17 - 2026-10-22
+## Desktop 1.0.0-rc.17 - 2026-10-22 (unreleased candidate)
+
+- Publication blocked by clean GitHub CI source regression (missing optional WinGet MCP executable and cascading duplicate Observer registration); Release remains an incomplete draft. See the validation record. Public downloads remain RC16.
 
 - Added an opt-in Agent Pet tied to Runtime lifecycle, with local read-only tool activity and user-supplied PNG frames. No third-party character artwork is distributed; Tkinter is bundled.
 - Preserved component/source and Skill management; improved wide-window layout beside the fixed sidebar.

@@ -6,10 +6,10 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 **发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
 
-[**下载Windows安装包（当前RC.17）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.17) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+[**下载Windows安装包（当前RC.16）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
 
-RC17 新增默认关闭的可选**桌宠**，使用自有素材并随 Runtime 启停，改善宽屏布局，移除独立 DOCX MCP。WPS Office、PDF、MarkItDown 和通用 DOCX 文本读取继续保留。详见 [RC17 更新说明](docs/desktop-v1-rc17-release-notes.md)及[桌宠使用说明](docs/desktop-agent-pet.md)。
+尚未发布的 RC17 候选版新增默认关闭的可选**桌宠**，使用自有素材并随 Runtime 启停，改善宽屏布局，移除独立 DOCX MCP。WPS Office、PDF、MarkItDown 和通用 DOCX 文本读取继续保留。因干净 CI 回归失败暂缓发布，详见 [RC17 候选说明](docs/desktop-v1-rc17-release-notes.md)及[桌宠使用说明](docs/desktop-agent-pet.md)。
 
 ## PLA Desktop：软件下载、安装与连接教程
 
@@ -17,8 +17,8 @@ RC17 新增默认关闭的可选**桌宠**，使用自有素材并随 Runtime �
 
 ### 第一步：正确下载安装包
 
-1. 打开[PLA Desktop RC.17发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.17)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
-2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.17对应[`PLA.Desktop_1.0.0-rc.17_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.17/PLA.Desktop_1.0.0-rc.17_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.17/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+1. 打开[PLA Desktop RC.16发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
+2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.16对应[`PLA.Desktop_1.0.0-rc.16_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/PLA.Desktop_1.0.0-rc.16_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
 
    ![GitHub Release Assets中的Windows安装程序和SHA256SUMS校验文件](docs/images/pla-desktop/01-release-assets.png)
 
@@ -26,10 +26,10 @@ RC17 新增默认关闭的可选**桌宠**，使用自有素材并随 Runtime �
 3. 在PowerShell中运行以下命令（安装到其他下载目录或使用其他版本时请调整文件路径），把输出的`Hash`与`SHA256SUMS.txt`里的哈希值对照。GitHub上传后可能把原文件名中的空格替换成点，因此请核对哈希值，不只核对文件名。
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.17_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.16_x64-setup.exe"
 ~~~
 
-RC.17的准确SHA-256见本次Release附件`SHA256SUMS.txt`与`build-manifest.json`，运行安装包前请核对两者。
+RC.16的准确SHA-256见本次Release附件`SHA256SUMS.txt`与`build-manifest.json`，运行安装包前请核对两者。
 
 ### 第二步：安装并启动软件
 

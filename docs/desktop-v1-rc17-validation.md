@@ -2,6 +2,16 @@
 
 本记录区分源码回归、冻结 Runtime、原生发布负载和真实安装。最终安装包的源码提交、干净状态和 SHA-256 以 Release 附件 `build-manifest.json`、`SHA256SUMS.txt` 为准。
 
+## 发布阻塞：GitHub CI 失败，未公开发布
+
+提交 `2f647448ccc8537285a1178b7438c6220bdf90f9` 的 [GitHub Actions](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/39726730398) 在 Source regression 阶段以 12 个收集错误失败。首个错误是 `winget.json.runtime.command was not found on PATH: 'WindowsPackageManagerMCPServer.exe'`：干净 CI 主机没有该可选系统组件，源码 Server 初始化时严格解析了其清单。Server 此前已经向全局 Observer Runtime 注册 `computer-use-indicator`，失败后的再次导入产生重复注册错误；这些后续错误不是独立的桌宠 Hook 需求。
+
+本地已有依赖的环境通过 965 项回归，不能替代这次干净环境失败。CI 的冻结/安装包构建步骤因前序失败未执行；工作流也未显式准备构建要求的固定 Skill Library 源码输入，不能宣称 CI 构建可复现。需要修复可选组件缺失时的源码初始化/测试隔离、失败导入的注册处理，并补齐 CI 构建输入，再完整重跑。
+
+已停止公开发布并取消未完成的安装包上传。GitHub Release 保持 Draft + Pre-release，只有校验文件和构建清单，**没有完整安装资源，不可分发**。候选 Tag `desktop-v1.0.0-rc.17` 已推送，指向上述精确提交；遵守不覆盖 Tag 的要求，后续修复应使用新版本/Tag。以下通过记录均明确为本地证据。
+
+本地最终安装包为 `PLA Desktop_1.0.0-rc.17_x64-setup.exe`，92,720,778 字节，SHA-256 为 `db0765750787d9de7cf85f07848508d4a1d53394f4b69e9803d45b1c383a4872`，原构建清单 `source_dirty=false`。安装器初始窗口启动后已取消，既有 RC10 注册信息和 EXE 哈希未变化。NSIS 文件表的 5127 个资源条目与审核资源集合完全一致；这些事实不消除 CI 阻塞。
+
 ## 已完成
 
 - 最终源码全量回归：**965 passed，185.16 秒**。执行环境为独立打包 venv，使用 `requirements-dev.txt`；`pip check` 无损坏依赖。后续仅调整原生验收报告的负载措辞，相关 UI 契约测试另有 8 项通过。

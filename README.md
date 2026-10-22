@@ -6,10 +6,10 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 **Release channel: Pre-release / experimental.** PLA Desktop is distributed as an unsigned Windows installer, with manual updates and no automatic updater. It is not a security sandbox or a commercially supported product.
 
-[**Download Windows installer — current RC.17**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.17) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
+[**Download Windows installer — current RC.16**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
 
-RC17 adds an optional **Agent Pet**, disabled by default, with user-supplied artwork and Runtime-linked lifecycle. It improves wide-window layout and retires the independent DOCX MCP; WPS Office, PDF, MarkItDown and general DOCX text reading remain available. See [RC17 release notes](docs/desktop-v1-rc17-release-notes.md) and [Agent Pet setup](docs/desktop-agent-pet.md).
+The unpublished RC17 candidate adds an optional **Agent Pet**, disabled by default, with user-supplied artwork and Runtime-linked lifecycle. It improves wide-window layout and retires the independent DOCX MCP; WPS Office, PDF, MarkItDown and general DOCX text reading remain available. Publication is blocked by clean CI regression; see [RC17 candidate notes](docs/desktop-v1-rc17-release-notes.md) and [Agent Pet setup](docs/desktop-agent-pet.md).
 
 ## PLA Desktop: download, install and connect
 
@@ -17,8 +17,8 @@ RC17 adds an optional **Agent Pet**, disabled by default, with user-supplied art
 
 ### 1. Download the correct file
 
-1. Go to [PLA Desktop RC.17 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.17), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
-2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.17 asset: [`PLA.Desktop_1.0.0-rc.17_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.17/PLA.Desktop_1.0.0-rc.17_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.17/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+1. Go to [PLA Desktop RC.16 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
+2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.16 asset: [`PLA.Desktop_1.0.0-rc.16_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/PLA.Desktop_1.0.0-rc.16_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
 
    ![Windows setup EXE and SHA256SUMS in GitHub Release Assets](docs/images/pla-desktop/01-release-assets.png)
 
@@ -26,10 +26,10 @@ RC17 adds an optional **Agent Pet**, disabled by default, with user-supplied art
 3. Open PowerShell, run the command below (change the filename if using another version), and compare the resulting hash with the *hash* inside `SHA256SUMS.txt`. GitHub may replace spaces in uploaded asset names with dots; compare the hash, not only the filename.
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.17_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.16_x64-setup.exe"
 ~~~
 
-The authoritative RC.17 SHA-256 is in the release Assets `SHA256SUMS.txt` and `build-manifest.json`; verify both before running the installer.
+The authoritative RC.16 SHA-256 is in the release Assets `SHA256SUMS.txt` and `build-manifest.json`; verify both before running the installer.
 
 ### 2. Install and open PLA
 
