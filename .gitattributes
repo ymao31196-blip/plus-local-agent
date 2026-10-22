@@ -1,0 +1,3 @@
+# Reviewed supplemental license assets have SHA-256 pins over LF bytes.
+# Never let Windows Git checkout convert them to CRLF.
+desktop/packaging/license-assets/*.txt text eol=lf
