@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,6 +23,21 @@ def setup_provider_dependencies(
         raise ValueError("provider_id is invalid")
     if not isinstance(timeout_seconds, int) or not 30 <= timeout_seconds <= 600:
         raise ValueError("timeout_seconds must be between 30 and 600")
+
+    if os.environ.get('PLA_DESKTOP_RUNTIME') == '1':
+        from desktop_runtime.installer import ComponentInstaller
+        data = Path(os.environ['PLA_DATA_ROOT']).resolve()
+        resources = Path(os.environ['PLA_INSTALL_RESOURCES']).resolve()
+        installer = ComponentInstaller(data, resources)
+        if installer.project.root != root:
+            raise ValueError('Desktop component installation must use its private project')
+        package = None
+        if provider == 'skill-library':
+            import json
+            receipt = root / 'receipts/skill-library.json'
+            if receipt.is_file():
+                package = json.loads(receipt.read_text()).get('skill_package')
+        return installer.install(provider, package)
 
     spec_dir = root / "provider_specs"
     python_spec = spec_dir / f"{provider}.txt"

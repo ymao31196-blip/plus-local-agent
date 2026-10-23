@@ -6,7 +6,9 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 **发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
 
-[**下载Windows安装包（当前RC.16）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+[**下载Windows安装包（当前RC.18）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+
+**RC.18版本更新：** 改进桌面端界面与组件管理，修复后台进程密集输出时事件持久化的性能问题，并解决Windows构建环境兼容性问题。GitHub Windows CI通过972项Python测试，Desktop UI检查、Runtime冻结与NSIS构建均通过。详见[RC.18发布说明](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18)。
 
 ## PLA Desktop：软件下载、安装与连接教程
 
@@ -14,19 +16,16 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 ### 第一步：正确下载安装包
 
-1. 打开[PLA Desktop RC.16发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.16)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
-2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.16对应[`PLA.Desktop_1.0.0-rc.16_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/PLA.Desktop_1.0.0-rc.16_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.16/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+1. 打开[PLA Desktop RC.18发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
+2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.18对应[`PLA.Desktop_1.0.0-rc.18_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/PLA.Desktop_1.0.0-rc.18_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
 
-   ![GitHub Release Assets中的Windows安装程序和SHA256SUMS校验文件](docs/images/pla-desktop/01-release-assets.png)
-
-   *RC16下载资源截图：选择Windows安装程序和SHA256SUMS.txt，跳过Source code压缩包。*
 3. 在PowerShell中运行以下命令（安装到其他下载目录或使用其他版本时请调整文件路径），把输出的`Hash`与`SHA256SUMS.txt`里的哈希值对照。GitHub上传后可能把原文件名中的空格替换成点，因此请核对哈希值，不只核对文件名。
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.16_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.18_x64-setup.exe"
 ~~~
 
-RC.16的准确SHA-256见本次Release附件`SHA256SUMS.txt`与`build-manifest.json`，运行安装包前请核对两者。
+RC.18安装包在GitHub发布元数据中的SHA-256为`3c0e00ce34c564ef861de4be49c4b9ce15458c7019d44d412a744896f606e1c4`。运行前请与Release附件`SHA256SUMS.txt`中的校验值核对。
 
 ### 第二步：安装并启动软件
 
@@ -74,7 +73,7 @@ RC.16的准确SHA-256见本次Release附件`SHA256SUMS.txt`与`build-manifest.js
 - **Tunnel连接不上**：核对Tunnel ID、API Key、组织权限与网络代理，必要时停止后重启服务。
 - **ChatGPT发现不了PLA**：检查ChatGPT侧的MCP连接是否已授权、是否选中了正确的Tunnel，并在新对话里重新尝试。
 - **关闭窗口后服务仍在**：PLA可能仍在系统托盘中运行；需要彻底关闭时，在托盘菜单选择**退出**。
-- **需要浏览器、Office或Skills**：进入**组件管理→本机组件**，按需审查安装计划、安装依赖，再分别启用并检查连接。新版Desktop可从安装包内的已审查Wheel直接安装Skill Library，不要求用户另行下载服务端源码；私人Skill及其来源仍需单独授权。RC16将Skill管理合并到一个「Skill Library」页面，直接查看、启停、同步与管理来源；新建、编辑或发布Skill交给ChatGPT经现有MCP安全流程处理。
+- **需要浏览器、Office或Skills**：进入**组件管理→本机组件**，按需审查安装计划、安装依赖，再分别启用并检查连接。新版Desktop可从安装包内的已审查Wheel直接安装Skill Library，不要求用户另行下载服务端源码；私人Skill及其来源仍需单独授权。Skill Library页面集中提供查看、启停、同步与来源管理；新建、编辑或发布Skill交给ChatGPT经现有MCP安全流程处理。
 
 <details>
 <summary>查看组件管理和Skill Library界面示例</summary>
@@ -207,7 +206,7 @@ PLA会把这台机器的Tunnel配置写入`config/tunnel.local.yaml`。该文件
 | 本地执行 | 受控文件、进程、Python和本地程序执行；受治理的WSL访问；allow-list控制的`latexmk`/`xelatex`；以及对进程、服务、TCP/UDP端点、网络适配器、路由、IP接口metric/DHCP/MTU、IP/DNS配置、有界System/Application事件日志、计划任务状态、文件签名和workspace ACL的结构化PowerShell诊断 |
 | 浏览器 | 独立Browser Runtime、PLA管理的持久profile、可复用登录态，以及基于语义accessibility/ref的浏览器交互 |
 | Computer Use | 基于Windows UI Automation的桌面操作，并限制selector定向的输入注入fallback |
-| 文档 | WPS Office自动化，以及经过审查的PDF和Markdown转换能力；旧的独立DOCX Provider仍保留源码，但默认不启动 |
+| 文档 | WPS Office自动化，以及经过审查的PDF和Markdown转换能力；旧的独立DOCX MCP组件已移除 |
 | Windows管理 | 系统观察、WinGet集成以及边界严格的应用管理能力 |
 | Artifact | 结构化Artifact导出、元数据、分块和provenance校验 |
 | Provider | 基于manifest的MCP Provider、隔离运行环境与热更新 |

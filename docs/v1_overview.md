@@ -51,7 +51,7 @@ Provider installation and runtime declaration are separate:
 - `executable_stdio`: reviewed native executable provider without a Python wrapper.
 - `streamable_http`: reviewed loopback-only HTTP provider transport.
 
-The current mainline includes reviewed Browser, Computer, MarkItDown, DOCX, PDF, Microsoft
+The current mainline includes reviewed Browser, Computer, MarkItDown, PDF, Microsoft
 WinGet, Windows Management, and Software Migration providers. Browser uses semantic web
 accessibility/ref interaction. Computer uses semantic-first Windows UI Automation with restricted
 selector-targeted input fallback. Provider Doctor checks lifecycle health, runtime availability,

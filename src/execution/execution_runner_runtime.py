@@ -24,11 +24,12 @@ from execution.runner_transport import (
     write_auth_file,
 )
 from execution.runner_process_identity import identity_matches, query_process_identity
+from runtime.paths import state_root
 from runtime.runtime_context import TaskCancelled
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STATE_DIR = PROJECT_ROOT / "state" / "execution_runner"
+STATE_DIR = state_root() / "execution_runner"
 STATE_PATH = STATE_DIR / "runtime.json"
 AUTH_PATH = STATE_DIR / "runner.auth"
 _LOCK = RLock()

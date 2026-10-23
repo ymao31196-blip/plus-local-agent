@@ -69,6 +69,8 @@ PACKAGE_MODULES = {
         "routing_audit.py",
     },
     "runtime": {
+        "activity_runtime.py",
+        "paths.py",
         "event_runtime.py",
         "runtime_context.py",
         "runtime_lifecycle.py",
@@ -124,6 +126,8 @@ PACKAGE_MODULES = {
         "fake_capability_provider.py",
         "provider_doctor.py",
         "provider_manifest.py",
+        "provider_repository.py",
+        "provider_lifecycle.py",
         "provider_setup_runtime.py",
         "setup_source_provider.py",
         "source_provider_setup.py",

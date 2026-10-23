@@ -154,6 +154,14 @@ class CapabilityRegistry:
             "truncated": len(ranked) > limit,
         }
 
+    def catalog(self, provider_id: str | None = None) -> dict:
+        """Complete schemas without search truncation; no invocation or discovery."""
+        if provider_id is not None and provider_id not in self._provider_members:
+            raise ValueError(f"Unknown provider: {provider_id}")
+        ids = sorted(self._capabilities if provider_id is None else self._provider_members[provider_id])
+        return {"provider_id": provider_id, "capabilities": [self.describe(item) for item in ids],
+                "returned_count": len(ids), "truncated": False}
+
     def snapshot(
         self,
         *,

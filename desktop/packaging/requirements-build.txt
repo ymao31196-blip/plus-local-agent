@@ -1,0 +1,3 @@
+-r ../../requirements-core.txt
+-r ../../requirements-documents.txt
+pyinstaller==6.16.0

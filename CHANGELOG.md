@@ -2,6 +2,26 @@
 
 All notable PLA release changes are recorded here.
 
+## Desktop 1.0.0-rc.18 - 2026-10-22 (Windows x64 pre-release)
+
+- Published an unsigned Windows NSIS installer with SHA-256 checksums and a source-commit build manifest: [RC18 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18).
+- Shipped the optional Runtime-linked desktop companion introduced during the RC17 candidate, plus the wide-screen layout and component/Skill management refinements.
+- Batched dense subprocess output events while retaining bounded output capture and timely sparse-line updates.
+- Repaired clean Windows CI dependency ordering and preserved LF bytes for SHA-256-pinned supplementary license files.
+- The [Windows candidate workflow](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/39755241063) passed 972 Python tests, Desktop UI smoke, frozen Runtime checks and NSIS packaging for source commit `e68aa9dd003059cfec2ab651f6174df71c5ac6d7`.
+- Distribution remains experimental, unsigned and manually updated. Build success does not certify fresh-machine installation or end-to-end Tunnel connections on every host.
+
+## Desktop 1.0.0-rc.17 - 2026-10-22 (unreleased candidate)
+
+- Publication blocked by clean GitHub CI source regression (missing optional WinGet MCP executable and cascading duplicate Observer registration); Release remains an incomplete draft. See the validation record. Public downloads remain RC16.
+
+- Added an opt-in Agent Pet tied to Runtime lifecycle, with local read-only tool activity and user-supplied PNG frames. No third-party character artwork is distributed; Tkinter is bundled.
+- Preserved component/source and Skill management; improved wide-window layout beside the fixed sidebar.
+- Retired the independent DOCX MCP manifest and dependency spec. WPS Office, PDF, MarkItDown and general DOCX text extraction remain available.
+- Recreate generated provider assets to prevent retired components from leaking into incremental installer builds; bundle the pinned PDF text-reading dependency.
+- Isolate damaged pet preferences from Runtime startup/status and allow explicit restart after manually closing the pet.
+- See [RC17 release notes](docs/desktop-v1-rc17-release-notes.md) and [validation](docs/desktop-v1-rc17-validation.md) for evidence and limitations. Core Runtime remains v2.0.1.
+
 ## 2.0.0 - 2026-10-06
 
 ### Added

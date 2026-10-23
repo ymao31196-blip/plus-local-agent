@@ -178,6 +178,10 @@ def start_detached_runner(
         | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     )
     service = Path(__file__).resolve().with_name("execution_runner_service.py")
+    child_command = (
+        [sys.executable, "runner"] if getattr(sys, "frozen", False)
+        else [sys.executable, str(service)]
+    )
     # This launcher also runs outside PowerShell (HTTP and standalone clients).
     # Give the detached child the same source package root explicitly.
     source_root = str(service.parent.parent)
@@ -189,8 +193,7 @@ def start_detached_runner(
     env["PYTHONPATH"] = os.pathsep.join(paths)
     return subprocess.Popen(
         [
-            sys.executable,
-            str(service),
+            *child_command,
             "--address",
             address,
             "--auth-file",

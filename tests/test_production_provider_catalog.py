@@ -21,7 +21,6 @@ def test_production_provider_catalog_matches_specs():
     assert manifest_ids == {
         "browser",
         "computer",
-        "docx",
         "markitdown",
         "office-enhancement",
         "pdf",
@@ -34,7 +33,6 @@ def test_production_provider_catalog_matches_specs():
     assert spec_ids == {
         "browser",
         "computer",
-        "docx",
         "markitdown",
         "office-enhancement",
         "pdf",
@@ -44,12 +42,7 @@ def test_production_provider_catalog_matches_specs():
     }
     assert manifests["winget"].runtime_kind == "executable_stdio"
     assert manifests["winget"].python_path is None
-    assert manifests["docx"].autostart is False
-    assert all(
-        manifest.autostart
-        for provider_id, manifest in manifests.items()
-        if provider_id != "docx"
-    )
+    assert all(manifest.autostart for manifest in manifests.values())
 
 
 def test_wps_office_provider_is_pinned_source_backed_stdio():

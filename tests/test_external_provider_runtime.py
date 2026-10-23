@@ -59,6 +59,23 @@ def test_external_providers_are_opt_in(tmp_path, monkeypatch):
     assert manager.provider_status() == {}
 
 
+def test_catalog_detects_new_disabled_manifests_without_launching_them(tmp_path, monkeypatch):
+    from provider.external_provider_runtime import ExternalProviderRuntime
+    monkeypatch.setenv('PLA_EXTERNAL_PROVIDERS', '')
+    write_manifest(tmp_path, 'alpha', autostart=False)
+    manager = MCPClientManager(CapabilityRegistry())
+    runtime = ExternalProviderRuntime(manager, tmp_path)
+    assert runtime.configure_initial() == {}
+    first = runtime.catalog()['providers']
+    assert [item['provider_id'] for item in first] == ['alpha']
+    assert first[0]['configured'] is False and first[0]['lifecycle'] is None
+    assert first[0]['python_exists'] is False
+    write_manifest(tmp_path, 'beta', autostart=False)
+    second = runtime.catalog()['providers']
+    assert [item['provider_id'] for item in second] == ['alpha', 'beta']
+    assert manager.provider_status() == {}
+
+
 def test_manifest_defaults_select_only_autostart_providers(tmp_path, monkeypatch):
     write_manifest(tmp_path, "alpha", autostart=True)
     write_manifest(tmp_path, "beta", autostart=False)
@@ -154,3 +171,30 @@ def test_loopback_streamable_http_provider_uses_http_transport(tmp_path, monkeyp
     assert configured["browser"]["runtime_kind"] == "streamable_http"
     assert configured["browser"]["url"] == "http://127.0.0.1:8931/mcp"
     assert type(manager._sources["browser"]).__name__ == "StreamableHttpTransport"
+
+
+
+def test_missing_optional_system_mcp_cannot_launch_but_does_not_block_runtime(tmp_path, monkeypatch):
+    import asyncio
+    from provider import provider_manifest as manifest_module
+    from provider.external_provider_runtime import ExternalProviderRuntime
+    monkeypatch.setattr(manifest_module.shutil, "which", lambda _name: None)
+    write_manifest(
+        tmp_path, "uninstalled", autostart=True,
+        runtime={"kind": "executable_stdio", "command": "uninstalled-mcp.exe",
+                 "args": [], "cwd": "."},
+    )
+    write_manifest(tmp_path, "working", autostart=True)
+    monkeypatch.setenv("PLA_EXTERNAL_PROVIDERS", "*")
+    manager = MCPClientManager(CapabilityRegistry())
+    runtime = ExternalProviderRuntime(manager, tmp_path)
+    configured = runtime.configure_initial()
+    assert set(configured) == {"working"}
+    catalog = {row["provider_id"]: row for row in runtime.catalog()["providers"]}
+    assert catalog["uninstalled"]["command_exists"] is False
+    assert catalog["uninstalled"]["configured"] is False
+    asyncio.run(runtime.rescan())
+    assert "uninstalled" not in manager.provider_status()
+    with pytest.raises(ValueError, match="executable is not installed"):
+        asyncio.run(runtime.enable("uninstalled"))
+    assert "uninstalled" not in manager.provider_status()

@@ -3081,6 +3081,10 @@ def run_powershell(
         {"command": command, "parameters": validated}, ensure_ascii=False,
     ).encode("utf-8")).decode("ascii")
     child_env = os.environ.copy()
+    # PowerShell 7 hosts can inject their incompatible module directories into
+    # Windows PowerShell 5.1. Let the fixed system executable build its own path.
+    child_env = {key: value for key, value in child_env.items()
+                 if key.casefold() != "psmodulepath"}
     child_env["PLUS_LOCAL_AGENT_PS_PAYLOAD"] = payload
     encoded_script = base64.b64encode(POWERSHELL_SCRIPT.encode("utf-16-le")).decode("ascii")
     timeout = max(1, min(timeout, 300))

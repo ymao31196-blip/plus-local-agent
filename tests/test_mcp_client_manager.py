@@ -24,6 +24,21 @@ def build_external_mcp():
     return mcp
 
 
+def test_explicit_close_releases_stdio_transport_without_persistent_client(monkeypatch):
+    from fastmcp.client.transports import StdioTransport
+    manager = MCPClientManager(CapabilityRegistry())
+    transport = StdioTransport(command='python', args=['-m', 'unused'])
+    manager.add_provider('owned-stdio', transport, persistent_session=False)
+    closed = []
+    async def close():
+        closed.append(True)
+    monkeypatch.setattr(transport, 'close', close)
+    asyncio.run(manager.close_provider_session('owned-stdio'))
+    assert closed == [True]
+    asyncio.run(manager.close_all_persistent_sessions())
+    assert closed == [True, True]
+
+
 def test_discover_external_mcp_into_registry():
     registry = CapabilityRegistry()
     manager = MCPClientManager(registry)

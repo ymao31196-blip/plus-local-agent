@@ -9,10 +9,11 @@ from pathlib import Path
 import socket
 from typing import Any
 from uuid import uuid4
+from runtime.paths import state_root
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STATE_DIR = PROJECT_ROOT / "state" / "lifecycle"
+STATE_DIR = state_root() / "lifecycle"
 BROKER_STATUS = STATE_DIR / "broker_status.json"
 SCHEMA_VERSION = 1
 RESTART_GRACE_SECONDS = 3.0
@@ -152,16 +153,18 @@ def _broker_snapshot() -> dict[str, Any]:
 
 def lifecycle_status() -> dict[str, Any]:
     """Return bounded lifecycle status without process mutation."""
+    http_port = int(os.environ.get("PLA_RUNTIME_PORT", "8766"))
+    health_port = int(os.environ.get("PLA_TUNNEL_HEALTH_PORT", "18081"))
     return {
         "status": "ready",
         "http": {
             "pid": os.getpid(),
-            "port": 8766,
-            "listening": _tcp_listening(8766),
+            "port": http_port,
+            "listening": _tcp_listening(http_port),
         },
         "tunnel": {
-            "health_port": 18081,
-            "listening": _tcp_listening(18081),
+            "health_port": health_port,
+            "listening": _tcp_listening(health_port),
         },
         "broker": _broker_snapshot(),
     }

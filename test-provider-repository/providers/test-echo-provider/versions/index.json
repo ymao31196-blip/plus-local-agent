@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provider_id": "test-echo-provider",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "release_date": "2024-10-10T00:00:00Z",
+      "stability": "stable",
+      "breaking_changes": false,
+      "changelog": "Initial release - simple echo functionality",
+      "minimum_pla_version": "2.0.0",
+      "deprecated": false
+    }
+  ]
+}

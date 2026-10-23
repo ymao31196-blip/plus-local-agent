@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from capabilities.capability_broker import CapabilityBroker
 from capabilities.capability_models import CapabilityDescriptor
 from capabilities.capability_registry import CapabilityRegistry
@@ -80,6 +82,46 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
     }
     return (
         _descriptor(
+            'runtime.capability_catalog', 'capability_catalog', 'Complete Capability Catalog',
+            'Read the complete live registry with full tool schemas, policy and availability, including disabled tools. No search limit. Available through the stable capability_invoke surface even when a client has not discovered the standalone catalog wrapper.',
+            {'type': 'object', 'properties': {'provider_id': {'type': ['string', 'null'], 'default': None}}, 'additionalProperties': False},
+            risk_level='read', requires_confirmation=False,
+            tags=('runtime', 'catalog', 'capability', 'schema', 'discovery'),
+        ),
+        _descriptor(
+            'runtime.provider_configure', 'provider_configure', 'Review Desktop Provider Configuration',
+            'Read or preview an existing managed manifest. Saving requires confirm=true, exact expected_sha256 of the original file and expected_content_sha256 of the reviewed proposal. Does not reload or activate the provider.',
+            {'type': 'object', 'properties': {
+                'provider_id': {'type': 'string'}, 'content': {'type': ['string', 'null'], 'maxLength': 50000, 'default': None},
+                'confirm': {'type': 'boolean', 'default': False},
+                'expected_sha256': {'type': ['string', 'null'], 'default': None},
+                'expected_content_sha256': {'type': ['string', 'null'], 'default': None}},
+             'required': ['provider_id'], 'additionalProperties': False},
+            risk_level='write_local', requires_confirmation=True,
+            tags=('provider', 'runtime', 'configuration', 'desktop', 'review'),
+        ),
+        _descriptor(
+            'runtime.provider_import', 'provider_import', 'Review and Register Desktop MCP Plugin',
+            'Validate a new unique allowlisted MCP manifest in the managed Desktop component directory. Preview returns SHA-256; saving requires confirm=true and exact expected_sha256. Never installs dependencies or activates tools.',
+            {'type': 'object', 'properties': {
+                'content': {'type': 'string', 'maxLength': 50000},
+                'confirm': {'type': 'boolean', 'default': False},
+                'expected_sha256': {'type': ['string', 'null'], 'default': None}},
+             'required': ['content'], 'additionalProperties': False},
+            risk_level='write_local', requires_confirmation=True,
+            tags=('provider', 'runtime', 'import', 'desktop', 'review'),
+        ),
+        _descriptor(
+            "runtime.provider_catalog",
+            "provider_catalog",
+            "Provider Manifest Catalog",
+            "Read all validated installed provider manifests, including disabled or unconfigured entries, with separate actual lifecycle evidence. Does not install or launch a provider.",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            risk_level="read",
+            requires_confirmation=False,
+            tags=("provider", "runtime", "catalog", "discovery"),
+        ),
+        _descriptor(
             "runtime.provider_status",
             "provider_status",
             "Provider Runtime Status",
@@ -101,10 +143,17 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
             "provider_setup",
             "Install Reviewed Provider Dependencies",
             (
-                "Install one manifest/provider's pinned reviewed dependency specs "
-                "through the fixed PLA setup_providers.ps1 entrypoint."
+                "In Desktop, install one reviewed component into private data only after "
+                "an exact SHA-256 plan review; skill-library additionally requires a "
+                "locally reviewed v0.5.0 source/wheel path. Installation never enables "
+                "the Provider. Source-mode PLA retains its legacy setup mechanism."
             ),
-            provider_id_schema,
+            {"type": "object", "properties": {
+                "provider_id": {"type": "string", "minLength": 1},
+                "expected_sha256": {"type": ["string", "null"], "default": None},
+                "skill_package": {"type": ["string", "null"], "default": None,
+                                  "description": "Required local v0.5.0 source directory/wheel for skill-library only"}},
+             "required": ["provider_id"], "additionalProperties": False},
             risk_level="privileged",
             requires_confirmation=True,
             tags=("provider", "runtime", "setup", "install"),
@@ -168,6 +217,60 @@ def provider_runtime_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def desktop_component_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Small, Desktop-only, ChatGPT-discoverable install control plane.
+
+    Preview operations are read-only. Every mutating operation additionally
+    requires the Capability Broker's explicit INVOKE confirmation.
+    """
+    package_args = {
+        "provider_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "package_kind": {"type": "string", "enum": ["python", "npm"]},
+        "packages": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 24},
+    }
+    return (
+        _descriptor(
+            "runtime.desktop_package_preview", "desktop_package_preview",
+            "Review User MCP Dependencies",
+            "Preview exact pinned PyPI/npm packages for a previously reviewed custom Desktop Provider. No installation, execution or activation.",
+            {"type": "object", "properties": package_args,
+             "required": list(package_args), "additionalProperties": False},
+            risk_level="read", requires_confirmation=False,
+            tags=("desktop", "provider", "user-custom", "install", "preview"),
+        ),
+        _descriptor(
+            "runtime.desktop_package_commit", "desktop_package_commit",
+            "Save Reviewed User MCP Dependencies",
+            "Save the previously previewed exact custom package versions and manifest-bound SHA-256. Never executes the packages.",
+            {"type": "object", "properties": {**package_args,
+                "expected_sha256": {"type": "string", "minLength": 64, "maxLength": 64}},
+             "required": [*package_args, "expected_sha256"], "additionalProperties": False},
+            risk_level="privileged", requires_confirmation=True,
+            tags=("desktop", "provider", "user-custom", "install", "commit"),
+        ),
+        _descriptor(
+            "runtime.desktop_install_preview", "desktop_install_preview",
+            "Review Desktop Component Install",
+            "Review exact dependency hashes for one bundled or user-defined Desktop Provider, or the reviewed starter-pack. Does not install or activate anything.",
+            {"type": "object", "properties": {
+                "provider_id": {"type": "string"},
+                "skill_package": {"type": ["string", "null"], "default": None,
+                                  "description": "Local v0.5.0 Skill Library source or wheel; required only for skill-library"}},
+             "required": ["provider_id"], "additionalProperties": False},
+            risk_level="read", requires_confirmation=False,
+            tags=("desktop", "provider", "install", "preview"),
+        ),
+        _descriptor(
+            "runtime.desktop_install_status", "desktop_install_status",
+            "Inspect Desktop Component Installer",
+            "Read the current ChatGPT-initiated private installer job, receipts and bounded logs. Does not imply the provider is MCP-connected.",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            risk_level="read", requires_confirmation=False,
+            tags=("desktop", "provider", "install", "status"),
+        ),
+    )
+
+
 def register_provider_runtime_capabilities(
     registry: CapabilityRegistry,
     broker: CapabilityBroker,
@@ -175,6 +278,8 @@ def register_provider_runtime_capabilities(
     observer_runtime: ExternalObserverRuntime | None = None,
 ) -> None:
     descriptors = list(provider_runtime_descriptors())
+    if os.environ.get("PLA_DESKTOP_RUNTIME") == "1":
+        descriptors.extend(desktop_component_descriptors())
     if observer_runtime is not None:
         descriptors.extend(external_observer_runtime_descriptors())
     descriptors.extend(runtime_lifecycle_descriptors())
@@ -189,13 +294,35 @@ def register_provider_runtime_capabilities(
         enabled=True,
     )
     broker.register_internal_handler(
+        'runtime.capability_catalog',
+        lambda args: registry.catalog(args.get('provider_id')),
+    )
+    broker.register_internal_handler(
+        "runtime.provider_catalog",
+        lambda _args: runtime.catalog(),
+    )
+    broker.register_internal_handler(
         "runtime.provider_status",
         lambda _args: runtime.status(),
     )
     broker.register_internal_handler(
         "runtime.provider_setup",
-        lambda args: runtime.setup_dependencies(args["provider_id"]),
+        lambda args: runtime.setup_dependencies(args["provider_id"], args.get("expected_sha256"), args.get("skill_package")),
     )
+    if os.environ.get("PLA_DESKTOP_RUNTIME") == "1":
+        broker.register_internal_handler(
+            "runtime.desktop_package_preview", lambda args: runtime.desktop_package_preview(**args))
+        broker.register_internal_handler(
+            "runtime.desktop_package_commit", lambda args: runtime.desktop_package_commit(**args))
+        broker.register_internal_handler(
+            "runtime.desktop_install_preview", lambda args: runtime.setup_dependencies(args["provider_id"], skill_package=args.get("skill_package")))
+        broker.register_internal_handler(
+            "runtime.desktop_install_status", lambda _args: runtime.desktop_install_status())
+    broker.register_internal_handler(
+        'runtime.provider_import',
+        lambda args: runtime.import_manifest(args['content'], args.get('confirm', False), args.get('expected_sha256')),
+    )
+    broker.register_internal_handler('runtime.provider_configure', lambda args: runtime.configure_manifest(**args))
     broker.register_internal_handler(
         "runtime.provider_rescan",
         lambda _args: runtime.rescan(),

@@ -78,7 +78,6 @@ Current providers:
   Raw coordinates, system shortcuts, touch/pen, recording, arbitrary command execution, and
   full-screen capture are intentionally excluded from the v1.4 surface.
 - `markitdown`: Microsoft MarkItDown MCP, pinned to the legacy MCP SDK it requires.
-- `docx`: DOCX MCP Server, pinned to MCP 1.30.0 because version 0.7.4 still imports the MCP 1.x FastMCP API.
 - `pdf`: PDF MCP Server 0.1.2, isolated on FastMCP 4 / MCP 2 and restricted to the reviewed `add_text_watermark_direct` capability.
 - `windows-management`: Windows Management MCP Server 0.3.1, pinned to MCP
   1.30.0 / FastMCP 3.4.7 because the upstream 0.3.1 server still imports the

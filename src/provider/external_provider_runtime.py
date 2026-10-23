@@ -17,6 +17,7 @@ from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 from mcp_runtime.mcp_client_manager import MCPClientManager
 from provider.provider_manifest import (
     ProviderManifest,
+    EXECUTABLE_STDIO,
     STREAMABLE_HTTP,
     load_provider_manifests,
 )
@@ -51,6 +52,13 @@ def _selected_provider_ids(
     return selected
 
 
+def _can_start(manifest: ProviderManifest) -> bool:
+    # Missing optional system programs remain visible in the catalog but must
+    # not be registered or launched until the executable actually exists.
+    return not (manifest.runtime_kind == EXECUTABLE_STDIO and
+                (manifest.command_path is None or not manifest.command_path.is_file()))
+
+
 def _register_manifest(
     manager: MCPClientManager,
     manifest: ProviderManifest,
@@ -72,6 +80,14 @@ def _register_manifest(
             command=str(manifest.command_path),
             args=list(manifest.args),
             cwd=str(manifest.cwd),
+            # MCP stdio intentionally inherits only a minimal OS environment.
+            # Pass the desktop workspace context explicitly, never Tunnel/API
+            # credentials or arbitrary developer provider settings.
+            env={key: os.environ[key] for key in (
+                'PLA_DESKTOP_RUNTIME', 'PLA_DATA_ROOT', 'PLA_INSTALL_RESOURCES',
+                'PLA_RESOURCE_ROOT', 'AGENT_PLA_ROOT', 'AGENT_WORKSPACE', 'AGENT_WORKSPACES_CONFIG',
+                'PLA_BROWSER_PORT') if key in os.environ}
+            if os.environ.get('PLA_DESKTOP_RUNTIME') == '1' else None,
         )
     manager.add_provider(
         manifest.provider_id,
@@ -109,6 +125,8 @@ def configure_external_providers(
 
     configured: dict[str, dict[str, Any]] = {}
     for provider_id in sorted(selected):
+        if not _can_start(manifests[provider_id]):
+            continue
         configured[provider_id] = _register_manifest(
             manager,
             manifests[provider_id],
@@ -141,10 +159,60 @@ class ExternalProviderRuntime:
         self._forced_enabled: set[str] = set()
         self._forced_disabled: set[str] = set()
         self._lock = asyncio.Lock()
+        self._desktop_broker = None
+        if os.environ.get("PLA_DESKTOP_RUNTIME") == "1":
+            from desktop_runtime.broker_component import DesktopComponentBroker
+            self._desktop_broker = DesktopComponentBroker(self._project_root, self._manifest_dir)
 
-    def setup_dependencies(self, provider_id: str) -> dict[str, Any]:
-        """Install one provider's reviewed pinned dependency specs."""
-        return setup_provider_dependencies(self._project_root, provider_id)
+    def desktop_package_preview(self, **arguments) -> dict[str, Any]:
+        if self._desktop_broker is None:
+            raise ValueError("This installation is not a managed Desktop Runtime")
+        return self._desktop_broker.package_preview(**arguments)
+
+    def desktop_package_commit(self, **arguments) -> dict[str, Any]:
+        if self._desktop_broker is None:
+            raise ValueError("This installation is not a managed Desktop Runtime")
+        provider_id = arguments.get("provider_id")
+        active = self._manager.provider_status().get(provider_id)
+        return self._desktop_broker.package_commit(
+            **arguments, active=bool(active and active.get("enabled")))
+
+    def desktop_install_status(self) -> dict[str, Any]:
+        if self._desktop_broker is None:
+            raise ValueError("This installation is not a managed Desktop Runtime")
+        return self._desktop_broker.install_status()
+
+    def setup_dependencies(self, provider_id: str, expected_sha256: str | None = None,
+                           skill_package: str | None = None) -> dict[str, Any]:
+        """Review or queue a digest-bound Desktop install; preserve source setup."""
+        if self._desktop_broker is None:
+            if skill_package is not None:
+                raise ValueError("Skill source installation is available only in Desktop")
+            return setup_provider_dependencies(self._project_root, provider_id)
+        if expected_sha256 is None:
+            return self._desktop_broker.install_preview(provider_id, skill_package)
+        active = self._manager.provider_status()
+        enabled = {name for name, details in active.items() if details.get("enabled")}
+        return self._desktop_broker.install_start(provider_id, expected_sha256, enabled, skill_package)
+
+    def import_manifest(self, content: str, confirm: bool = False, expected_sha256: str | None = None) -> dict[str, Any]:
+        """Desktop-native plugin registration without opening private data roots."""
+        if os.environ.get('PLA_DESKTOP_RUNTIME') != '1':
+            raise ValueError('Managed manifest import is available in Desktop; source installations retain their manifest workflow')
+        from desktop_runtime.components import ComponentProject
+        project = ComponentProject(Path(os.environ['PLA_DATA_ROOT']), Path(os.environ['PLA_INSTALL_RESOURCES']))
+        if project.root != self._project_root or project.manifest_dir != self._manifest_dir:
+            raise ValueError('Desktop provider project does not match Runtime configuration')
+        return project.import_manifest(content, confirm=confirm, expected_sha256=expected_sha256)
+
+    def configure_manifest(self, **arguments) -> dict[str, Any]:
+        if os.environ.get('PLA_DESKTOP_RUNTIME') != '1':
+            raise ValueError('Managed provider configuration is available in Desktop')
+        from desktop_runtime.components import ComponentProject
+        project = ComponentProject(Path(os.environ['PLA_DATA_ROOT']), Path(os.environ['PLA_INSTALL_RESOURCES']))
+        if project.root != self._project_root or project.manifest_dir != self._manifest_dir:
+            raise ValueError('Desktop provider project does not match Runtime configuration')
+        return project.configure_manifest(**arguments)
 
     def _load_manifests(self) -> dict[str, ProviderManifest]:
         return load_provider_manifests(
@@ -165,7 +233,8 @@ class ExternalProviderRuntime:
         # Forget ephemeral overrides for manifests that no longer exist.
         self._forced_enabled.intersection_update(manifests)
         self._forced_disabled.intersection_update(manifests)
-        return self._base_selected(manifests) | self._forced_enabled
+        return {provider_id for provider_id in self._base_selected(manifests) | self._forced_enabled
+            if _can_start(manifests[provider_id])}
 
     def configure_initial(self) -> dict[str, dict[str, Any]]:
         manifests = self._load_manifests()
@@ -173,6 +242,8 @@ class ExternalProviderRuntime:
         configured: dict[str, dict[str, Any]] = {}
         for provider_id in sorted(selected):
             manifest = manifests[provider_id]
+            if not _can_start(manifest):
+                continue
             configured[provider_id] = _register_manifest(
                 self._manager,
                 manifest,
@@ -187,6 +258,26 @@ class ExternalProviderRuntime:
             "forced_enabled": sorted(self._forced_enabled),
             "forced_disabled": sorted(self._forced_disabled),
             "providers": self._manager.provider_status(),
+        }
+
+    def catalog(self) -> dict[str, Any]:
+        """Read every validated manifest, including providers not yet enabled.
+
+        Discovery/installation is never implied by a manifest's mere presence.
+        This is the source of truth for control-panel inventory and new installs.
+        """
+        manifests = self._load_manifests()
+        lifecycle = self._manager.provider_status()
+        return {
+            "manifest_directory": str(self._manifest_dir or self._project_root / "provider_manifests"),
+            "providers": [
+                {**manifest.summary(),
+                 "configured": provider_id in self._active,
+                 "lifecycle": lifecycle.get(provider_id),
+                 "temporarily_enabled": provider_id in self._forced_enabled,
+                 "temporarily_disabled": provider_id in self._forced_disabled}
+                for provider_id, manifest in sorted(manifests.items())
+            ],
         }
 
     async def rescan(self) -> dict[str, Any]:
@@ -342,12 +433,19 @@ class ExternalProviderRuntime:
                     f"Unknown provider manifest: {provider_id}"
                 )
 
+            # A disabled provider may still report a historical 'ready' state.
+            # Re-register its transport after a disable/enable cycle so changes
+            # to Desktop Skill permissions and other launch context take effect.
+            manifest = manifests[provider_id]
+            if not _can_start(manifest):
+                raise ValueError(f"Provider executable is not installed: {provider_id}")
+            was_disabled = provider_id in self._forced_disabled
             self._forced_disabled.discard(provider_id)
             self._forced_enabled.add(provider_id)
-            manifest = manifests[provider_id]
 
             if (
-                provider_id not in self._active
+                was_disabled
+                or provider_id not in self._active
                 or self._active[provider_id] != manifest
                 or not self._manager.has_provider(provider_id)
             ):

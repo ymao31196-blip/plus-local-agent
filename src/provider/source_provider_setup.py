@@ -149,17 +149,30 @@ def setup_git_npm_source(
     spec_path: Path,
     *,
     timeout_seconds: int,
+    managed_node: Path | None = None,
+    managed_npm_cli: Path | None = None,
 ) -> dict[str, Any]:
     spec = load_source_spec(spec_path)
     git = shutil.which("git.exe") or shutil.which("git")
-    node = shutil.which("node.exe") or shutil.which("node")
-    npm = shutil.which("npm.cmd") or shutil.which("npm")
     if not git:
         raise RuntimeError("git executable was not found")
-    if not node:
-        raise RuntimeError("node executable was not found")
-    if not npm:
-        raise RuntimeError("npm executable was not found")
+    if (managed_node is None) != (managed_npm_cli is None):
+        raise ValueError("Managed Node and npm CLI must be supplied together")
+    if managed_node is not None:
+        # Desktop ships a vetted Node/npm pair. npm.cmd on Windows may resolve
+        # a separate installation or fail under the sanitized frozen runtime.
+        if not managed_node.is_file() or not managed_npm_cli.is_file():
+            raise RuntimeError("Bundled Node or npm CLI is missing")
+        node = str(managed_node.resolve())
+        npm_command = [node, str(managed_npm_cli.resolve())]
+    else:
+        node = shutil.which("node.exe") or shutil.which("node")
+        npm = shutil.which("npm.cmd") or shutil.which("npm")
+        if not node:
+            raise RuntimeError("node executable was not found")
+        if not npm:
+            raise RuntimeError("npm executable was not found")
+        npm_command = [npm]
 
     sources_dir = (root / ".provider_sources").resolve()
     sources_dir.mkdir(parents=True, exist_ok=True)
@@ -288,13 +301,13 @@ def setup_git_npm_source(
         )
 
     _run_checked(
-        [npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+        [*npm_command, "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
         cwd=package_root,
         timeout_seconds=timeout_seconds,
         failure_message="Provider npm ci failed",
     )
     _run_checked(
-        [npm, "run", "build", "--ignore-scripts"],
+        [*npm_command, "run", "build", "--ignore-scripts"],
         cwd=package_root,
         timeout_seconds=timeout_seconds,
         failure_message="Provider npm build failed",

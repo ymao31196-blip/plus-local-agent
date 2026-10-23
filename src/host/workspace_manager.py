@@ -109,6 +109,10 @@ def load_workspace_roots(
             raise ValueError(
                 f"Workspace root {name!r} must not overlap the PLA source tree"
             )
+        if os.environ.get("PLA_DESKTOP_RUNTIME") == "1":
+            private = os.environ.get("PLA_DATA_ROOT")
+            if private and _paths_overlap(target, Path(private).resolve()):
+                raise ValueError(f"Workspace root {name!r} must not overlap private desktop data")
 
         permissions: dict[str, bool] = {}
         defaults = {"read": True, "write": False, "execute": False}
@@ -399,9 +403,10 @@ def build_root_policy(
     pla: Path,
     configured_roots: dict[str, RootDefinition] | None = None,
 ) -> RootPolicy:
+    desktop = os.environ.get("PLA_DESKTOP_RUNTIME") == "1"
     roots = {
         "workspace": RootDefinition("workspace", workspace),
-        "pla": RootDefinition("pla", pla),
+        "pla": RootDefinition("pla", pla, write=not desktop, execute=not desktop),
     }
     if configured_roots:
         overlap = set(roots).intersection(configured_roots)

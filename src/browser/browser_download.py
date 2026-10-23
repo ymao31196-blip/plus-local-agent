@@ -29,8 +29,10 @@ from capabilities.capability_models import CapabilityDescriptor
 PROVIDER_ID = "browser"
 CAPABILITY_ID = "browser.download"
 REMOTE_HELPER_TOOL = "browser_run_code_unsafe"
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_ROOT = PROJECT_ROOT / "state" / "browser"
+from runtime.paths import data_root, state_root
+
+PROJECT_ROOT = data_root()
+OUTPUT_ROOT = state_root() / "browser"
 _TARGET_RE = re.compile(r"^(?:f\d+)?e\d+$")
 _UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WINDOWS_RESERVED_NAMES = {

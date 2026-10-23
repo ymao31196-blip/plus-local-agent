@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from importlib.metadata import version
@@ -70,6 +71,7 @@ from artifacts.artifact_bridge import (
 )
 from capabilities.capability_registry import CapabilityRegistry
 from runtime.event_runtime import EVENT_STORE
+from runtime.activity_runtime import record_native_activity
 from hooks.observer_hook_runtime import OBSERVER_HOOK_RUNTIME
 from host.computer_use_indicator import computer_use_indicator_observer
 from hooks.gate_hook_runtime import GATE_HOOK_RUNTIME
@@ -84,15 +86,6 @@ from capabilities.windows_action_capabilities import register_windows_action_cap
 from provider.provider_doctor import provider_doctor as run_provider_doctor
 
 
-OBSERVER_HOOK_RUNTIME.register(
-    "computer-use-indicator",
-    (
-        "capability.before_invoke",
-        "capability.succeeded",
-        "capability.failed",
-    ),
-    computer_use_indicator_observer,
-)
 CAPABILITY_REGISTRY = CapabilityRegistry()
 MCP_CLIENT_MANAGER = MCPClientManager(CAPABILITY_REGISTRY)
 register_browser_download_extension(MCP_CLIENT_MANAGER)
@@ -113,7 +106,8 @@ register_core_transaction_capabilities(
 )
 EXTERNAL_PROVIDER_RUNTIME = ExternalProviderRuntime(
     MCP_CLIENT_MANAGER,
-    Path(__file__).resolve().parents[1],
+    Path(os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[1])),
+    manifest_dir=Path(os.environ["PLA_DESKTOP_MANIFEST_DIR"]) if os.environ.get("PLA_DESKTOP_MANIFEST_DIR") else None,
 )
 EXTERNAL_PROVIDER_CONFIG = EXTERNAL_PROVIDER_RUNTIME.configure_initial()
 EXTERNAL_OBSERVER_RUNTIME = ExternalObserverRuntime(
@@ -135,12 +129,19 @@ register_windows_action_capabilities(
 
 @asynccontextmanager
 async def _runtime_lifespan(_server):
+    desktop_owned_runner = os.environ.get("PLA_DESKTOP_RUNTIME") == "1"
+    if desktop_owned_runner:
+        from execution.execution_runner_runtime import start_execution_runner
+        start_execution_runner()
     await MCP_CLIENT_MANAGER.discover_all()
     try:
         yield
     finally:
         SESSION_STORE.close_all()
         await MCP_CLIENT_MANAGER.close_all_persistent_sessions()
+        if desktop_owned_runner:
+            from execution.execution_runner_runtime import stop_execution_runner
+            stop_execution_runner()
 
 
 mcp = FastMCP(
@@ -173,6 +174,12 @@ def capability_describe(capability_id: str) -> dict:
 
 
 @mcp.tool
+def capability_catalog(provider_id: str | None = None) -> dict:
+    """Read the complete registry with schemas, policy and real availability."""
+    return CAPABILITY_REGISTRY.catalog(provider_id)
+
+
+@mcp.tool
 async def capability_invoke(
     capability_id: str,
     arguments: dict,
@@ -195,7 +202,7 @@ async def provider_doctor(
     """Inspect provider lifecycle, isolated environment, pinned versions, and optional live MCP health."""
     return await run_provider_doctor(
         MCP_CLIENT_MANAGER,
-        Path(__file__).resolve().parents[1],
+        Path(os.environ.get("PLA_RESOURCE_ROOT", Path(__file__).resolve().parents[1])),
         provider_id=provider_id,
         live_probe=live_probe,
         force=force,
@@ -338,12 +345,14 @@ def revoke_artifact(artifact_id: str) -> dict:
 
 
 @mcp.tool
+@record_native_activity
 def list_directory(path: str = ".", root: str = "workspace") -> list[str]:
     """列出指定受控 root 内的文件和子目录。"""
     return internal_list_directory(path, root)
 
 
 @mcp.tool
+@record_native_activity
 def read_text(
     path: str, start_line: int = 1, end_line: int = 400,
     root: str = "workspace",
@@ -353,6 +362,7 @@ def read_text(
 
 
 @mcp.tool
+@record_native_activity
 def extract_document_text(
     path: str,
     start: int = 1,
@@ -365,6 +375,7 @@ def extract_document_text(
 
 
 @mcp.tool
+@record_native_activity
 def write_text(
     path: str, content: str, expected_sha256: str | None = None,
     root: str = "workspace",
@@ -374,6 +385,7 @@ def write_text(
 
 
 @mcp.tool
+@record_native_activity
 def replace_text(
     path: str,
     old: str,
@@ -387,6 +399,7 @@ def replace_text(
 
 
 @mcp.tool
+@record_native_activity
 def search_text(
     query: str,
     path: str = ".",
@@ -400,12 +413,14 @@ def search_text(
 
 
 @mcp.tool
+@record_native_activity
 def git_status(cwd: str = ".", root: str = "workspace") -> dict:
     """返回受控 root 内 Git 仓库的结构化只读状态。"""
     return internal_git_status(cwd, root)
 
 
 @mcp.tool
+@record_native_activity
 def git_diff(
     cwd: str = ".", staged: bool = False, path: str | None = None,
     root: str = "workspace",
@@ -639,6 +654,7 @@ def project_verifications_get(
 
 
 @mcp.tool
+@record_native_activity
 def run_process(
     program: str,
     args: list[str] | None = None,
@@ -657,6 +673,7 @@ def run_process(
 
 
 @mcp.tool
+@record_native_activity
 def run_powershell(
     command: str,
     parameters: dict | None = None,
@@ -669,6 +686,7 @@ def run_powershell(
 
 
 @mcp.tool
+@record_native_activity
 def apply_patch(
     path: str, patch: str, expected_sha256: str | None = None,
     root: str = "workspace",
@@ -678,6 +696,7 @@ def apply_patch(
 
 
 @mcp.tool
+@record_native_activity
 def apply_changeset(
     changes: list[ChangeRequest], root: str = "workspace",
 ) -> dict:
@@ -829,6 +848,20 @@ async def diagnose_client(ctx: Context) -> dict:
     }
     trace.emit("final_status", status="completed")
     return result
+
+
+# Register the process-wide observer only after module initialization succeeds.
+# A failed first import must not poison a subsequent pytest import with a
+# duplicate hook, and duplicate registration still remains a hard error.
+OBSERVER_HOOK_RUNTIME.register(
+    "computer-use-indicator",
+    (
+        "capability.before_invoke",
+        "capability.succeeded",
+        "capability.failed",
+    ),
+    computer_use_indicator_observer,
+)
 
 
 def main() -> None:

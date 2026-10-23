@@ -66,38 +66,43 @@ def controlled_run(command, *, cwd, timeout, shell=False, env=None,
         stream_names = ("stdout", "stderr")
         stop = Event()
 
+        last_published = [0.0, 0.0]
+
         def publish_output(index: int, value: str = "", final: bool = False) -> None:
             if not context:
                 return
             pending_events[index] += value
 
-            while "\n" in pending_events[index]:
-                newline = pending_events[index].find("\n") + 1
-                chunk = pending_events[index][:newline]
-                pending_events[index] = pending_events[index][newline:]
+            def emit(chunk: str, *, is_final: bool = False) -> None:
                 context.observer("process_output", {
                     "stream": stream_names[index],
                     "content": chunk,
-                    "final": False,
+                    "final": is_final,
                 })
+                last_published[index] = time.monotonic()
 
+            # Store bounded chunks, not one durable SQLite event per newline:
+            # thousands of short lines would otherwise block the pipe reader.
             while len(pending_events[index]) >= OUTPUT_EVENT_CHUNK_CHARACTERS:
                 chunk = pending_events[index][:OUTPUT_EVENT_CHUNK_CHARACTERS]
                 pending_events[index] = pending_events[index][OUTPUT_EVENT_CHUNK_CHARACTERS:]
-                context.observer("process_output", {
-                    "stream": stream_names[index],
-                    "content": chunk,
-                    "final": False,
-                })
+                emit(chunk)
+
+            # Preserve live progress for sparse line-oriented output. During a
+            # burst, coalesce lines for at most a short interval. Keep any
+            # incomplete line until the next read or final EOF flush.
+            if not final and "\n" in pending_events[index] and (
+                time.monotonic() - last_published[index] >= 0.1
+            ):
+                end = pending_events[index].rfind("\n") + 1
+                chunk = pending_events[index][:end]
+                pending_events[index] = pending_events[index][end:]
+                emit(chunk)
 
             if final and pending_events[index]:
                 chunk = pending_events[index]
                 pending_events[index] = ""
-                context.observer("process_output", {
-                    "stream": stream_names[index],
-                    "content": chunk,
-                    "final": True,
-                })
+                emit(chunk, is_final=True)
 
         def read_pipe(pipe, index):
             decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -107,6 +112,12 @@ def controlled_run(command, *, cwd, timeout, shell=False, env=None,
                 while not stop.is_set():
                     block = _read_available(pipe)
                     if block is None:
+                        # Emit buffered complete lines even when a child pauses
+                        # after a short burst. Otherwise the last short line
+                        # might remain invisible until process exit.
+                        if (context and "\n" in pending_events[index] and
+                                time.monotonic() - last_published[index] >= 0.1):
+                            publish_output(index)
                         stop.wait(.01)
                         continue
                     value = decoder.decode(block, final=not block)

@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLA Desktop</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="provider-cards.css">
+    <link rel="stylesheet" href="component-manager.css">
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <aside>
+        <div class="brand">
+            <span class="logo">P</span>
+            <strong>PLA Desktop</strong>
+        </div>
+        <p class="tagline">ChatGPT 负责思考<br>PLA 负责本地执行</p>
+
+        <nav>
+            <button data-view="overview" class="selected">总览</button>
+            <button data-view="setup">首次配置</button>
+            <button data-view="workspaces">工作区</button>
+            <button data-view="component-management">组件管理</button>
+            <button data-view="skill-list">Skill Library</button>
+            <button data-view="logs">日志诊断</button>
+            <button data-view="about">设置</button>
+        </nav>
+
+        <footer>
+            Windows 本地运行时<br>
+            <span id="version"></span>
+        </footer>
+    </aside>
+
+    <!-- Main Content -->
+    <main>
+        <header>
+            <div class="header-content">
+                <div class="eyebrow">LOCAL AGENT RUNTIME</div>
+                <h1 id="heading">运行概览</h1>
+            </div>
+            <button id="refresh">刷新状态</button>
+        </header>
+
+        <div id="notice" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden>
+            <span id="notice-text"></span>
+            <button id="notice-close" type="button" aria-label="关闭通知">×</button>
+        </div>
+
+        <!-- Overview Section -->
+        <section id="overview" class="view">
+            <div class="grid grid-3 mb-lg">
+                <div class="status-card" id="runtime-card">
+                    <div class="status-card-label">Runtime 状态</div>
+                    <div class="status-card-value">
+                        <span class="status-badge neutral" id="runtime-status">检测中</span>
+                    </div>
+                    <div class="status-card-desc">MCP 协议就绪检查</div>
+                </div>
+
+                <div class="status-card" id="tunnel-card">
+                    <div class="status-card-label">Secure MCP Tunnel</div>
+                    <div class="status-card-value">
+                        <span class="status-badge neutral" id="tunnel-status">检测中</span>
+                    </div>
+                    <div class="status-card-desc">远程连接状态</div>
+                </div>
+
+                <div class="status-card" id="verification-card">
+                    <div class="status-card-label">本地工具验证</div>
+                    <div class="status-card-value">
+                        <span class="status-badge neutral" id="verified-status">未验证</span>
+                    </div>
+                    <div class="status-card-desc">依据当前Runtime的本地调用和诊断结果</div>
+                </div>
+            </div>
+
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">快速操作</h2>
+                </div>
+                <div class="card-actions">
+                    <button id="start" class="primary">启动 Runtime</button>
+                    <button id="connect">连接 Tunnel</button>
+                    <button id="stop" class="secondary">停止服务</button>
+                    <button id="restart" class="secondary">重启 Runtime</button>
+                </div>
+            </div>
+
+            <div class="card mb-lg" id="activity-card">
+                <div class="card-header activity-header">
+                    <h2 class="card-title">最近本地工具活动</h2>
+                    <span class="text-muted text-small">每3秒刷新</span>
+                </div>
+                <div class="card-body">
+                    <div id="activity-list" aria-live="off">读取近期活动中…</div>
+                    <p class="text-muted text-small activity-note" id="activity-fetched">尚未读取活动</p>
+                    <p class="text-muted text-small activity-note">仅显示 PLA 本机观测结果，无法判断 ChatGPT 云端是否还在运行。</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">系统组件</h2>
+                </div>
+                <div class="card-body">
+                    <div class="grid grid-2 gap-md">
+                        <div>
+                            <div class="form-label">浏览器执行环境</div>
+                            <div id="browser-status-display" class="text-muted">检测中</div>
+                        </div>
+                        <div>
+                            <div class="form-label">可选组件</div>
+                            <div id="optional-status-display" class="text-muted">检测中</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button data-view="component-management">管理组件 →</button>
+                    <button data-view="setup">配置向导 →</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Setup Section -->
+        <section id="setup" class="view hidden">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">1 · 数据目录与端口</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">PLA 自动创建独立用户配置、日志、缓存和运行数据目录。</p>
+                    <code id="data-directory" class="mb-md"></code>
+
+                    <div class="form-row mt-md">
+                        <div class="form-group">
+                            <label class="form-label">Runtime 端口</label>
+                            <input id="runtime-port" type="number" min="1024" max="65535" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Tunnel 健康端口</label>
+                            <input id="health-port" type="number" min="1024" max="65535" class="form-input">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">2 · 配置 Tunnel 连接</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">使用官方页面创建 Tunnel 和此电脑专用的 runtime API key。</p>
+
+                    <div class="card-actions mb-md">
+                        <button data-link="tunnels" class="secondary">Tunnel 管理</button>
+                        <button data-link="keys" class="secondary">创建 API Key</button>
+                        <button data-link="guide" class="secondary">官方文档</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Tunnel ID</label>
+                        <input id="tunnel-id" placeholder="tunnel_…" autocomplete="off" class="form-input">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Runtime API Key</label>
+                        <input id="secret" type="password" placeholder="留空保留已保存的凭据" autocomplete="off" class="form-input">
+                        <span class="form-hint" id="credential-status"></span>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button id="save-connection" class="primary">保存连接配置</button>
+                </div>
+            </div>
+
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">3 · 授权与验证</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">在「工作区」添加允许访问的目录，然后启动服务并验证本地调用。</p>
+                </div>
+                <div class="card-actions">
+                    <button data-view="workspaces">配置工作区</button>
+                    <button data-command="start" class="primary">启动 Runtime</button>
+                    <button data-command="stop" class="secondary">停止 Runtime</button>
+                    <button id="verify">运行验证</button>
+                    <button data-command="connect">连接 Tunnel</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">4 · ChatGPT 授权</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">按照官方文档，在 ChatGPT 添加此 Tunnel 对应的 MCP 连接，完成授权。建议先让 ChatGPT 列出授权目录，再创建和修改测试文件。</p>
+                </div>
+                <div class="card-actions">
+                    <button id="complete-setup" class="primary">完成配置向导</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workspaces Section -->
+        <section id="workspaces" class="view hidden">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title" id="workspace-list-heading">已授权目录</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">支持多个 root，每个名称对应一个独立目录。变更授权前需要停止 Runtime。</p>
+                    <div id="workspace-list"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title" id="workspace-form-heading">添加新的 root</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Root 名称（唯一）</label>
+                        <input id="workspace-name" placeholder="例如 project_a、project_b" class="form-input">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">目录绝对路径</label>
+                        <input id="workspace-path" placeholder="C:\Users\…\Documents\Project" class="form-input">
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input id="allow-read" type="checkbox" checked>
+                        <label for="allow-read">读取</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input id="allow-write" type="checkbox">
+                        <label for="allow-write">写入</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input id="allow-execute" type="checkbox">
+                        <label for="allow-execute">受控执行</label>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button id="save-workspace" class="primary">添加 root</button>
+                    <button id="cancel-workspace-edit" class="secondary hidden">取消编辑</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Component Management Section -->
+        <section id="component-management" class="view hidden">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">组件与 MCP 插件</h2>
+                </div>
+                <div class="card-body">
+                    <p>管理 MCP Provider 的安装、启停、连接、配置及工具参数。</p>
+                </div>
+                <div class="card-actions">
+                    <button id="view-runtime" class="selected">本机组件</button>
+                    <button id="view-repositories">仓库管理</button>
+                    <button id="view-marketplace">浏览组件</button>
+                </div>
+            </div>
+
+            <div id="component-management-content"></div>
+
+            <!-- Runtime Providers View -->
+            <section id="providers" class="hidden">
+                <div class="card mb-lg">
+                    <div class="card-header">
+                        <h2 class="card-title">本机组件状态</h2>
+                    </div>
+                    <div class="card-body">
+                        <p id="provider-observation" class="mb-sm"></p>
+                        <code id="provider-path"></code>
+                    </div>
+                    <div class="card-actions">
+                        <button id="reload-providers">刷新状态</button>
+                        <button id="rescan-providers">重扫并应用</button>
+                    </div>
+                </div>
+
+                <!-- Starter Bundle -->
+                <div class="card starter-bundle-panel mb-lg" id="starter-pack-panel">
+                    <div class="card-header">
+                        <h2 class="card-title">常用 MCP 组件 · 一键准备</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-md">为 Computer、PDF、MarkItDown、Office Enhancement、Windows Management 和 Software Migration 集中准备锁定版本的依赖。</p>
+                        <p class="installation-status" id="bundle-status">尚未开始。</p>
+                    </div>
+                    <div class="card-actions">
+                        <button id="start-bundle" class="primary">准备常用组件</button>
+                        <button id="preview-bundle" class="secondary">查看依赖详情</button>
+                    </div>
+                    <details class="tech-details mt-md">
+                        <summary>查看全部锁定依赖及目标目录</summary>
+                        <pre id="bundle-preview">尚未预览</pre>
+                    </details>
+                </div>
+
+                <!-- Provider List -->
+                <div id="provider-list" class="provider-list"></div>
+
+                <!-- Provider Tools -->
+                <div class="card mt-lg" id="provider-tools-panel">
+                    <div class="card-header">
+                        <h2 class="card-title">真实工具与完整参数</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-md">选择组件的「工具与参数」查看已发现工具、输入输出 Schema、确认和事务要求。</p>
+                        <div id="provider-tools"></div>
+                    </div>
+                </div>
+
+                <!-- Edit Manifest Panel -->
+                <div class="card mt-lg hidden" id="edit-manifest-panel">
+                    <div class="card-header">
+                        <h2 class="card-title">查看与编辑清单</h2>
+                        <strong id="edit-provider-id" class="text-muted">尚未选择</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">原生 manifest JSON</label>
+                            <textarea id="edit-manifest-content" rows="14" spellcheck="false" class="form-textarea"></textarea>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button id="preview-manifest-edit">校验修改</button>
+                        <button id="save-manifest-edit" class="primary">保存已审阅修改</button>
+                    </div>
+                    <details class="tech-details mt-md">
+                        <summary>预览与校验结果</summary>
+                        <pre id="edit-manifest-preview">尚未选择</pre>
+                    </details>
+                </div>
+
+                <!-- Installation Panel -->
+                <div class="card mt-lg installation-panel" id="install-panel">
+                    <div class="card-header">
+                        <h2 class="card-title">安装或更新组件</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-md">安装固定的已审阅依赖到独立用户目录。完成后需要单独启用并检查连接。</p>
+
+                        <div class="form-group">
+                            <label class="form-label">Provider ID</label>
+                            <input id="install-provider" placeholder="例如 skill-library、docx、pdf" class="form-input">
+                        </div>
+
+                        <details class="tech-details mt-md" id="skill-package-options">
+                            <summary>高级：使用本地 Skill Library 源码或 Wheel（可选）</summary>
+                            <div class="form-group">
+                                <label class="form-label">本地 v0.5.0 源码目录或 Wheel 完整路径</label>
+                                <input id="skill-package" placeholder="留空使用随 Desktop 提供的已审查安装包" class="form-input">
+                                <span class="form-hint">普通安装无需填写；本地包仍需版本和SHA-256校验。</span>
+                            </div>
+                        </details>
+
+                        <div class="installation-status" id="install-live">
+                            选择组件后点击「安装 / 修复」，系统会自动检查依赖，在一次确认后开始安装。
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button id="start-install" class="primary">安装 / 修复</button>
+                        <button id="preview-install" class="secondary">查看依赖详情</button>
+                        <button id="installation-refresh" class="secondary">刷新安装状态</button>
+                    </div>
+                    <details class="tech-details mt-md">
+                        <summary>查看完整依赖清单与安装计划</summary>
+                        <pre id="install-preview">尚未预览</pre>
+                    </details>
+                    <details class="tech-details mt-md">
+                        <summary>安装任务与诊断日志（高级）</summary>
+                        <pre id="install-jobs">暂无安装任务</pre>
+                    </details>
+                </div>
+
+                <!-- Custom Package Panel -->
+                <div class="card mt-lg" id="custom-package-panel">
+                    <div class="card-header">
+                        <h2 class="card-title">自选 MCP：安装独立依赖</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-md">先在下方导入并审核自定义 Provider 清单；随后在这里登记精确版本的 PyPI 或 npm 依赖。</p>
+
+                        <div class="form-group">
+                            <label class="form-label">自定义 Provider ID</label>
+                            <input id="custom-package-id" placeholder="例如 my-mcp" class="form-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">依赖类型</label>
+                            <select id="custom-package-kind" class="form-select">
+                                <option value="python">Python · PyPI</option>
+                                <option value="npm">Node · npm</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">锁定版本依赖，每行一项</label>
+                            <textarea id="custom-package-pins" rows="4" placeholder="例如 fastmcp==4.0.3 或 @scope/mcp@1.2.3" class="form-textarea"></textarea>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button id="custom-package-preview">审核自定义依赖</button>
+                        <button id="custom-package-save" class="primary">确认登记</button>
+                    </div>
+                    <details class="tech-details mt-md">
+                        <summary>审核结果</summary>
+                        <pre id="custom-package-result">尚未审核</pre>
+                    </details>
+                </div>
+
+                <!-- Import Provider Manifest -->
+                <div class="card mt-lg">
+                    <div class="card-header">
+                        <h2 class="card-title">接入新的 MCP 插件</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-md">粘贴原 PLA schema_version=1 清单。支持独立 Python、可执行 stdio 和 HTTP。</p>
+
+                        <div class="form-group">
+                            <label class="form-label">Provider manifest JSON</label>
+                            <textarea id="manifest-content" rows="14" spellcheck="false" placeholder='{"schema_version":1,"id":"my-mcp",...}' class="form-textarea"></textarea>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button id="preview-import">校验并预览</button>
+                        <button id="apply-import" class="primary">保存已审阅清单</button>
+                    </div>
+                    <details class="tech-details mt-md">
+                        <summary>校验与预览结果</summary>
+                        <pre id="manifest-preview">尚未预览</pre>
+                    </details>
+                </div>
+
+                <details class="tech-details mt-lg">
+                    <summary>管理操作结果</summary>
+                    <pre id="provider-result">管理操作结果</pre>
+                </details>
+            </section>
+        </section>
+
+        <!-- Skill Library: one ordinary-user page; agent handles authoring -->
+        <section id="skill-list" class="view hidden">
+            <div id="skill-list-panel">
+                <div class="card mb-lg">
+                    <div class="card-header">
+                        <h2 class="card-title">Skill Library</h2>
+                        <p class="text-muted">管理Skill的查看、启停和同步。创建、编辑、发布Skill请直接告诉ChatGPT。</p>
+                    </div>
+                    <div class="card-body">
+                        <p id="skill-list-status" class="text-muted mb-md">正在读取Skill缓存…</p>
+                        <p id="skill-sync-status" class="installation-status" role="status" aria-live="polite"></p>
+                        <div class="form-row">
+                            <div class="form-group"><label class="form-label" for="skill-list-query">搜索</label><input id="skill-list-query" type="search" placeholder="名称或来源" class="form-input"></div>
+                            <div class="form-group"><label class="form-label" for="skill-list-source">来源</label><select id="skill-list-source" class="form-select"><option value="">所有来源</option></select></div>
+                            <div class="form-group"><label class="form-label" for="skill-list-state">状态</label><select id="skill-list-state" class="form-select"><option value="">全部状态</option><option value="enabled">可用</option><option value="disabled">停用</option></select></div>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button id="skill-sync-all" class="primary">同步来源并刷新</button>
+                        <button id="reload-skill-list">仅刷新缓存</button>
+                        <button id="skill-open-sources">管理来源与权限</button>
+                    </div>
+                </div>
+                <div id="skill-list-items" class="skill-library-list"></div>
+                <div class="card mt-lg hidden" id="skill-list-reader">
+                    <div class="card-header"><h2 class="card-title">Skill正文</h2><p id="skill-list-reading" class="text-muted"></p></div>
+                    <div class="card-body"><pre id="skill-list-content">选择一个Skill查看正文。</pre></div>
+                </div>
+            </div>
+            <div id="skill-sources-panel" class="hidden">
+                <div class="card mb-lg">
+                    <div class="card-header"><h2 class="card-title">Skill来源管理</h2></div>
+                    <div class="card-body"><p class="text-muted">管理Skill存放位置。取消来源登记不会删除原文件或GitHub仓库。</p><p id="skill-source-summary" class="text-muted"></p></div>
+                    <div class="card-actions">
+                        <button id="skill-close-sources">返回Skill列表</button>
+                        <button id="skill-show-add-source" class="primary">添加来源</button>
+                        <button id="skill-source-reload">刷新状态</button>
+                        <button id="skill-install-link">安装或连接Skill Library</button>
+                    </div>
+                </div>
+                <div id="skill-source-items" class="skill-source-list"></div>
+                <details id="skill-source-add-details" class="card mb-lg">
+                    <summary class="skill-source-summary">添加本地目录或GitHub来源</summary>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group"><label class="form-label" for="skill-source-kind">来源类型</label><select id="skill-source-kind" class="form-select"><option value="local">本地目录</option><option value="github">GitHub仓库</option></select></div>
+                            <div class="form-group"><label id="skill-source-label" class="form-label" for="skill-source-location">Skill目录完整路径</label><input id="skill-source-location" class="form-input" placeholder="尚无目录记录，请填写完整路径" autocomplete="off"></div>
+                            <div class="form-group hidden" id="skill-source-branch-field"><label class="form-label" for="skill-source-branch">分支</label><input id="skill-source-branch" class="form-input" value="main"></div>
+                        </div>
+                        <p id="skill-source-candidate" class="text-muted">填写来源位置后自动生成ID。</p>
+                        <p id="skill-source-result" class="installation-status" role="status" aria-live="polite"></p>
+                        <p class="text-muted">新增本地来源必须已获独立读取授权；不会自动开放整块磁盘或写入权限。</p>
+                    </div>
+                    <div class="card-actions"><button id="skill-source-add" class="primary">添加并同步</button></div>
+                </details>
+                <details id="skill-permissions-details" class="card mb-lg">
+                    <summary class="skill-source-summary">本地Skill读取与写入权限</summary>
+                    <div class="card-body">
+                        <p class="text-muted mb-md">从PLA已授权root中选择Skill专用权限。请先停用Skill Library，保存后重新启用以生效。</p>
+                        <div id="skill-roots"></div>
+                    </div>
+                    <div class="card-actions"><button id="skill-permissions-reload">读取当前权限</button><button id="save-skill-permissions" class="primary">保存权限</button></div>
+                </details>
+            </div>
+        </section>
+
+        <!-- Logs Section -->
+        <section id="logs" class="view hidden">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">日志与诊断</h2>
+                </div>
+                <div class="card-actions">
+                    <button id="load-logs">查看最新日志</button>
+                    <button id="diagnose" class="primary">运行诊断并保存报告</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <pre id="log-output">尚未加载日志</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- About/Settings Section -->
+        <section id="about" class="view hidden">
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">PLA Desktop V1</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">本地未签名测试发行候选。自动更新已禁用，配置存储在独立用户目录。</p>
+
+                    <div class="checkbox-group">
+                        <input id="autostart" type="checkbox">
+                        <label for="autostart">登录 Windows 时打开 PLA Desktop</label>
+                    </div>
+
+                    <p class="text-muted mt-md">关闭主窗口后保留在托盘。托盘提供打开、状态、启动、停止与彻底退出。</p>
+                </div>
+            </div>
+
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">浏览器执行组件</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">安装包包含固定版本的 Node 与 Playwright MCP，浏览器使用系统 Microsoft Edge。</p>
+
+                    <div class="checkbox-group">
+                        <input id="browser-enabled" type="checkbox">
+                        <label for="browser-enabled">启用浏览器组件</label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">浏览器 MCP 端口</label>
+                        <input id="browser-port" type="number" min="1024" max="65535" class="form-input">
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button id="save-browser" class="primary">保存浏览器偏好</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-actions">
+                    <button id="quit-app" class="danger">彻底退出 PLA Desktop</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="component-manager.js"></script>
+    <script src="app.js"></script>
+    <script src="components.js"></script>
+    <script src="skill-library-page.js"></script>
+</body>
+</html>

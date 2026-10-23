@@ -1,0 +1,30 @@
+{
+  "assets": {
+    "provider_patches": [],
+    "provider_specs": [],
+    "providers": [
+      "test_echo_provider.py"
+    ]
+  },
+  "dependencies": {
+    "node_packages": [],
+    "providers": [],
+    "python_packages": [
+      "mcp==2.2.0"
+    ],
+    "python_version": "3.11.9",
+    "system": []
+  },
+  "install_hooks": {
+    "post_install": null,
+    "pre_install": null
+  },
+  "provider_id": "test-echo-provider",
+  "runtime_kind": "isolated_python_stdio",
+  "schema_version": 1,
+  "uninstall_hooks": {
+    "post_uninstall": null,
+    "pre_uninstall": null
+  },
+  "version": "1.0.0"
+}

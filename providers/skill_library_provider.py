@@ -28,7 +28,24 @@ if not isinstance(local_roots, list) or not all(
 ):
     raise ValueError("skill-library.local_roots must be a list of paths")
 approved_roots = []
+desktop_roots = None
+if os.environ.get('PLA_DESKTOP_RUNTIME') == '1':
+    import yaml
+    desktop_path = PROJECT_ROOT / 'config/skill-library.desktop.json'
+    desktop_config = json.loads(desktop_path.read_text()) if desktop_path.is_file() else {'local_roots': [], 'writable_roots': []}
+    if not isinstance(desktop_config, dict) or set(desktop_config) != {'local_roots', 'writable_roots'}:
+        raise ValueError('Invalid desktop Skill permissions')
+    registry_path = Path(os.environ['AGENT_WORKSPACES_CONFIG'])
+    registry = yaml.safe_load(registry_path.read_text(encoding='utf-8')) if registry_path.is_file() else {'roots': {}}
+    desktop_roots = dict(registry.get('roots', {}))
+    desktop_roots['workspace'] = {'path': os.environ['AGENT_WORKSPACE'], 'read': True, 'write': True}
+    local_roots = desktop_config['local_roots']
+    if not isinstance(local_roots, list) or any(not isinstance(name, str) or name not in desktop_roots or desktop_roots[name].get('read') is not True for name in local_roots):
+        raise ValueError('Skill read roots must match current workspace permissions')
 for relative_root in local_roots:
+    if desktop_roots is not None:
+        approved_roots.append(str(Path(desktop_roots[relative_root]['path']).resolve()))
+        continue
     raw_root = Path(relative_root)
     resolved = (PROJECT_ROOT / raw_root).resolve()
     if raw_root.is_absolute() or not resolved.is_relative_to(PROJECT_ROOT):
@@ -40,12 +57,19 @@ else:
     os.environ.pop("SKILL_LIBRARY_LOCAL_ROOTS", None)
 
 writable_roots = config.get("writable_roots", [])
+if desktop_roots is not None:
+    writable_roots = desktop_config['writable_roots']
 if not isinstance(writable_roots, list) or not all(
     isinstance(root, str) and root.strip() for root in writable_roots
 ):
     raise ValueError("skill-library.writable_roots must be a list of paths")
 approved_write_roots = []
 for relative_root in writable_roots:
+    if desktop_roots is not None:
+        if relative_root not in local_roots or desktop_roots[relative_root].get('write') is not True:
+            raise ValueError('Skill write roots must match current workspace write permissions')
+        approved_write_roots.append(str(Path(desktop_roots[relative_root]['path']).resolve()))
+        continue
     raw_root = Path(relative_root)
     resolved = (PROJECT_ROOT / raw_root).resolve()
     if raw_root.is_absolute() or not resolved.is_relative_to(PROJECT_ROOT):

@@ -22,40 +22,50 @@ SERVER_PARAMS = StdioServerParameters(
 )
 
 
-async def run_with_backend(backend, *, max_steps=10):
+async def run_with_backend(backend, *, max_steps=10, workspace=None):
     SERVER_PARAMS.env = {"AGENT_TASK_DB": os.environ["AGENT_TASK_DB"]}
+    if workspace is not None:
+        SERVER_PARAMS.env['AGENT_WORKSPACE'] = str(workspace)
+        SERVER_PARAMS.env['PLA_DATA_ROOT'] = str(workspace / '.runtime-data')
     async with stdio_client(SERVER_PARAMS) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            return await run_agent(
-                session=session,
-                reasoner=GenericLLMReasoner(backend),
-                task="Fix the failing calculator test",
-                max_steps=max_steps,
-            )
+            try:
+                return await run_agent(
+                    session=session,
+                    reasoner=GenericLLMReasoner(backend),
+                    task="Fix the failing calculator test",
+                    max_steps=max_steps,
+                )
+            finally:
+                if workspace is not None:
+                    await session.call_tool('capability_invoke', {'capability_id': 'runtime.execution_runner_stop',
+                        'arguments': {}, 'confirmation': 'INVOKE'})
 
 
-def test_fake_model_agent_completes_full_mcp_loop():
-    original = CALCULATOR.read_text(encoding="utf-8")
-    CALCULATOR.write_text(
+def test_fake_model_agent_completes_full_mcp_loop(tmp_path):
+    # Automatic mutation must not race with packaging or modify the deliberately
+    # broken manual acceptance fixture in the repository.
+    fixture = tmp_path / 'agent_test'
+    fixture.mkdir()
+    (fixture / 'test_calculator.py').write_bytes((CALCULATOR.parent / 'test_calculator.py').read_bytes())
+    calculator = fixture / 'calculator.py'
+    calculator.write_text(
         "def add(a, b):\n    return a - b\n",
         encoding="utf-8",
     )
     backend = FakeModelBackend(
         responses=[
             '{"action":"read_text","arguments":{"path":"agent_test/calculator.py"}}',
-            '{"action":"run_process","arguments":{"program":"pytest","args":["agent_test"]}}',
+            '{"action":"run_process","arguments":{"program":"pytest","args":["agent_test"],"env":{"PYTHONDONTWRITEBYTECODE":"1"}}}',
             '{"action":"replace_text","arguments":{"path":"agent_test/calculator.py","old":"return a - b","new":"return a + b"}}',
-            '{"action":"run_process","arguments":{"program":"pytest","args":["agent_test"]}}',
+            '{"action":"run_process","arguments":{"program":"pytest","args":["agent_test"],"env":{"PYTHONDONTWRITEBYTECODE":"1"}}}',
             '{"action":"finish","arguments":{}}',
         ]
     )
 
-    try:
-        result = asyncio.run(run_with_backend(backend))
-        final_code = CALCULATOR.read_text(encoding="utf-8")
-    finally:
-        CALCULATOR.write_text(original, encoding="utf-8")
+    result = asyncio.run(run_with_backend(backend, workspace=tmp_path))
+    final_code = calculator.read_text(encoding="utf-8")
 
     assert result.status == "completed"
     assert result.steps == 5
@@ -68,7 +78,7 @@ def test_fake_model_agent_completes_full_mcp_loop():
     first_pytest = result.history[1]["result"]["structured_content"]
     second_pytest = result.history[3]["result"]["structured_content"]
     assert first_pytest["returncode"] != 0
-    assert second_pytest["returncode"] == 0
+    assert second_pytest["returncode"] == 0, second_pytest
     assert "return a + b" in final_code
 
 

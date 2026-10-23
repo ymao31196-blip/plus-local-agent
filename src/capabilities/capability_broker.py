@@ -93,7 +93,9 @@ def _public_artifact(metadata: dict[str, Any]) -> dict[str, Any]:
     return {key: metadata.get(key) for key in keys}
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from runtime.paths import data_root
+
+PROJECT_ROOT = data_root()
 _BROWSER_DOWNLOAD_PROVIDER_ID = "browser"
 _BROWSER_DOWNLOAD_REMOTE_NAME = "browser_click"
 _BROWSER_DOWNLOAD_RECOVERY_TIMEOUT_SECONDS = 4.0

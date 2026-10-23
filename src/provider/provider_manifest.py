@@ -65,6 +65,9 @@ class ProviderManifest:
         if self.command_path is not None:
             value["command"] = str(self.command_path)
             value["command_exists"] = self.command_path.is_file()
+        elif self.runtime_kind == EXECUTABLE_STDIO:
+            # Optional system MCP: manifest remains visible without the executable.
+            value["command_exists"] = False
         if self.endpoint_url is not None:
             value["url"] = self.endpoint_url
         if self.python_path is not None:
@@ -97,19 +100,27 @@ def _resolve_inside(base: Path, relative: str, label: str) -> Path:
     return resolved
 
 
-def _resolve_command(project_root: Path, raw_value: str, label: str) -> Path:
+def _resolve_command(
+    project_root: Path, raw_value: str, label: str, *, allow_missing: bool = False
+) -> Path | None:
     raw = Path(raw_value)
     if raw.is_absolute():
         return raw.resolve()
     if raw.parent == Path("."):
         discovered = shutil.which(raw_value)
         if discovered is None:
+            if allow_missing:
+                # Catalog/load is safe without this optional system executable.
+                # Strict import validation and explicit enable must still reject it.
+                return None
             raise ValueError(f"{label} was not found on PATH: {raw_value!r}")
         return Path(discovered).resolve()
     return _resolve_inside(project_root, raw_value, label)
 
 
-def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
+def load_provider_manifest(
+    path: Path, project_root: Path, *, allow_missing_command: bool = False
+) -> ProviderManifest:
     path = path.resolve()
     project_root = project_root.resolve()
     try:
@@ -232,7 +243,8 @@ def load_provider_manifest(path: Path, project_root: Path) -> ProviderManifest:
             runtime.get("command"), f"{path.name}.runtime.command"
         )
         command_path = _resolve_command(
-            project_root, command_value, f"{path.name}.runtime.command"
+            project_root, command_value, f"{path.name}.runtime.command",
+            allow_missing=allow_missing_command,
         )
     else:
         if "python" in runtime or "command" in runtime:
@@ -367,7 +379,9 @@ def load_provider_manifests(
 
     manifests: dict[str, ProviderManifest] = {}
     for path in sorted(directory.glob("*.json")):
-        manifest = load_provider_manifest(path, project_root)
+        # A catalog can describe an optional PATH-backed MCP that is not installed
+        # on this machine; strict single-manifest validation remains unchanged.
+        manifest = load_provider_manifest(path, project_root, allow_missing_command=True)
         if manifest.provider_id in manifests:
             raise ValueError(
                 f"Duplicate provider id across manifests: {manifest.provider_id}"

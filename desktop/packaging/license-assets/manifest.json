@@ -1,0 +1,60 @@
+{
+  "licenses": [
+    {
+      "kind": "python",
+      "name": "dnspython",
+      "version": "2.9.0",
+      "file": "dnspython-2.9.0-LICENSE.txt",
+      "sha256": "c3ea3ff5654b329c19d3bc5f7481af623c3dded4a6145585499f843ad3d741cd",
+      "source": "https://raw.githubusercontent.com/rthalley/dnspython/v2.9.0/LICENSE"
+    },
+    {
+      "kind": "python",
+      "name": "fastmcp-slim",
+      "version": "4.0.3",
+      "file": "fastmcp-4.0.3-LICENSE.txt",
+      "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "source": "https://raw.githubusercontent.com/PrefectHQ/fastmcp/v4.0.3/LICENSE"
+    },
+    {
+      "kind": "rust",
+      "name": "alloc-stdlib",
+      "version": "0.3.0",
+      "file": "alloc-stdlib-0.3.0-LICENSE.txt",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+      "source": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE"
+    },
+    {
+      "kind": "rust",
+      "name": "selectors",
+      "version": "0.38.0",
+      "file": "MPL-2.0.txt",
+      "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172",
+      "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/MPL-2.0.txt"
+    },
+    {
+      "kind": "rust",
+      "name": "webview2-com",
+      "version": "0.39.1",
+      "file": "webview2-edc2caf-LICENSE.txt",
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "source": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+    },
+    {
+      "kind": "rust",
+      "name": "webview2-com-sys",
+      "version": "0.39.1",
+      "file": "webview2-edc2caf-LICENSE.txt",
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "source": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+    },
+    {
+      "kind": "rust",
+      "name": "webview2-com-macros",
+      "version": "0.8.1",
+      "file": "webview2-dffa41a-LICENSE.txt",
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "source": "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE"
+    }
+  ]
+}

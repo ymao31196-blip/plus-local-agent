@@ -107,6 +107,37 @@ def test_hotplug_rescan_add_change_disable_enable_remove(tmp_path, monkeypatch):
         registry.describe("alpha.two")
 
 
+def test_reenable_forces_fresh_provider_transport_and_discovery(tmp_path, monkeypatch):
+    """Permission changes must not reuse historical 'ready' MCP sessions."""
+    monkeypatch.setenv("PLA_EXTERNAL_PROVIDERS", "*")
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    runtime = ExternalProviderRuntime(manager, tmp_path)
+    discoveries = []
+
+    async def fake_list_tools(source, _mode):
+        discoveries.append(source)
+        return [_tool("one")]
+
+    monkeypatch.setattr(manager, "_list_tools", fake_list_tools)
+    _write_manifest(tmp_path, "skill-library", "one")
+    assert asyncio.run(runtime.rescan())["added"] == ["skill-library"]
+    old_transport = manager._sources["skill-library"]
+    assert len(discoveries) == 1
+
+    disabled = asyncio.run(runtime.disable("skill-library"))
+    assert disabled["provider"]["state"] == "ready"
+    assert disabled["provider"]["enabled"] is False
+    assert registry.describe("skill-library.one")["available"] is False
+
+    enabled = asyncio.run(runtime.enable("skill-library"))
+    assert enabled["provider"]["enabled"] is True
+    assert enabled["provider"]["state"] == "ready"
+    assert len(discoveries) == 2, "Enable must force a fresh discovery"
+    assert manager._sources["skill-library"] is not old_transport
+    assert registry.describe("skill-library.one")["available"] is True
+
+
 def test_hotplug_declared_routing_updates_without_runtime_restart(
     tmp_path,
     monkeypatch,
@@ -272,6 +303,29 @@ def test_hotplug_invalid_manifest_does_not_mutate_active_runtime(tmp_path, monke
 
     assert manager.has_provider("alpha") is True
     assert registry.describe("alpha.one")["available"] is True
+
+
+def test_complete_catalog_uses_existing_broker_without_search_truncation(tmp_path):
+    registry = CapabilityRegistry()
+    manager = MCPClientManager(registry)
+    runtime = ExternalProviderRuntime(manager, tmp_path)
+    broker = CapabilityBroker(registry, manager)
+    register_provider_runtime_capabilities(registry, broker, runtime)
+    registry.register_provider('many', [CapabilityDescriptor(
+        id=f'many.tool_{i}', provider_id='many', remote_name=f'tool_{i}',
+        title=f'Tool {i}', description='Disabled test provider',
+        input_schema={'type': 'object', 'properties': {'path': {'type': 'string'}}},
+    ) for i in range(130)], enabled=False)
+    result = asyncio.run(broker.invoke('runtime.capability_catalog', {'provider_id': 'many'}))
+    assert result['status'] == 'completed'
+    data = result['data']
+    assert data['returned_count'] == 130 and data['truncated'] is False
+    assert all(not row['available'] and row['input_schema']['properties']['path']['type'] == 'string'
+               for row in data['capabilities'])
+    all_data = asyncio.run(broker.invoke('runtime.capability_catalog', {}))['data']
+    assert all_data['returned_count'] > 130 and all_data['truncated'] is False
+    with pytest.raises(ValueError):
+        asyncio.run(broker.invoke('runtime.capability_catalog', {'shell': 'not allowed'}))
 
 
 def test_runtime_hotplug_capabilities_use_confirmation_gate(tmp_path, monkeypatch):

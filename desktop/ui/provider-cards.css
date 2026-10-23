@@ -1,0 +1,432 @@
+/* Provider Card Styles - Modern compact design */
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.provider-card {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.provider-card:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+.provider-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.provider-card-header h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.provider-statuses {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+/* Status indicators with semantic colors */
+.provider-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.provider-status-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Installation status */
+.install-status-installed {
+  background: var(--color-success-bg);
+  color: #065f46;
+}
+
+.install-status-installed::before {
+  background: var(--color-success);
+}
+
+.install-status-missing {
+  background: var(--color-error-bg);
+  color: #991b1b;
+}
+
+.install-status-missing::before {
+  background: var(--color-error);
+}
+
+/* Enable status */
+.enable-status-enabled {
+  background: var(--color-info-bg);
+  color: #1e40af;
+}
+
+.enable-status-enabled::before {
+  background: var(--color-info);
+}
+
+.enable-status-disabled {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.enable-status-disabled::before {
+  background: var(--color-text-tertiary);
+}
+
+/* Connection status */
+.connection-status-connected {
+  background: var(--color-success-bg);
+  color: #065f46;
+}
+
+.connection-status-connected::before {
+  background: var(--color-success);
+}
+
+.connection-status-failed {
+  background: var(--color-error-bg);
+  color: #991b1b;
+}
+
+.connection-status-failed::before {
+  background: var(--color-error);
+}
+
+.connection-status-pending {
+  background: var(--color-warning-bg);
+  color: #92400e;
+}
+
+.connection-status-pending::before {
+  background: var(--color-warning);
+}
+
+.connection-status-disconnected {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.connection-status-disconnected::before {
+  background: var(--color-text-tertiary);
+}
+
+/* Provider description */
+.provider-description {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: var(--space-sm) 0;
+  line-height: 1.5;
+}
+
+/* Repository info */
+.provider-repo-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-top: var(--space-xs);
+}
+
+.provider-repo-info code {
+  font-size: var(--text-xs);
+  background: var(--color-bg-secondary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* Error messages */
+.provider-error {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-error-bg);
+  border-left: 3px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: #991b1b;
+  line-height: 1.5;
+}
+
+.provider-warning {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: #92400e;
+  line-height: 1.5;
+}
+
+.provider-info {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: #1e40af;
+  line-height: 1.5;
+}
+
+/* Quick actions - prominent primary actions */
+.provider-quick-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.provider-quick-actions button {
+  font-size: var(--text-sm);
+  padding: 7px 14px;
+}
+
+/* Advanced section - collapsible details */
+.provider-advanced {
+  margin-top: var(--space-md);
+  border: none;
+  padding: 0;
+}
+
+.provider-advanced summary {
+  padding: var(--space-sm) 0;
+  background: transparent;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.provider-advanced summary:hover {
+  color: var(--color-text-primary);
+}
+
+.provider-advanced[open] summary {
+  border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: var(--space-md);
+}
+
+.provider-advanced-content {
+  padding: var(--space-md) 0 0;
+}
+
+.provider-tech-info {
+  display: grid;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-md);
+}
+
+.provider-tech-info-row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.provider-tech-info-label {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  min-width: 100px;
+}
+
+.provider-tech-info-value {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.provider-advanced-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-top: var(--space-md);
+}
+
+.provider-advanced-actions button {
+  font-size: var(--text-sm);
+  padding: 7px 14px;
+}
+
+/* Compact view toggle */
+.provider-view-toggle {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.provider-view-toggle button {
+  flex: 1;
+  justify-content: center;
+}
+
+.provider-view-toggle button.active {
+  background: var(--color-brand);
+  color: white;
+  border-color: var(--color-brand);
+}
+
+/* List view - more compact */
+.provider-list.list-view .provider-card {
+  padding: var(--space-md);
+}
+
+.provider-list.list-view .provider-card-header {
+  margin-bottom: 0;
+}
+
+.provider-list.list-view .provider-description {
+  margin: var(--space-xs) 0;
+}
+
+/* Grid view - for marketplace */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-md);
+}
+
+.provider-grid .provider-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.provider-grid .provider-card-body {
+  flex: 1;
+}
+
+/* Tool count badge */
+.provider-tool-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+.provider-tool-count::before {
+  content: '🔧';
+  font-size: 12px;
+}
+
+/* Starter bundle panel */
+.starter-bundle-panel {
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+  border: 2px solid var(--color-success-border);
+}
+
+.starter-bundle-panel h2 {
+  color: var(--color-success);
+}
+
+/* Installation panel */
+.installation-panel {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-top: var(--space-lg);
+}
+
+.installation-status {
+  padding: var(--space-md);
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: #1e40af;
+  margin-top: var(--space-md);
+}
+
+.installation-status.success {
+  background: var(--color-success-bg);
+  border-left-color: var(--color-success);
+  color: #065f46;
+}
+
+.installation-status.error {
+  background: var(--color-error-bg);
+  border-left-color: var(--color-error);
+  color: #991b1b;
+}
+
+/* Tech details collapsible */
+.tech-details {
+  margin-top: var(--space-md);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.tech-details summary {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-bg-tertiary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.tech-details[open] summary {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.tech-details pre {
+  margin: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  max-height: 400px;
+  font-size: 11px;
+}
+
+/* Empty state */
+.provider-empty-state {
+  text-align: center;
+  padding: var(--space-xl) var(--space-lg);
+  color: var(--color-text-tertiary);
+}
+
+.provider-empty-state-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+}
+
+.provider-empty-state-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+.provider-empty-state-desc {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-lg);
+}
