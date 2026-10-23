@@ -6,4 +6,4 @@
 - [仓库协议与当前支持范围](docs/provider_repository_protocol.md)
 - [实际修复与验收进度](docs/component_management_repair_status.md)
 
-当前源码版本为 Desktop 1.0.0-rc.10 测试候选，安装包构建与验证仍在进行。历史交付文档中的完成率声明不能替代真实安装包验收。
+当前桌面端公开预发布版本为 [PLA Desktop v1.0.0-rc.18](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18)。Windows CI已通过源码回归、界面检查、Runtime冻结与NSIS打包。完整运行与远端Tunnel连接仍需在安装目标电脑上单独验证；历史交付文档中的完成率不能替代实际安装验收。
