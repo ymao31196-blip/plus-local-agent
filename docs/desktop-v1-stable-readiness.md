@@ -27,6 +27,11 @@ External ChatGPT and Tunnel account eligibility remain third-party prerequisites
 - After Apache-2.0 and Skill Library Wheel updates: **988 passed in 189.29 s**
   (`python -m pytest -q --tb=short`); after the final installer license
   assertion was added, the release-metadata focused suite passed **3/3**.
+- Third-party provenance preflight on 2026-10-25: the WPS compatibility patch
+  now carries its pinned upstream MIT copyright/license notice and the focused
+  license/provenance checks passed **7/7**. PyMuPDF's optional AGPL/commercial
+  terms require a separate downstream integration review. See
+  [`desktop-v1-third-party-audit.md`](desktop-v1-third-party-audit.md).
 - Independent Skill Library source suite: **76 passed, 2 skipped**.
   The reviewed Wheel was rebuilt twice from the clean source snapshot with
   identical SHA-256 `869bd376af7c729172283017b36c694ad0fc128c5d54ffa7a897ce4b4d3f1eb0`.

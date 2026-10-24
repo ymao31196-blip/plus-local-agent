@@ -50,3 +50,19 @@ def test_desktop_installer_embeds_first_party_license():
     build = (ROOT / "desktop/packaging/build.ps1").read_text(encoding="utf-8")
     assert '"licenses\\PLA-APACHE-2.0-LICENSE.txt"' in build
     assert 'Join-Path $releaseRoot "LICENSE"' in build
+
+def test_wps_patch_keeps_pinned_upstream_mit_license():
+    import json
+    specification = json.loads((ROOT / "provider_specs/wps-office.source.json").read_text(encoding="utf-8"))
+    assert specification["repository_url"] == "https://github.com/lc2panda/wps-skills.git"
+    assert specification["revision"] == "a82533662268b3245f93d8685bc45dffede048b6"
+    assert specification["patches"] == ["provider_patches/wps-office/windows-com-compat.patch"]
+    patch_root = ROOT / "provider_patches/wps-office"
+    assert (patch_root / "windows-com-compat.patch").is_file()
+    notice = (patch_root / "UPSTREAM-LICENSE.txt").read_text(encoding="utf-8")
+    assert "MIT License" in notice
+    assert "Copyright (c) 2026 lc2panda" in notice
+    assert specification["revision"] in notice
+    assert 'Copy-Item -LiteralPath (Join-Path $projectRoot "provider_patches")' in (
+        ROOT / "desktop/packaging/build.ps1"
+    ).read_text(encoding="utf-8")
