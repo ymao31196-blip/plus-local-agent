@@ -4,7 +4,7 @@
 
 PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop applications and optional MCP providers on your own Windows PC, within explicitly configured permissions. ChatGPT handles reasoning and tool selection; PLA runs the local tools. The ChatGPT app can be on another device, including your phone, while the Windows PC runs PLA through Secure MCP Tunnel.
 
-**Release channel: Pre-release / experimental.** PLA Desktop is distributed as an unsigned Windows installer, with manual updates and no automatic updater. It is not a security sandbox or a commercially supported product.
+**Current public download:** RC.18 remains the latest released Windows installer (unsigned; manual upgrades only). Stable v1.0.0 is an unreleased candidate pending final Windows acceptance. PLA is not an operating-system sandbox.
 
 **License:** PLA-owned source is licensed under [Apache-2.0](LICENSE). Bundled and optional dependencies retain their own licenses; see [third-party notices](docs/desktop-v1-third-party-notices.md). The latest publicly released installer remains RC.18 until v1.0.0 is verified and published.
 
@@ -56,6 +56,8 @@ The packaged desktop already includes `tunnel-client.exe`: **do not download a s
    ![PLA Desktop Runtime and Tunnel connection status overview](docs/images/pla-desktop/04-runtime-and-tunnel.png)
 
    *Illustrative connected state; verify your real connection by calling a PLA tool from ChatGPT.*
+
+For newly available executable permissions in the v1.0.0 candidate, open **Settings → Executable Permissions** and grant only a trusted local `.exe` by its complete absolute path. Disable, re-enable or revoke it from the same list. A newly disabled grant is refused immediately for future calls; already running processes are not terminated. Any authorized process still runs with your Windows account rights and may access files outside the authorized workspace.
 
 ### 5. Connect ChatGPT and test the full path
 

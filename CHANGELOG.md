@@ -2,6 +2,15 @@
 
 All notable PLA release changes are recorded here.
 
+## Desktop 1.0.0 — unreleased candidate (Windows x64)
+
+- Prepared the first stable-release candidate with an explicit core stability scope: Desktop setup and lifecycle, Secure MCP Tunnel, MCP Runtime/Runner, workspace/program permission controls, diagnostics and basic file/process execution. Optional Providers remain separately supported extensions.
+- Added user-managed Windows executable grants by exact full path, including immediate disable and revoke for new requests; tested against the packaged PLA-TEST execution Runner.
+- Adopted Apache-2.0 for PLA-owned source and the independent Skill Library; preserved WPS upstream MIT attribution and refreshed the reviewed Skill Library Wheel and pinned digest.
+- Preserved unsigned/manual-update disclosure and documented that workspace/program policies are not an operating-system sandbox.
+- PLA source regression passed 988 tests before third-party attribution documentation updates; the follow-up focused provenance tests passed 7/7. Clean final Windows CI, NSIS build, RC.18 upgrade, lifecycle/recovery and independent-machine E2E remain release gates.
+- **Not published yet.** The last official public download remains RC.18; this is a local test candidate.
+
 ## Desktop 1.0.0-rc.18 - 2026-10-22 (Windows x64 pre-release)
 
 - Published an unsigned Windows NSIS installer with SHA-256 checksums and a source-commit build manifest: [RC18 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18).

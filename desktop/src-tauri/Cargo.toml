@@ -1,6 +1,6 @@
 [package]
 name = "pla-desktop"
-version = "1.0.0-rc.18"
+version = "1.0.0"
 edition = "2021"
 
 license = "Apache-2.0"

@@ -66,3 +66,19 @@ def test_wps_patch_keeps_pinned_upstream_mit_license():
     assert 'Copy-Item -LiteralPath (Join-Path $projectRoot "provider_patches")' in (
         ROOT / "desktop/packaging/build.ps1"
     ).read_text(encoding="utf-8")
+
+def test_desktop_stable_candidate_version_fields_are_consistent():
+    import json
+    import tomllib
+    from desktop_runtime.config import VERSION
+
+    package = json.loads((ROOT / "desktop/package.json").read_text(encoding="utf-8"))
+    lock = json.loads((ROOT / "desktop/package-lock.json").read_text(encoding="utf-8"))
+    tauri = json.loads((ROOT / "desktop/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    cargo = tomllib.loads((ROOT / "desktop/src-tauri/Cargo.toml").read_text(encoding="utf-8"))
+    cargo_lock = tomllib.loads((ROOT / "desktop/src-tauri/Cargo.lock").read_text(encoding="utf-8"))
+    own_cargo = [p for p in cargo_lock["package"] if p["name"] == "pla-desktop"]
+    assert len(own_cargo) == 1
+    assert {VERSION, package["version"], lock["version"],
+            lock["packages"][""]["version"], tauri["version"],
+            cargo["package"]["version"], own_cargo[0]["version"]} == {"1.0.0"}

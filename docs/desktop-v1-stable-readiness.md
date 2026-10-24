@@ -82,10 +82,10 @@ External ChatGPT and Tunnel account eligibility remain third-party prerequisites
 - PLA root LICENSE has been added from official Apache-2.0 text (local, unpushed).
 - The reviewed Skill Library wheel now carries Apache-2.0 license metadata and file.
   Its independently licensed third-party dependencies still require review.
-- Feature and release-freeze documentation changes are committed locally at
-  `aa3d3e9005800ff71565a9bf172be5a43bc800bd`, not yet pushed.
-  A stat-only Cargo.toml change remains. The RC.18 version fields have
-  **not** yet been changed to v1.0.0; no clean final-candidate build exists.
+- Third-party attribution/source audit is recorded at local commit
+  `b75a558b71ee0ea57161a8b21af44395a8f2dee0` (not yet pushed).
+  Local Desktop candidate version fields are now set to 1.0.0, but no
+  clean final NSIS installer or public v1.0.0 Release exists.
 
 ## Freeze policy
 

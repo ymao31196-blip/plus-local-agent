@@ -4,7 +4,7 @@
 
 PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows电脑，包括本地文件、程序、浏览器、桌面软件和按需安装的MCP组件。ChatGPT负责理解任务和决定工具调用，PLA负责在授权范围内执行。只要目标电脑运行PLA和Secure MCP Tunnel，你也能在手机等其他设备上使用ChatGPT操控它。
 
-**发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
+**当前公开版本：** Windows安装包仍为RC.18（未签名、手动升级）。v1.0.0是尚未完成最终Windows验收的本地候选版，暂未发布。PLA不提供操作系统级沙箱。
 
 **开源许可证：** PLA自有源码采用[Apache-2.0](LICENSE)。第三方组件及其依赖保留各自的许可证，详见[第三方许可说明](docs/desktop-v1-third-party-notices.md)。目前已发布安装包仍为RC.18，v1.0.0尚未发布。
 
@@ -58,6 +58,8 @@ RC.18安装包在GitHub发布元数据中的SHA-256为`3c0e00ce34c564ef861de4be4
    ![PLA Desktop总览：Runtime和Tunnel连接状态](docs/images/pla-desktop/04-runtime-and-tunnel.png)
 
    *总览状态示例：运行状态来自演示数据；实际连接成功仍需用ChatGPT工具调用验证。*
+
+v1.0.0候选版提供可执行程序自主授权：进入**设置→可执行程序授权**，仅对受信任的本机`.exe`完整绝对路径添加授权，可在同一列表中停用、恢复或撤销。停用后新的执行请求立即拒绝，但已启动的进程不会被自动终止。获得授权的程序仍以当前Windows账户权限运行，有可能访问工作区以外的数据。
 
 ### 第五步：连接ChatGPT，完成真实验收
 

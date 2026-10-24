@@ -56,9 +56,9 @@ Updated: 2026-10-24. Status: **Apache-2.0 selected and applied in the local work
    restart persistence), clean Windows installation without dev tools,
    Tunnel/ChatGPT remote call, RC.18 upgrade, restart/error recovery, uninstall
    data preservation and check that optional extensions cannot break core startup.
-5. Update the v1.0.0 version fields consistently (Tauri/Cargo/npm lock), English
-   and Chinese README links, CHANGELOG, source commit/build manifest and
-   release notes. Do not point the current download links to a nonexistent release.
+5. v1.0.0 version fields are set consistently in the local candidate (Tauri,
+   Cargo, npm lock and Desktop Runtime). Finalize source/build manifest,
+   English/Chinese download links and release notes after verified build.
 6. Publish the verified `v1.0.0` source tag and installer from the *same*
    public GitHub repository with matching checksum, license and dependency
    notices. The installer remains unsigned and manual-update only.
@@ -67,8 +67,9 @@ Updated: 2026-10-24. Status: **Apache-2.0 selected and applied in the local work
 
 ## Evidence and release policy
 
-- Prior complete PLA regression: `986 passed` on 2026-10-24 before
-  these licensing/pinning changes; a new full run is required.
+- PLA regression passed 988 tests after license/Wheel changes; WPS MIT
+  attribution plus license checks passed 7/7 and the candidate-version focused
+  tests passed 11/11. A new full candidate regression is required.
 - Packaged PLA-TEST previously verified exact-path executable grants and immediate
   refusal following disable; outstanding E2E coverage is tracked separately.
 - This is **release preparation**, not v1.0.0 approval. Do not issue a stable tag
