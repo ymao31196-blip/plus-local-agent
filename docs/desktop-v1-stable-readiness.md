@@ -3,6 +3,8 @@
 Date: 2026-10-24. Status: **RELEASE FROZEN / NOT YET QUALIFIED**.
 This is a working qualification record, **not** approval to publish.
 
+Distribution decision: **publish Windows installer binaries, keep PLA-owned source rights reserved, do not adopt an open-source license**. The current source repository is public; a separate public downloads repository and a private source repository must be established before the intended binary-only public v1.0.0 release. See [`desktop-v1-distribution-plan.md`](desktop-v1-distribution-plan.md) and the *unapproved* [`binary terms draft`](desktop-v1-binary-terms-draft.md).
+
 ## Stability contract (v1.0.0)
 
 The guaranteed surface is the Windows x64 Desktop installer, configuration and lifecycle
