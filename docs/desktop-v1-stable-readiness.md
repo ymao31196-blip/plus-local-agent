@@ -3,7 +3,7 @@
 Date: 2026-10-24. Status: **RELEASE FROZEN / NOT YET QUALIFIED**.
 This is a working qualification record, **not** approval to publish.
 
-Distribution decision: **publish Windows installer binaries, keep PLA-owned source rights reserved, do not adopt an open-source license**. The current source repository is public; a separate public downloads repository and a private source repository must be established before the intended binary-only public v1.0.0 release. See [`desktop-v1-distribution-plan.md`](desktop-v1-distribution-plan.md) and the *unapproved* [`binary terms draft`](desktop-v1-binary-terms-draft.md).
+Updated distribution decision (2026-10-24): **publish PLA as open-source software through the existing Public source repository**, with the Windows installer attached to its regular GitHub Release. An actual open-source license and rights review are still outstanding. The earlier binary-only/private-source plan was withdrawn. See [`desktop-v1-opensource-release-plan.md`](desktop-v1-opensource-release-plan.md).
 
 ## Stability contract (v1.0.0)
 
