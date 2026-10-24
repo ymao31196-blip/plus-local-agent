@@ -21,6 +21,7 @@ from desktop_runtime.components import ComponentProject
 from desktop_runtime.pet_companion import PetCompanion
 from desktop_runtime.capability_bridge import checked_provider_action, checked_skill_action
 from host.workspace_manager import workspace_registry_status, workspace_registry_upsert, workspace_registry_remove
+from execution.user_program_permissions import snapshot as program_permissions_snapshot, change_permission
 from runtime.runtime_context import terminate_owned_process_tree
 from runtime.activity_runtime import recent_activity
 
@@ -133,6 +134,7 @@ class Manager:
             selected.add("browser")
         env.update(PLA_DATA_ROOT=str(root), AGENT_PLA_ROOT=str(self.resources),
                    PLA_DESKTOP_RUNTIME="1",
+                    PLA_PROGRAM_PERMISSIONS_FILE=str(root / "config" / "program_permissions.json"),
                    PLA_RUNTIME_PORT=str(self.config.value["runtime_port"]), PLA_TUNNEL_HEALTH_PORT=str(self.config.value["health_port"]),
                    PLA_RESOURCE_ROOT=str(self.components.root), PLA_INSTALL_RESOURCES=str(self.resources),
                    PLA_BROWSER_PORT=str(self.config.value["browser_port"]),
@@ -779,6 +781,20 @@ class Manager:
                 result = workspace_registry_remove(self.config.workspace_path, self.resources, **args)
             # Workspace removal or narrowing also revokes its Skill permissions.
             self._reconcile_skill_permissions()
+            return result
+        if command == "program_permissions":
+            operation = args.get("operation")
+            path = self.config.root / "config" / "program_permissions.json"
+            if operation == "list":
+                if set(args) != {"operation"}:
+                    raise ValueError("Unexpected executable permission arguments")
+                return program_permissions_snapshot(path)
+            if operation not in {"grant", "disable", "revoke"} or set(args) != {"operation", "path", "expected_sha256"}:
+                raise ValueError("Expected executable permission operation, path and current SHA-256")
+            result = change_permission(
+                operation, executable=args["path"], expected_sha256=args["expected_sha256"], path=path
+            )
+            self._record(f"Executable permission {operation}: {Path(args['path']).name}")
             return result
         if command == "verify":
             if not self._alive("runtime"):

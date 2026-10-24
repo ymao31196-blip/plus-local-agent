@@ -572,6 +572,23 @@
                 </div>
             </div>
 
+            <div class="card mb-lg" id="program-permissions-panel">
+                <div class="card-header">
+                    <h2 class="card-title">可执行程序授权</h2>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">保留预置程序，额外按完整路径授权本机 .exe。授权后程序拥有当前 Windows 账户的实际权限，可能访问工作区以外的资源；请只添加信任的软件。</p>
+                    <div id="program-permissions-list" class="mb-md">打开本页后读取当前授权。</div>
+                    <div class="form-group">
+                        <label class="form-label" for="program-permissions-path">程序完整路径</label>
+                        <input id="program-permissions-path" class="form-input" placeholder="C:\\Program Files\\App\\app.exe" spellcheck="false" autocomplete="off">
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button id="program-permissions-refresh" class="secondary">刷新授权</button>
+                    <button id="program-permissions-add" class="primary">添加授权</button>
+                </div>
+            </div>
             <div class="card">
                 <div class="card-actions">
                     <button id="quit-app" class="danger">彻底退出 PLA Desktop</button>
@@ -582,6 +599,7 @@
 
     <script src="component-manager.js"></script>
     <script src="app.js"></script>
+    <script src="program-permissions.js"></script>
     <script src="components.js"></script>
     <script src="skill-library-page.js"></script>
 </body>

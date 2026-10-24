@@ -10,6 +10,8 @@ from pathlib import Path
 import re
 from typing import Mapping
 
+from execution.user_program_permissions import executable_is_granted
+
 
 ALLOWED_PROGRAMS = frozenset({
     "python",
@@ -63,6 +65,6 @@ def normalized_program_name(program: str) -> str:
 def require_allowed_program(program: str, *, session: bool = False) -> str:
     name = normalized_program_name(program)
     allowed = SESSION_ALLOWED_PROGRAMS if session else ALLOWED_PROGRAMS
-    if name not in allowed:
+    if name not in allowed and (session or not executable_is_granted(program)):
         raise ValueError(f"Program not allowed: {program}")
     return name

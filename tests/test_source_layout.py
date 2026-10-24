@@ -38,6 +38,7 @@ PACKAGE_MODULES = {
         "conpty_backend.py",
         "execution_backend.py",
         "execution_program_policy.py",
+        "user_program_permissions.py",
         "execution_runner_capabilities.py",
         "execution_runner_runtime.py",
         "execution_runner_service.py",

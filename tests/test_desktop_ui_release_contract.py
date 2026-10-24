@@ -48,7 +48,7 @@ def test_live_assets_exist_and_are_not_untracked_v2_duplicates():
     p.feed(HTML)
     assert not [name for name, count in Counter(p.ids).items() if count > 1]
     assert set(p.assets) == {"style.css", "provider-cards.css", "component-manager.css",
-                             "app.js", "components.js", "component-manager.js", "skill-library-page.js"}
+                             "app.js", "components.js", "component-manager.js", "skill-library-page.js", "program-permissions.js"}
     assert all((UI / asset).is_file() for asset in p.assets)
     assert not [f for f in UI.glob("*-old.*") if f.is_file()]
     assert not [f for f in UI.glob("*-v2.*") if f.is_file()]

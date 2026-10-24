@@ -36,6 +36,7 @@ from execution.semantic_execution_policy import evaluate_semantic_execution
 from execution.execution_program_policy import (
     ALLOWED_PROGRAMS,
     SESSION_ALLOWED_PROGRAMS,
+    require_allowed_program,
     validate_env_overrides,
 )
 from typing import Any, Callable, Literal
@@ -726,8 +727,7 @@ def run_process(
             raise ValueError("Provide either cwd or workdir, not conflicting values")
         cwd = workdir
     program_name = Path(program).name.lower()
-    if program_name not in ALLOWED_PROGRAMS:
-        raise ValueError(f"Program not allowed: {program}")
+    require_allowed_program(program)
     semantic = classify_command(program, args)
     steering = steer_run_process(program, args, root)
     if steering is not None:
@@ -927,8 +927,7 @@ def run_confirmed_external_process(
     if stdin is not None and not isinstance(stdin, str):
         raise TypeError("stdin must be null or a string")
     program_name = Path(program).name.lower()
-    if program_name not in ALLOWED_PROGRAMS:
-        raise ValueError(f"Program not allowed: {program}")
+    require_allowed_program(program)
     semantic = classify_command(program, args)
     execution_policy = evaluate_semantic_execution(semantic)
     if execution_policy is None or execution_policy.policy_id != "semantic_external_write":
@@ -1029,8 +1028,7 @@ def _run_confirmed_local_semantic_process(
     if stdin is not None and not isinstance(stdin, str):
         raise TypeError("stdin must be null or a string")
     program_name = Path(program).name.lower()
-    if program_name not in ALLOWED_PROGRAMS:
-        raise ValueError(f"Program not allowed: {program}")
+    require_allowed_program(program)
 
     semantic = classify_command(program, args)
     expected_policy_id = {
