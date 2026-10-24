@@ -6,6 +6,8 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 **发布方式：长期Pre-release（实验性预发布）。** PLA Desktop目前提供未签名的Windows安装包，采用手动升级，不提供自动更新或商业软件级支持。
 
+**开源许可证：** PLA自有源码采用[Apache-2.0](LICENSE)。第三方组件及其依赖保留各自的许可证，详见[第三方许可说明](docs/desktop-v1-third-party-notices.md)。目前已发布安装包仍为RC.18，v1.0.0尚未发布。
+
 [**下载Windows安装包（当前RC.18）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
 **RC.18版本更新：** 改进桌面端界面与组件管理，修复后台进程密集输出时事件持久化的性能问题，并解决Windows构建环境兼容性问题。GitHub Windows CI通过972项Python测试，Desktop UI检查、Runtime冻结与NSIS构建均通过。详见[RC.18发布说明](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18)。

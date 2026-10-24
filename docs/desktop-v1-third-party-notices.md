@@ -1,6 +1,8 @@
 # PLA Desktop candidate — dependency notices
 
-This unsigned RC16 pre-release preserves component texts, inventories and relevant source archives. It does not select a public license for the owner's first-party PLA source.
+This file records reviewed dependencies and their notices. Historical RC16/RC18 releases retain their original licenses and package hashes.
+
+For the next open-source release, PLA-owned source uses Apache-2.0 (root `LICENSE`). Third-party dependencies and optional Providers retain their own licenses. Skill Library v0.5.0 is independently authored and now includes an Apache-2.0 LICENSE and SPDX Wheel metadata; its updated reviewed package hash is pinned below. This note does not change older RC installers.
 
 | Component | Pinned input and evidence |
 | --- | --- |
@@ -18,7 +20,7 @@ This unsigned RC16 pre-release preserves component texts, inventories and releva
 | Supplemental notices | Known omitted wheel/crate texts from version-specific reviewed upstream assets with fixed hashes; British LICENCE names and nested notices are included |
 | uv optional installer | Official uv0.12.24 is downloaded on demand with archive/executable hashes; its binary is not redistributed in the base installer. MIT/Apache texts retained |
 | Optional Provider packages | Fixed provider_specs describe separately installed components; installation does not make them part of the base redistributed payload. Git-based sources use fixed reviewed revisions |
-| Skill Library | Reviewed v0.5.0 service Wheel, built from commit 9c7f1844835c72a976950f5c6f088756e4875853 and bound to SHA-256 5fee6f1cfd32c896b6d951e69b9631c167398d26e04bccfa9f18536d67611909; no independent repository checkout or personal Skills are bundled |
+| Skill Library | Reviewed v0.5.0 service Wheel, built from commit 13cc22435152d475e72e4cfe1aa0dc4e0657d16f and bound to SHA-256 869bd376af7c729172283017b36c694ad0fc128c5d54ffa7a897ce4b4d3f1eb0; no independent repository checkout or personal Skills are bundled |
 
 The Cargo inventory includes non-target packages for reference and explicitly identifies the target's required normal/build set. That set conservatively includes build dependencies and does not claim every entry is linked into the runtime binary. Original source archives are provided unchanged. Third-party texts remain authoritative over this concise inventory.
 

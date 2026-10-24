@@ -6,6 +6,8 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 **Release channel: Pre-release / experimental.** PLA Desktop is distributed as an unsigned Windows installer, with manual updates and no automatic updater. It is not a security sandbox or a commercially supported product.
 
+**License:** PLA-owned source is licensed under [Apache-2.0](LICENSE). Bundled and optional dependencies retain their own licenses; see [third-party notices](docs/desktop-v1-third-party-notices.md). The latest publicly released installer remains RC.18 until v1.0.0 is verified and published.
+
 [**Download Windows installer — current RC.18**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
 **RC.18 release update:** Desktop UI and component management refinements, faster event persistence for background processes producing intensive output, and Windows build compatibility fixes. GitHub Windows CI passed 972 Python tests, Desktop UI checks, Runtime freezing and NSIS packaging. See the [RC.18 release notes](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18).

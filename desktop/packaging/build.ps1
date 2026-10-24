@@ -205,6 +205,7 @@ try {
     Invoke-WebRequest "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE" -OutFile (Join-Path $resources "licenses\WEBVIEW2-RUST-MIT-LICENSE.txt")
     & $packPython (Join-Path $PSScriptRoot "licenses.py") --output (Join-Path $resources "licenses") --cargo-lock (Join-Path $projectRoot "desktop\src-tauri\Cargo.lock") --cargo-home $cargoHome
     Assert-Exit "Rust license inventory"
+    Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSE") -Destination (Join-Path $resources "licenses\PLA-APACHE-2.0-LICENSE.txt") -Force
     if (-not $SkipAcceptance) {
         Invoke-LoggedNative "Packaged MCP acceptance" {
             & $packPython (Join-Path $projectRoot "desktop\verification\packaged_mcp.py") --resources $resources --report (Join-Path $buildRoot "packaged-mcp-report.json") --browser 2>&1 |
@@ -248,6 +249,7 @@ try {
     Get-ChildItem -LiteralPath $tunnelDirectory -File | Where-Object { $_.Extension -ne ".exe" } | Copy-Item -Destination $tunnelNotices -Force
     Get-ChildItem -LiteralPath (Join-Path $projectRoot "docs") -File | Where-Object { $_.Name -like "desktop-v1*.md" } | Copy-Item -Destination $releaseRoot -Force
     Copy-Item -LiteralPath (Join-Path $projectRoot "docs\desktop-v1-third-party-notices.md") -Destination (Join-Path $releaseRoot "THIRD-PARTY-NOTICES.md") -Force
+    Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSE") -Destination (Join-Path $releaseRoot "LICENSE") -Force
     Write-Output "Installer: $installer"
     Write-Output "SHA-256: $digest"
 } finally {

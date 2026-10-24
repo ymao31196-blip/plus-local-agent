@@ -22,7 +22,7 @@ UV_ARCHIVE_SHA256 = '7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efec
 UV_URL = 'https://releases.astral.sh/github/uv/releases/download/0.12.24/uv-x86_64-pc-windows-msvc.zip'
 PYTHON_VERSION = '3.11.9'
 SKILL_LIBRARY_WHEEL_NAME = 'chatgpt_skill_library-0.5.0-py3-none-any.whl'
-SKILL_LIBRARY_WHEEL_SHA256 = '5fee6f1cfd32c896b6d951e69b9631c167398d26e04bccfa9f18536d67611909'
+SKILL_LIBRARY_WHEEL_SHA256 = '869bd376af7c729172283017b36c694ad0fc128c5d54ffa7a897ce4b4d3f1eb0'
 
 
 def bundled_skill_package(resources):
