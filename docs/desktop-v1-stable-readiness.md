@@ -70,9 +70,10 @@ External ChatGPT and Tunnel account eligibility remain third-party prerequisites
 - The standalone PLA repository currently has no root LICENSE.
 - The optional Skill Library v0.5.0 wheel's license metadata and license files
   are absent; owner/distribution decision required.
-- Working-tree edits and a stat-only Cargo.toml change remain before a clean,
-  committed candidate build. The RC.18 version fields have **not** yet been
-  changed to v1.0.0.
+- Feature and release-freeze documentation changes are committed locally at
+  `aa3d3e9005800ff71565a9bf172be5a43bc800bd`, not yet pushed.
+  A stat-only Cargo.toml change remains. The RC.18 version fields have
+  **not** yet been changed to v1.0.0; no clean final-candidate build exists.
 
 ## Freeze policy
 

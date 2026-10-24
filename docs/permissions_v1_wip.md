@@ -1,6 +1,6 @@
 # PLA User-Controlled Executable Grants (Phase 1)
 
-Status: implemented in the local worktree and tested against the packaged Desktop Runtime; not committed or released. Local developer build remains an uncommitted RC.18 candidate, not a clean v1.0.0 release.
+Status: implementation committed locally at aa3d3e9005800ff71565a9bf172be5a43bc800bd and tested against the packaged Desktop Runtime. Not pushed or released; the existing local RC.18 installer is not a clean v1.0.0 release.
 
 ## User behavior
 
