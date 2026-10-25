@@ -2,14 +2,14 @@
 
 All notable PLA release changes are recorded here.
 
-## Desktop 1.0.0 — unreleased candidate (Windows x64)
+## Desktop 1.0.0 - 2026-10-25 (Windows x64 stable release)
 
 - Prepared the first stable-release candidate with an explicit core stability scope: Desktop setup and lifecycle, Secure MCP Tunnel, MCP Runtime/Runner, workspace/program permission controls, diagnostics and basic file/process execution. Optional Providers remain separately supported extensions.
 - Added user-managed Windows executable grants by exact full path, including immediate disable and revoke for new requests; tested against the packaged PLA-TEST execution Runner.
 - Adopted Apache-2.0 for PLA-owned source and the independent Skill Library; preserved WPS upstream MIT attribution and refreshed the reviewed Skill Library Wheel and pinned digest.
 - Preserved unsigned/manual-update disclosure and documented that workspace/program policies are not an operating-system sandbox.
-- PLA source regression passed 988 tests before third-party attribution documentation updates; the follow-up focused provenance tests passed 7/7. Clean final Windows CI, NSIS build, RC.18 upgrade, lifecycle/recovery and independent-machine E2E remain release gates.
-- **Not published yet.** The last official public download remains RC.18; this is a local test candidate.
+- The exact source commit `ce6b9b1b135aa907660f10df56b0cdcc50ed5f5f` passed 991 local Python tests, packaged MCP checks, real ChatGPT/Tunnel E2E and [Windows CI](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/40173118669).
+- [Stable release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) published with installer SHA-256 `ccb99f92eebdcebf111a1c98bb8ca4df7668201c682a94f73dce94b7e8f6fb80`. Independent clean-Windows install and full reboot/GUI permission persistence acceptance were waived by the owner; neither is claimed as tested.
 
 ## Desktop 1.0.0-rc.18 - 2026-10-22 (Windows x64 pre-release)
 

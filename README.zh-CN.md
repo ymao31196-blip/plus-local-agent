@@ -4,13 +4,13 @@
 
 PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows电脑，包括本地文件、程序、浏览器、桌面软件和按需安装的MCP组件。ChatGPT负责理解任务和决定工具调用，PLA负责在授权范围内执行。只要目标电脑运行PLA和Secure MCP Tunnel，你也能在手机等其他设备上使用ChatGPT操控它。
 
-**当前公开版本：** Windows安装包仍为RC.18（未签名、手动升级）。v1.0.0是尚未完成最终Windows验收的本地候选版，暂未发布。PLA不提供操作系统级沙箱。
+**当前公开版本：PLA Desktop v1.0.0正式版（Windows 10/11 x64）。** 安装包尚未进行代码签名，采用手动升级，不提供操作系统级沙箱。
 
-**开源许可证：** PLA自有源码采用[Apache-2.0](LICENSE)。第三方组件及其依赖保留各自的许可证，详见[第三方许可说明](docs/desktop-v1-third-party-notices.md)。目前已发布安装包仍为RC.18，v1.0.0尚未发布。
+**开源许可证：** PLA自有源码采用[Apache-2.0](LICENSE)。第三方组件及其依赖保留各自的许可证，详见[第三方许可说明](docs/desktop-v1-third-party-notices.md)。
 
-[**下载Windows安装包（当前RC.18）**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18) · [查看全部预发布版本](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+[**下载PLA Desktop v1.0.0正式版**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) · [全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
-**RC.18版本更新：** 改进桌面端界面与组件管理，修复后台进程密集输出时事件持久化的性能问题，并解决Windows构建环境兼容性问题。GitHub Windows CI通过972项Python测试，Desktop UI检查、Runtime冻结与NSIS构建均通过。详见[RC.18发布说明](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18)。
+**v1.0.0更新：** 增加可执行程序自主授权，明确Apache-2.0开源许可，更新Skill Library及第三方许可说明。正式源码通过991项Python测试和[GitHub Windows CI](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/40173118669)，真实ChatGPT调用已验证。已主动跳过的独立机器、重启验收及其他限制见[正式版发布说明](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0)。
 
 ## PLA Desktop：软件下载、安装与连接教程
 
@@ -18,16 +18,16 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 ### 第一步：正确下载安装包
 
-1. 打开[PLA Desktop RC.18发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18)，后续升级可在[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)中选择最新的**PLA Desktop Pre-release**。不要使用GitHub的`/releases/latest`入口，因为它可能不显示预发布版本。
-2. 展开页面下方的**Assets（资源）**，下载Windows x64安装文件。RC.18对应[`PLA.Desktop_1.0.0-rc.18_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/PLA.Desktop_1.0.0-rc.18_x64-setup.exe)，同时下载[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+1. 打开[PLA Desktop v1.0.0正式版发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0)，历史版本可从[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)查找。
+2. 展开**Assets（资源）**，下载Windows x64安装文件[`PLA.Desktop_1.0.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/PLA.Desktop_1.0.0_x64-setup.exe)，以及对应的[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
 
-3. 在PowerShell中运行以下命令（安装到其他下载目录或使用其他版本时请调整文件路径），把输出的`Hash`与`SHA256SUMS.txt`里的哈希值对照。GitHub上传后可能把原文件名中的空格替换成点，因此请核对哈希值，不只核对文件名。
+3. 在PowerShell中运行以下命令（下载路径不同请自行调整），将输出的SHA-256与`SHA256SUMS.txt`中安装包对应的值核对。
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.18_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0_x64-setup.exe"
 ~~~
 
-RC.18安装包在GitHub发布元数据中的SHA-256为`3c0e00ce34c564ef861de4be49c4b9ce15458c7019d44d412a744896f606e1c4`。运行前请与Release附件`SHA256SUMS.txt`中的校验值核对。
+v1.0.0正式版安装包的SHA-256为`ccb99f92eebdcebf111a1c98bb8ca4df7668201c682a94f73dce94b7e8f6fb80`。运行前请与Release附件中的校验值对照。
 
 ### 第二步：安装并启动软件
 

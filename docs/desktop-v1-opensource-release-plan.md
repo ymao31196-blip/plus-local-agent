@@ -1,6 +1,6 @@
 # PLA Desktop v1.0.0 — open-source release plan
 
-Updated: 2026-10-24. Status: **Apache-2.0 selected and applied in the local worktrees; v1.0.0 NOT RELEASED**.
+Updated: 2026-10-25. Status: **RELEASED — Desktop v1.0.0 public GitHub Release**, tag `desktop-v1.0.0` at tested source `ce6b9b1`. This document preserves the original release plan; the owner accepted the unperformed independent clean Windows install and full reboot/GUI permission-persistence test risks.
 
 ## Distribution and ownership
 

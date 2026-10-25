@@ -4,13 +4,13 @@
 
 PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop applications and optional MCP providers on your own Windows PC, within explicitly configured permissions. ChatGPT handles reasoning and tool selection; PLA runs the local tools. The ChatGPT app can be on another device, including your phone, while the Windows PC runs PLA through Secure MCP Tunnel.
 
-**Current public download:** RC.18 remains the latest released Windows installer (unsigned; manual upgrades only). Stable v1.0.0 is an unreleased candidate pending final Windows acceptance. PLA is not an operating-system sandbox.
+**Release channel: Stable PLA Desktop v1.0.0 (Windows 10/11 x64).** The installer is unsigned and updates are manual. PLA is not an operating-system sandbox or a commercially supported product.
 
-**License:** PLA-owned source is licensed under [Apache-2.0](LICENSE). Bundled and optional dependencies retain their own licenses; see [third-party notices](docs/desktop-v1-third-party-notices.md). The latest publicly released installer remains RC.18 until v1.0.0 is verified and published.
+**License:** PLA-owned source uses [Apache-2.0](LICENSE); bundled and optional third-party dependencies retain their own licenses. See [third-party notices](docs/desktop-v1-third-party-notices.md).
 
-[**Download Windows installer — current RC.18**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18) · [All Pre-releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
+[**Download PLA Desktop v1.0.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
-**RC.18 release update:** Desktop UI and component management refinements, faster event persistence for background processes producing intensive output, and Windows build compatibility fixes. GitHub Windows CI passed 972 Python tests, Desktop UI checks, Runtime freezing and NSIS packaging. See the [RC.18 release notes](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18).
+**v1.0.0 release:** Stable Desktop installer, explicit executable grants, Apache-2.0 licensing and audited bundled Skill Library. The exact release source passed 991 Python tests and [Windows CI](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/40173118669), and the owner verified real ChatGPT E2E. See the [v1.0.0 release notes](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) for accepted test exclusions and safety boundaries.
 
 ## PLA Desktop: download, install and connect
 
@@ -18,16 +18,16 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 ### 1. Download the correct file
 
-1. Go to [PLA Desktop RC.18 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0-rc.18), or choose the newest **PLA Desktop Pre-release** from [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases). Do not use GitHub's `/releases/latest` shortcut: it can exclude Pre-releases.
-2. Expand **Assets** and download the **Windows x64 setup EXE** (RC.18 asset: [`PLA.Desktop_1.0.0-rc.18_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/PLA.Desktop_1.0.0-rc.18_x64-setup.exe)) and [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0-rc.18/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+1. Go to the [PLA Desktop v1.0.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
+2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.0.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/PLA.Desktop_1.0.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
 
-3. Open PowerShell, run the command below (change the filename if using another version), and compare the resulting hash with the *hash* inside `SHA256SUMS.txt`. GitHub may replace spaces in uploaded asset names with dots; compare the hash, not only the filename.
+3. Open PowerShell and run the command below. Compare its hash with the matching installer entry in `SHA256SUMS.txt` (change the path if your download directory differs).
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0-rc.18_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0_x64-setup.exe"
 ~~~
 
-The published RC.18 installer SHA-256 is `3c0e00ce34c564ef861de4be49c4b9ce15458c7019d44d412a744896f606e1c4`. Verify it against the release's `SHA256SUMS.txt` before running the installer.
+The v1.0.0 installer SHA-256 is `ccb99f92eebdcebf111a1c98bb8ca4df7668201c682a94f73dce94b7e8f6fb80`. Verify it before opening the installer.
 
 ### 2. Install and open PLA
 

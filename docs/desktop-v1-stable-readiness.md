@@ -1,7 +1,7 @@
 # PLA Desktop v1.0.0 — release freeze and qualification ledger
 
-Date: 2026-10-24. Status: **RELEASE FROZEN / NOT YET QUALIFIED**.
-This is a working qualification record, **not** approval to publish.
+Date: 2026-10-25. Status: **RELEASED — owner waived the independent clean Windows and full reboot/GUI permission-persistence acceptance gates**.
+This ledger preserves pre-release findings and pending test recommendations. The waiver does not constitute a PASS; tagged source `ce6b9b1` passed [Windows CI](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/40173118669) and the stable Desktop release is [`desktop-v1.0.0`](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0).
 
 Updated distribution decision (2026-10-24): **publish PLA as open-source software through the existing Public source repository**, with the Windows installer attached to its regular GitHub Release. PLA and the independent Skill Library now have local Apache-2.0 LICENSE files; borrowed-code attribution and third-party distribution verification remain open. The earlier binary-only/private-source plan was withdrawn. See [`desktop-v1-opensource-release-plan.md`](desktop-v1-opensource-release-plan.md).
 
