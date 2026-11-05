@@ -39,6 +39,60 @@ def test_native_events_are_metadata_only_and_classify_semantic_failures(tmp_path
         store.close()
 
 
+def test_process_label_is_approved_basename_and_never_arguments(tmp_path, monkeypatch):
+    store = EventStore(tmp_path / "events.sqlite3")
+    monkeypatch.setattr(activity, "EVENT_STORE", store)
+
+    @activity.record_native_activity
+    def run_process(program, args=None):
+        return {"returncode": 0, "stdout": "SECRET_OUTPUT"}
+
+    try:
+        run_process("python", ["--password", "SECRET_ARGUMENT"])
+        run_process("SECRET_TOKEN_DO_NOT_PERSIST")
+        items = activity.recent_activity(tmp_path / "events.sqlite3")["activities"]
+        assert [x["program"] for x in items] == [None, "python"]
+        assert all(x["provider"] is None for x in items)
+        assert "SECRET_" not in str(store.query()["events"])
+        assert "SECRET_" not in str(items)
+    finally:
+        store.close()
+
+
+def test_nested_local_action_is_not_double_counted(tmp_path, monkeypatch):
+    store = EventStore(tmp_path / "events.sqlite3")
+    monkeypatch.setattr(activity, "EVENT_STORE", store)
+
+    @activity.record_native_activity
+    def run_process(program):
+        inner = activity.record_internal_action_start("run_process", {"program": program})
+        activity.record_internal_action_finish("run_process", inner, True)
+        return {"returncode": 0}
+
+    try:
+        run_process("python")
+        assert [x["event_type"] for x in store.query()["events"]] == [
+            "native_tool.started", "native_tool.succeeded",
+        ]
+        assert activity.recent_activity(tmp_path / "events.sqlite3")["activities"][0]["program"] == "python"
+    finally:
+        store.close()
+
+
+def test_process_from_background_internal_action_is_visible(tmp_path, monkeypatch):
+    store = EventStore(tmp_path / "events.sqlite3")
+    monkeypatch.setattr(activity, "EVENT_STORE", store)
+    try:
+        call_id = activity.record_internal_action_start("run_process", {"program": "git"})
+        activity.record_internal_action_finish("run_process", call_id, True)
+        item = activity.recent_activity(tmp_path / "events.sqlite3")["activities"][0]
+        assert (item["source"], item["program"], item["outcome"]) == (
+            "local_action", "git", "success",
+        )
+    finally:
+        store.close()
+
+
 def test_exception_preserved_and_telemetry_is_fail_open(tmp_path, monkeypatch):
     store = EventStore(tmp_path / "events.sqlite3")
     monkeypatch.setattr(activity, "EVENT_STORE", store)
@@ -96,9 +150,44 @@ def test_projection_filters_housekeeping_and_preserves_unknown(tmp_path):
         assert items[0]["tool"] == "browser.navigate"
         assert items[0]["outcome"] == "success"
         assert items[0]["provider"] == "browser"
+        assert items[0]["capability"] is None  # Legacy events remain readable.
         assert items[1]["tool"] == "run_process"
         assert items[1]["outcome"] == "unknown"
         assert items[1]["finished_at"] is None
+        components = activity.recent_activity(
+            tmp_path / "events.sqlite3", only_components=True
+        )["activities"]
+        assert len(components) == 1
+        assert components[0]["provider"] == "browser"
+    finally:
+        store.close()
+
+
+def test_component_history_is_not_hidden_by_process_bursts(tmp_path):
+    store = EventStore(tmp_path / "events.sqlite3")
+    try:
+        store.emit(
+            "capability.before_invoke", source="capability_broker",
+            subject="drawio.render", provider_id="drawio",
+            capability_id="drawio.render", correlation_id="component-early",
+        )
+        store.emit(
+            "capability.succeeded", source="capability_broker",
+            subject="drawio.render", provider_id="drawio",
+            capability_id="drawio.render", correlation_id="component-early",
+        )
+        for i in range(25):
+            store.emit("native_tool.started", source="native_mcp",
+                       subject="run_process", correlation_id=f"process-{i}")
+            store.emit("native_tool.succeeded", source="native_mcp",
+                       subject="run_process", correlation_id=f"process-{i}")
+        ordinary = activity.recent_activity(tmp_path / "events.sqlite3", limit=18)
+        components = activity.recent_activity(
+            tmp_path / "events.sqlite3", limit=12, only_components=True
+        )
+        assert not any(row["provider"] == "drawio" for row in ordinary["activities"])
+        assert len(components["activities"]) == 1
+        assert components["activities"][0]["capability"] == "drawio.render"
     finally:
         store.close()
 
@@ -120,7 +209,7 @@ def test_internal_action_is_single_pair_and_no_args(tmp_path, monkeypatch):
 def test_private_rpc_is_read_only_and_stopped_runtime_safe(tmp_path):
     manager = Manager(tmp_path / "data", tmp_path / "resources")
     result = manager.dispatch("activity_recent", {})
-    assert result == {"activities": [], "available": True,
+    assert result == {"activities": [], "component_activities": [], "available": True,
                       "runtime_alive": False, "runtime_started_at": None}
     assert not (manager.config.root / "state" / "events.sqlite3").exists()
     with pytest.raises(ValueError, match="no arguments"):
@@ -176,6 +265,7 @@ def test_activity_unavailable_on_corrupt_database(tmp_path):
     assert activity.recent_activity(bad)["available"] is False
     with pytest.raises(ValueError):
         activity.recent_activity(bad, limit=500)
+    assert activity.recent_activity(bad, limit=30)["available"] is False
 
 def test_activity_rpc_reports_current_owned_runtime_boundary(tmp_path, monkeypatch):
     from desktop_runtime import manager as manager_module

@@ -76,6 +76,83 @@ def test_machine_local_roots_are_loaded_dynamically(roots, tmp_path):
     }
 
 
+def test_root_lookup_is_case_insensitive_but_preserves_registered_name(roots, tmp_path):
+    workspace, pla = roots
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    (desktop / "note.txt").write_text("desktop content", encoding="utf-8")
+    (workspace / "note.txt").write_text("workspace content", encoding="utf-8")
+    (pla / "public.txt").write_text("pla content", encoding="utf-8")
+    (pla / ".git").mkdir()
+    (pla / ".git" / "config").write_text("private", encoding="utf-8")
+    _write_workspace_config(pla, {"Desktop": desktop})
+
+    assert "desktop content" in local_tools.read_text("note.txt", root="desktop")["content"]
+    assert "desktop content" in local_tools.read_text("note.txt", root="DESKTOP")["content"]
+    assert "workspace content" in local_tools.read_text("note.txt", root="WORKSPACE")["content"]
+    assert "pla content" in local_tools.read_text("public.txt", root="PLA")["content"]
+    assert "Desktop" in local_tools.available_roots()
+    assert "desktop" not in local_tools.available_roots()
+    with pytest.raises(ValueError, match="Protected path"):
+        local_tools.read_text(".git/config", root="PlA")
+
+
+def test_runner_root_resolution_accepts_mixed_case(roots, tmp_path, monkeypatch):
+    from execution import execution_runner_service as runner
+
+    workspace, pla = roots
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    _write_workspace_config(pla, {"Desktop": desktop})
+    monkeypatch.setattr(runner, "WORKSPACE_ROOT", workspace)
+    monkeypatch.setattr(runner, "PROJECT_ROOT", pla)
+    monkeypatch.setattr(
+        runner, "_workspace_config_path",
+        lambda: pla / "config" / "workspaces.local.yaml",
+    )
+    assert runner._resolve_cwd("dEsKtOp", ".") == desktop.resolve()
+    assert runner._resolve_cwd("WORKSPACE", ".") == workspace.resolve()
+    assert runner._resolve_cwd("PLA", ".") == pla.resolve()
+
+
+def test_root_config_rejects_case_alias_collisions(roots, tmp_path):
+    _, pla = roots
+    external = tmp_path / "external"
+    external.mkdir()
+    for names, message in (
+        (["Desktop", "desktop"], "Duplicate workspace root names"),
+        (["PLA"], "reserved"),
+        (["WorkSpace"], "reserved"),
+    ):
+        _write_workspace_config(pla, {name: external for name in names})
+        with pytest.raises(ValueError, match=message):
+            local_tools.available_roots()
+
+
+def test_root_upsert_and_remove_are_case_insensitive(roots, tmp_path):
+    _, pla = roots
+    external = tmp_path / "external"
+    external.mkdir()
+    initial = local_tools.workspace_roots_get()
+    created = local_tools.workspace_root_upsert(
+        "Desktop", str(external), True, False, False, initial["config_sha256"],
+    )
+    assert "Desktop" in created["roots"]
+    with pytest.raises(ValueError, match="does not allow write"):
+        local_tools.safe_path("new.txt", root="desktop", access="write")
+    updated = local_tools.workspace_root_upsert(
+        "desktop", str(external), True, True, False, created["config_sha256"],
+    )
+    assert updated["updated_root"] == "Desktop"
+    assert list(updated["roots"]) == ["Desktop"]
+    assert updated["roots"]["Desktop"]["write"] is True
+    removed = local_tools.workspace_root_remove(
+        "DESKTOP", updated["config_sha256"],
+    )
+    assert removed["removed_root"] == "Desktop"
+    assert removed["roots"] == {}
+
+
 def test_configured_root_cannot_overlap_pla_source_tree(roots, tmp_path):
     _, pla = roots
     _write_workspace_config(pla, {"dangerous": pla.parent})

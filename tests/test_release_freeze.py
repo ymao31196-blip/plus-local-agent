@@ -14,8 +14,10 @@ def test_release_version_and_provider_catalog():
         "browser",
         "computer",
         "markitdown",
+        "office",
         "office-enhancement",
         "pdf",
+        "qmd",
         "skill-library",
         "software-migration",
         "winget",
@@ -76,10 +78,18 @@ def test_release_version_and_provider_catalog():
         include_unavailable=True,
         limit=100,
     )
-    assert core_caps["match_count"] == 44
+    assert core_caps["match_count"] == 52
     assert {item["id"] for item in core_caps["capabilities"]} == {
         "core.capability_route",
         "core.routing_audit",
+        "core.file_operation",
+        "core.http_probe",
+        "core.http_download",
+        "core.network_diagnose",
+        "core.workspace_index_init",
+        "core.workspace_index_refresh",
+        "core.workspace_index_search",
+        "core.workspace_index_status",
         "core.artifact_materialize",
         "core.artifact_metadata",
         "core.artifact_verify",

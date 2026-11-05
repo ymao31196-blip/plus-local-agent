@@ -77,6 +77,63 @@ def test_confirmation_gate_blocks_call_before_provider(monkeypatch):
     assert called["value"] is False
 
 
+def test_confirmation_denial_records_bounded_policy_reason(tmp_path, monkeypatch):
+    registry, manager, _ = build_runtime()
+    store = EventStore(tmp_path / "events.sqlite3")
+    broker = CapabilityBroker(registry, manager, store)
+    called = {"value": False}
+
+    async def forbidden(*_args, **_kwargs):
+        called["value"] = True
+    monkeypatch.setattr(manager, "call_tool", forbidden)
+
+    try:
+        with pytest.raises(PermissionError, match="confirmation"):
+            asyncio.run(broker.invoke(
+                "fixture.echo_text", {"text": "PRIVATE_CALL_ARGUMENT"},
+            ))
+        events = store.query(capability_id="fixture.echo_text")["events"]
+        assert len(events) == 1
+        assert events[0]["event_type"] == "capability.policy_denied"
+        assert events[0]["payload"] == {
+            "failure_class": "policy_denied",
+            "policy_reason": "confirmation_required",
+        }
+        assert not called["value"]
+        assert "PRIVATE_CALL_ARGUMENT" not in str(events)
+    finally:
+        store.close()
+
+
+def test_semantic_provider_failure_receives_category(tmp_path, monkeypatch):
+    registry, manager, _ = build_runtime()
+    store = EventStore(tmp_path / "events.sqlite3")
+    broker = CapabilityBroker(registry, manager, store)
+
+    async def fake_result(*_args, **_kwargs):
+        return {
+            "status": "completed",
+            "is_error": False,
+            "data": {"status": "error", "message": "PRIVATE_PROVIDER_OUTPUT"},
+            "artifacts": [],
+        }
+    monkeypatch.setattr(broker, "_invoke_without_events", fake_result)
+    try:
+        result = asyncio.run(broker.invoke(
+            "fixture.echo_text", {"text": "SECRET_ARGUMENT"}, confirmation="INVOKE",
+        ))
+        assert result["status"] == "completed"
+        events = store.query(capability_id="fixture.echo_text")["events"]
+        assert [e["event_type"] for e in events] == [
+            "capability.before_invoke", "capability.failed",
+        ]
+        assert events[-1]["payload"]["failure_class"] == "execution_error"
+        assert "PRIVATE_PROVIDER_OUTPUT" not in str(events)
+        assert "SECRET_ARGUMENT" not in str(events)
+    finally:
+        store.close()
+
+
 def test_jsonschema_validation_blocks_bad_arguments_before_provider(monkeypatch):
     registry, manager, broker = build_runtime()
     called = {"value": False}

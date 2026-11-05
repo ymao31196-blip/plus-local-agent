@@ -1,11 +1,106 @@
 """Desktop-managed Q-style Agent Pet lifecycle and opt-in tests."""
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
+import time
 
 import pytest
 
+from desktop_runtime import pet_viewer
+from runtime.event_runtime import EventStore
+
 from desktop_runtime.manager import Manager
 from desktop_runtime.pet_companion import PetCompanion, PET_REQUIRED_ANIMATIONS
+
+
+def test_pet_footer_time_transitions_to_stable_clock():
+    local = datetime(2026, 10, 25, 20, 0)
+    now = local.timestamp()
+    label = pet_viewer.last_call_label
+    assert label(None, now) == "尚无调用记录"
+    assert label(now - 10, now) == "刚刚调用"
+    assert label(now - 45, now) == "上次调用 · 不到1分钟前"
+    assert label(now - 8 * 60, now) == "上次调用 · 8分钟前"
+    assert label(now - 59 * 60, now) == "上次调用 · 今天 19:01"
+    assert label((local - timedelta(days=1)).timestamp(), now) == "上次调用 · 昨天 20:00"
+    assert label((local - timedelta(days=3)).timestamp(), now) == "上次调用 · 10-22 20:00"
+
+
+def test_pet_one_line_label_uses_rendered_width():
+    width = lambda s: sum(2 if ord(c) > 127 else 1 for c in s)
+    assert pet_viewer.fit_text_width("Skill Library", width, 20) == "Skill Library"
+    assert pet_viewer.fit_text_width("特别长的中文组件名称", width, 9) == "特别长…"
+    assert pet_viewer.fit_text_width("abcdef", len, 4) == "abc…"
+
+
+def test_pet_activity_labels_match_desktop_event_types(tmp_path):
+    store = EventStore(tmp_path / "events.sqlite3")
+    try:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        def emit(kind, source, name, call_id, **kwargs):
+            return store.emit(kind, source=source, subject=name,
+                              correlation_id=call_id, **kwargs)
+
+        emit("native_tool.started", "native_mcp", "run_process", "python-1",
+             payload={"program": "python.exe"})
+        emit("native_tool.succeeded", "native_mcp", "run_process", "python-1")
+        emit("local_action.started", "local_action", "run_process", "git-2",
+             payload={"program": "git"})
+        emit("local_action.succeeded", "local_action", "run_process", "git-2")
+        emit("capability.before_invoke", "capability_broker", "drawio.render", "draw-3",
+             capability_id="drawio.render", provider_id="drawio")
+        emit("capability.succeeded", "capability_broker", "drawio.render", "draw-3",
+             capability_id="drawio.render", provider_id="drawio")
+        snapshot = pet_viewer.build_snapshot(pet_viewer.fetch_rows(tmp_path / "events.sqlite3"),
+                                             time.time())
+        assert len(snapshot.calls) == 3
+        assert pet_viewer.describe_call(snapshot.calls[0]) == ("draw.io", "render · 组件调用")
+        assert pet_viewer.describe_call(snapshot.calls[1]) == ("程序 · git", "run_process · 本地执行")
+        assert pet_viewer.describe_call(snapshot.calls[2]) == ("程序 · python.exe", "run_process · 本地执行")
+        assert all(item.status == "succeeded" for item in snapshot.calls)
+        assert snapshot.mode == "active"
+    finally:
+        store.close()
+
+
+def test_pet_denied_capability_and_untrusted_payload_are_safe(tmp_path):
+    store = EventStore(tmp_path / "events.sqlite3")
+    try:
+        store.emit("capability.gate_denied", source="capability_broker",
+                   subject="browser.navigate", capability_id="browser.navigate",
+                   provider_id="browser", correlation_id="denied")
+        store.emit("native_tool.started", source="native_mcp",
+                   subject="run_process", correlation_id="malicious",
+                   payload={"program": "C:/secret/tokens/python.exe",
+                            "args": ["SECRET_ARGUMENT"]})
+        snapshot = pet_viewer.read_snapshot(tmp_path / "events.sqlite3")
+        assert len(snapshot.calls) == 2
+        assert snapshot.calls[0].program is None
+        assert pet_viewer.describe_call(snapshot.calls[0]) == (
+            "程序 · 未知程序", "run_process · 本地执行"
+        )
+        assert snapshot.calls[1].status == "failed"
+        assert pet_viewer.describe_call(snapshot.calls[1])[0] == "Browser"
+        assert "SECRET_ARGUMENT" not in str(snapshot)
+    finally:
+        store.close()
+
+
+def test_pet_recent_success_does_not_wait_on_old_unfinished_call(tmp_path):
+    store = EventStore(tmp_path / "events.sqlite3")
+    try:
+        store.emit("native_tool.started", source="native_mcp",
+                   subject="read_text", correlation_id="old")
+        store.emit("native_tool.started", source="native_mcp",
+                   subject="write_text", correlation_id="new")
+        store.emit("native_tool.succeeded", source="native_mcp",
+                   subject="write_text", correlation_id="new")
+        snapshot = pet_viewer.read_snapshot(tmp_path / "events.sqlite3")
+        assert snapshot.mode == "active"
+        assert snapshot.calls[0].name == "write_text"
+        assert snapshot.calls[0].status == "succeeded"
+    finally:
+        store.close()
 
 
 def install_test_frames(root: Path):

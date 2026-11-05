@@ -4,13 +4,13 @@
 
 PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows电脑，包括本地文件、程序、浏览器、桌面软件和按需安装的MCP组件。ChatGPT负责理解任务和决定工具调用，PLA负责在授权范围内执行。只要目标电脑运行PLA和Secure MCP Tunnel，你也能在手机等其他设备上使用ChatGPT操控它。
 
-**当前公开版本：PLA Desktop v1.0.0正式版（Windows 10/11 x64）。** 安装包尚未进行代码签名，采用手动升级，不提供操作系统级沙箱。
+**当前公开版本：PLA Desktop v1.1.0（Windows 10/11 x64）。** 新增可选开机登录自启动和Tauri应用内签名更新。安装包未获得Windows Authenticode发布者签名，PLA不提供操作系统级沙箱。
 
 **开源许可证：** PLA自有源码采用[Apache-2.0](LICENSE)。第三方组件及其依赖保留各自的许可证，详见[第三方许可说明](docs/desktop-v1-third-party-notices.md)。
 
-[**下载PLA Desktop v1.0.0正式版**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) · [全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+[**下载PLA Desktop v1.1.0**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0) · [全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
-**v1.0.0更新：** 增加可执行程序自主授权，明确Apache-2.0开源许可，更新Skill Library及第三方许可说明。正式源码通过991项Python测试和[GitHub Windows CI](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/40173118669)，真实ChatGPT调用已验证。已主动跳过的独立机器、重启验收及其他限制见[正式版发布说明](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0)。
+**v1.1.0更新：** 新增可选Windows登录自启动、受控Tauri签名更新、Office统一能力入口，改进工具路由与活动诊断，并扩展可选工作区索引、网络与文件工具。v1.0.0用户需要先手动安装一次v1.1.0，后续版本才能使用签名更新。已验证范围及限制见[v1.1.0发布说明](docs/desktop-v1.1.0-release-notes.md)。
 
 ## PLA Desktop：软件下载、安装与连接教程
 
@@ -18,22 +18,22 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 ### 第一步：正确下载安装包
 
-1. 打开[PLA Desktop v1.0.0正式版发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0)，历史版本可从[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)查找。
-2. 展开**Assets（资源）**，下载Windows x64安装文件[`PLA.Desktop_1.0.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/PLA.Desktop_1.0.0_x64-setup.exe)，以及对应的[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+1. 打开[PLA Desktop v1.1.0发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0)，历史版本可从[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)查找。
+2. 展开**Assets（资源）**，下载Windows x64安装文件[`PLA.Desktop_1.1.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/PLA.Desktop_1.1.0_x64-setup.exe)，以及对应的[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
 
 3. 在PowerShell中运行以下命令（下载路径不同请自行调整），将输出的SHA-256与`SHA256SUMS.txt`中安装包对应的值核对。
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.1.0_x64-setup.exe"
 ~~~
 
-v1.0.0正式版安装包的SHA-256为`ccb99f92eebdcebf111a1c98bb8ca4df7668201c682a94f73dce94b7e8f6fb80`。运行前请与Release附件中的校验值对照。
+请将命令输出与v1.1.0 Release附件`SHA256SUMS.txt`中对应的安装包哈希核对。不要把本地签名测试包的SHA-256当成正式发布哈希。
 
 ### 第二步：安装并启动软件
 
 双击下载的EXE，按照安装向导完成安装，再从Windows开始菜单打开**PLA Desktop**。采用当前用户安装，正常情况下不需要管理员权限。如果缺少Microsoft WebView2，安装器需要联网获取该组件。
 
-当前安装包**未进行代码签名**，Windows可能显示“未知发布者”或SmartScreen警告。请先核对GitHub下载来源及SHA-256，按自身安全判断决定是否继续，不建议关闭Windows整体安全防护。
+当前安装包具有Tauri应用内更新签名，但**没有Windows Authenticode发布者代码签名**。Windows仍可能显示“未知发布者”或SmartScreen警告。请先核对GitHub下载来源及SHA-256，按自身安全判断决定是否继续，不建议关闭Windows整体安全防护。
 
 ### 第三步：准备你自己的Tunnel账号信息
 
@@ -59,7 +59,7 @@ v1.0.0正式版安装包的SHA-256为`ccb99f92eebdcebf111a1c98bb8ca4df7668201c68
 
    *总览状态示例：运行状态来自演示数据；实际连接成功仍需用ChatGPT工具调用验证。*
 
-v1.0.0候选版提供可执行程序自主授权：进入**设置→可执行程序授权**，仅对受信任的本机`.exe`完整绝对路径添加授权，可在同一列表中停用、恢复或撤销。停用后新的执行请求立即拒绝，但已启动的进程不会被自动终止。获得授权的程序仍以当前Windows账户权限运行，有可能访问工作区以外的数据。
+PLA提供可执行程序自主授权：进入**设置→可执行程序授权**，仅对受信任的本机`.exe`完整绝对路径添加授权，可在同一列表中停用、恢复或撤销。停用后新的执行请求立即拒绝，但已启动的进程不会被自动终止。获得授权的程序仍以当前Windows账户权限运行，有可能访问工作区以外的数据。
 
 ### 第五步：连接ChatGPT，完成真实验收
 
@@ -94,13 +94,13 @@ v1.0.0候选版提供可执行程序自主授权：进入**设置→可执行程
 
 更多细节见[桌面安装与验收说明](docs/desktop-v1-acceptance.md)以及[架构和安全边界](docs/desktop-v1-architecture.md)。
 
-### 关于预发布版本
+### 更新和安全边界
 
-- **手动升级**：完全退出桌面程序，再安装新版本；建议保留上一版安装包。当前不承诺自动回滚。
-- **未签名**：SHA-256可帮助检查下载文件是否与Release提供的校验值一致，但无法证明发布者身份。
+- **首次支持签名更新**：v1.0.0用户需手动安装一次v1.1.0；后续版本可使用应用内签名更新。运行重要任务时应先保存和停止，当前不承诺自动回滚。
+- **签名含义**：Tauri签名用于校验应用内更新，不等于Windows Authenticode发布者身份认证。下载时仍应对照正式Release提供的SHA-256。
 - **权限限制**：工作区授权、程序允许清单和确认机制能约束PLA工具行为，但它不是操作系统沙箱；经允许启动的程序仍拥有当前Windows账户的权限。启用第三方MCP和Skill前应审查来源。
 - **配置保留**：Tunnel密钥使用Windows DPAPI加密保存在当前账户的数据目录。升级和卸载通常保留独立用户数据与授权工作区文件；仍建议定期备份重要配置。
-- **按需维护**：预发布版本可能存在尚未验证的边界情况；可选功能需要独立依赖时，界面会显示相应状态。每个版本以Release说明为准。
+- **验收范围**：发布者已测试本机Windows重启与登录自启动；未来更高版本的真实签名升级和篡改拒绝仍需单独验证。其他限制见发布说明。
 
 ## 源码安装（进阶）
 
@@ -422,6 +422,14 @@ artifact-tool adapter只接受结构化shape、text、image和connector，不执
 OOXML merge只复制overlay元素实际引用的relationship，保留目标PPTX原有package/master/layout结构，并重新映射relationship ID与shape ID，同时为引用的media分配新的package名称。PowerPoint COM用于真实Microsoft PowerPoint渲染以及文本几何检查，包括可能的overflow。PyMuPDF负责提取PDF内嵌图片和页面/区域渲染，因此即使是vector chart也可以恢复为PNG。
 
 日常Office工作优先使用WPS；需要外科式PPTX修改、可编辑技术框图、保格式merge、真实PowerPoint QA或PDF图像提取时，使用Office补强。
+
+### CHAGENT.md动态路由
+
+在**PLA Desktop → 组件管理 → 路由规则 · CHAGENT.md**展开面板，可直接查看当前规则、编辑保存或填入默认内容。保存会先校验规则格式并检查文件是否被其他程序修改；结果写入用户本地配置目录。长工具名在桌宠中可悬停查看完整名称，桌宠默认展示最近4条调用。
+
+`capability_search`支持自然语言任务描述，并在匹配时附加`routing_advice`，结合最新的`CHAGENT.md`规则和实时Provider状态推荐组件。接口参数不变，建议先查询专用能力，再决定是否使用通用Python/进程工具。
+
+仓库根目录`CHAGENT.md`为默认规则；桌面安装版用户可在`%LOCALAPPDATA%\io.pla.desktop\config\CHAGENT.md`放置自己的覆盖文件。更改其中的`pla-routing`代码块后，**下次调用`capability_search`立即生效**，无需重启PLA、重新安装或在ChatGPT端刷新MCP连接。规则匹配按数组顺序，配置错误会返回`config_error`而不会悄悄复用旧值。路由信息仅为建议，不能改变授权和安全策略；ChatGPT是否主动查询以及是否每段对话首次调用自动读取，不能由PLA服务端保证。
 
 Skill Library Provider刻意保持轻量。Skill属于建议型可复用经验，用于减少重复错误、保留稳定工作流和提醒容易忘记的约定；它不会覆盖当前用户指令、当前任务事实或ChatGPT的判断。
 

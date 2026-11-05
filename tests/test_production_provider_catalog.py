@@ -22,6 +22,7 @@ def test_production_provider_catalog_matches_specs():
         "browser",
         "computer",
         "markitdown",
+        "office",
         "office-enhancement",
         "pdf",
         "skill-library",
@@ -34,6 +35,7 @@ def test_production_provider_catalog_matches_specs():
         "browser",
         "computer",
         "markitdown",
+        "office",
         "office-enhancement",
         "pdf",
         "skill-library",
@@ -42,7 +44,8 @@ def test_production_provider_catalog_matches_specs():
     }
     assert manifests["winget"].runtime_kind == "executable_stdio"
     assert manifests["winget"].python_path is None
-    assert all(manifest.autostart for manifest in manifests.values())
+    assert all(manifest.autostart for name, manifest in manifests.items() if name != "office")
+    assert manifests["office"].autostart is False
 
 
 def test_wps_office_provider_is_pinned_source_backed_stdio():

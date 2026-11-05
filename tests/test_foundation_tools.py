@@ -65,6 +65,30 @@ def test_search_text_falls_back_when_rg_missing(workspace, monkeypatch):
     assert result["match_count"] == 1
     assert result["truncated"] is False
 
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [
+        (b"needle before invalid data\n\xff\n", "invalid_utf8"),
+        (b"needle before binary data\n\x00\n", "binary_content"),
+    ],
+)
+def test_search_text_fallback_skips_non_text_files(workspace, monkeypatch, payload, reason):
+    monkeypatch.setattr(local_tools.shutil, "which", lambda _name: None)
+    (workspace / "bad.dat").write_bytes(payload)
+    (workspace / "good.txt").write_text("needle in good file\n", encoding="utf-8")
+
+    result = local_tools.search_text("needle")
+
+    assert result["matches"] == [
+        {"path": "good.txt", "line": 1, "text": "needle in good file"},
+    ]
+    assert result["match_count"] == 1
+    assert result["truncated"] is False
+    assert result["skipped_files"] == {
+        "count": 1,
+        "examples": [{"path": "bad.dat", "reason": reason}],
+    }
+
 
 def test_execute_actions_can_search_text(workspace):
     (workspace / "one.txt").write_text("needle\n", encoding="utf-8")

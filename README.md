@@ -4,13 +4,13 @@
 
 PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop applications and optional MCP providers on your own Windows PC, within explicitly configured permissions. ChatGPT handles reasoning and tool selection; PLA runs the local tools. The ChatGPT app can be on another device, including your phone, while the Windows PC runs PLA through Secure MCP Tunnel.
 
-**Release channel: Stable PLA Desktop v1.0.0 (Windows 10/11 x64).** The installer is unsigned and updates are manual. PLA is not an operating-system sandbox or a commercially supported product.
+**Release channel: PLA Desktop v1.1.0 (Windows 10/11 x64).** This release adds opt-in Windows login startup and an application-level, signed Tauri update channel. The installer is not Windows Authenticode signed. PLA is not an operating-system sandbox or a commercially supported product.
 
 **License:** PLA-owned source uses [Apache-2.0](LICENSE); bundled and optional third-party dependencies retain their own licenses. See [third-party notices](docs/desktop-v1-third-party-notices.md).
 
-[**Download PLA Desktop v1.0.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
+[**Download PLA Desktop v1.1.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
-**v1.0.0 release:** Stable Desktop installer, explicit executable grants, Apache-2.0 licensing and audited bundled Skill Library. The exact release source passed 991 Python tests and [Windows CI](https://github.com/ymao31196-blip/plus-local-agent/actions/runs/40173118669), and the owner verified real ChatGPT E2E. See the [v1.0.0 release notes](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) for accepted test exclusions and safety boundaries.
+**v1.1.0 release:** User-controlled login startup, Tauri-signed in-app update support, unified Office integration, routing and activity diagnostics improvements, optional workspace indexing and safer network/file tools. v1.0.0 users must manually install v1.1.0 once; this is the first version with the signed updater. See [v1.1.0 release notes](docs/desktop-v1.1.0-release-notes.md) for validation and limitations.
 
 ## PLA Desktop: download, install and connect
 
@@ -18,20 +18,20 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 ### 1. Download the correct file
 
-1. Go to the [PLA Desktop v1.0.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.0.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
-2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.0.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/PLA.Desktop_1.0.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.0.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+1. Go to the [PLA Desktop v1.1.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
+2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.1.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/PLA.Desktop_1.1.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
 
 3. Open PowerShell and run the command below. Compare its hash with the matching installer entry in `SHA256SUMS.txt` (change the path if your download directory differs).
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.0.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.1.0_x64-setup.exe"
 ~~~
 
-The v1.0.0 installer SHA-256 is `ccb99f92eebdcebf111a1c98bb8ca4df7668201c682a94f73dce94b7e8f6fb80`. Verify it before opening the installer.
+Compare the output with the exact v1.1.0 installer entry in the release's `SHA256SUMS.txt`. The hash is specific to the official release artifact; do not substitute the hash of a local signed test build.
 
 ### 2. Install and open PLA
 
-Double-click the EXE, follow the installer, then launch **PLA Desktop** from the Start menu. Installation is per-user; administrator elevation is not expected. If Microsoft WebView2 is missing, the bootstrapper needs Internet access. This build is **unsigned**: Windows may display an “Unknown publisher” / SmartScreen warning. Check the source and SHA-256 before deciding whether to continue; do not disable system-wide protection.
+Double-click the EXE, follow the installer, then launch **PLA Desktop** from the Start menu. Installation is per-user; administrator elevation is not expected. If Microsoft WebView2 is missing, the bootstrapper needs Internet access. This build has a Tauri updater signature but **no Windows Authenticode publisher signature**: Windows may still display an “Unknown publisher” / SmartScreen warning. Check the source and SHA-256 before deciding whether to continue; do not disable system-wide protection.
 
 ### 3. Prepare your own Secure MCP Tunnel credentials
 
@@ -57,7 +57,7 @@ The packaged desktop already includes `tunnel-client.exe`: **do not download a s
 
    *Illustrative connected state; verify your real connection by calling a PLA tool from ChatGPT.*
 
-For newly available executable permissions in the v1.0.0 candidate, open **Settings → Executable Permissions** and grant only a trusted local `.exe` by its complete absolute path. Disable, re-enable or revoke it from the same list. A newly disabled grant is refused immediately for future calls; already running processes are not terminated. Any authorized process still runs with your Windows account rights and may access files outside the authorized workspace.
+For user-controlled executable permissions, open **Settings → Executable Permissions** and grant only a trusted local `.exe` by its complete absolute path. Disable, re-enable or revoke it from the same list. A newly disabled grant is refused immediately for future calls; already running processes are not terminated. Any authorized process still runs with your Windows account rights and may access files outside the authorized workspace.
 
 ### 5. Connect ChatGPT and test the full path
 
@@ -84,13 +84,13 @@ For browser, Office, Skill Library or other MCP components, open **组件管理 
 
 </details>
 
-### What to expect from a Pre-release
+### Release safety and update limitations
 
-- **Manual updates:** close PLA Desktop before installing a newer release; keep a copy of the previous installer if you need to roll back. The app does not promise automatic rollback.
-- **Unsigned builds:** SHA-256 detects a changed download relative to the published checksum; it does not identify a legally verified software publisher.
+- **First signed-updater release:** v1.0.0 users need one manual installation of v1.1.0. For later versions, use the app's guarded update workflow only after stopping tasks that must not be interrupted. Automatic rollback is not promised.
+- **Publisher identity:** the Tauri update signature validates update authenticity within the app, but does not confer a Windows Authenticode publisher identity. SHA-256 lets you compare a downloaded installer to the official release checksum.
 - **Permission boundaries:** workspace roots, allowlists and confirmation policies restrict PLA operations, but they do not provide an operating-system sandbox. Authorized processes run with your Windows account's privileges. Review external MCP providers and Skills before use.
 - **User-controlled configuration:** Tunnel credentials are stored using Windows DPAPI under your account; external Tunnel/account authorization is still required. Upgrading or uninstalling the app normally preserves its separate user data and authorized workspace files.
-- **Testing:** each Pre-release is a development snapshot. Some optional features require separate dependencies and may be unavailable until installed. See the release notes for version-specific evidence and limitations.
+- **Testing:** Windows login startup was tested on the owner's machine. Full real-world signed upgrade to a later release and tampered-signature rejection still require separate acceptance. See the release notes for other limitations.
 
 ## Source installation (advanced)
 
@@ -613,6 +613,14 @@ image extraction and page/region rendering so vector charts can also be recovere
 
 Use WPS for routine Office work. Use Office补强 for surgical PPTX editing, editable technical diagrams,
 format-preserving merge work, real PowerPoint QA, and PDF figure extraction.
+
+### Dynamic CHAGENT.md routing
+
+In **PLA Desktop → Components → Routing rules · CHAGENT.md**, expand the editor to view, edit, restore the default content or save personal rules. Saves validate the routing format and use a SHA-256 revision check to avoid silently overwriting external edits. The compact Agent Pet shows four recent calls; hover over truncated tool labels to see their full names.
+
+`capability_search` accepts task descriptions and adds `routing_advice` based on the current `CHAGENT.md` routing rules and live capability registry. Its arguments remain unchanged. Prefer discovering specialist capabilities before falling back to a generic Python/process route.
+
+The repository-root `CHAGENT.md` supplies defaults. Desktop users can create an override at `%LOCALAPPDATA%\io.pla.desktop\config\CHAGENT.md`. Edit the `pla-routing` block: the next `capability_search` uses the new rules without rebuilding, restarting PLA, or refreshing the ChatGPT MCP connection. Bad overrides return `config_error`, never stale rules. Guidance is advisory only: it neither grants permissions nor guarantees automatic loading on a conversation's first call.
 
 The Skill Library Provider is intentionally lighter-weight. Skills are advisory reusable experience
 used to reduce recurring mistakes, preserve stable workflows, and surface easy-to-forget conventions.

@@ -78,6 +78,17 @@ def test_all_top_level_dom_bindings_resolve_or_are_created_before_access():
     assert absent == {"legacy-root", "detect-legacy"} or not absent
 
 
+def test_component_aware_activity_ui_controls_and_safe_rendering():
+    p = Elements()
+    p.feed(HTML)
+    assert {"activity-list", "activity-filter", "activity-more"} <= set(p.ids)
+    assert "activity.capability" in APP and "activity.provider" in APP
+    assert "activity.program" in APP
+    assert "tool.textContent = description.title" in APP
+    assert "content.textContent = String(value)" in APP
+    assert "ACTIVITY_PREVIEW_COUNT = 6" in APP
+
+
 def _luminance(rgb):
     def ch(c):
         c /= 255

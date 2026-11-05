@@ -56,7 +56,10 @@ def test_wps_patch_keeps_pinned_upstream_mit_license():
     specification = json.loads((ROOT / "provider_specs/wps-office.source.json").read_text(encoding="utf-8"))
     assert specification["repository_url"] == "https://github.com/lc2panda/wps-skills.git"
     assert specification["revision"] == "a82533662268b3245f93d8685bc45dffede048b6"
-    assert specification["patches"] == ["provider_patches/wps-office/windows-com-compat.patch"]
+    assert specification["patches"] == [
+        "provider_patches/wps-office/windows-com-compat.patch",
+        "provider_patches/wps-office/windows-ppt-actions.patch",
+    ]
     patch_root = ROOT / "provider_patches/wps-office"
     assert (patch_root / "windows-com-compat.patch").is_file()
     notice = (patch_root / "UPSTREAM-LICENSE.txt").read_text(encoding="utf-8")
@@ -81,4 +84,4 @@ def test_desktop_stable_candidate_version_fields_are_consistent():
     assert len(own_cargo) == 1
     assert {VERSION, package["version"], lock["version"],
             lock["packages"][""]["version"], tauri["version"],
-            cargo["package"]["version"], own_cargo[0]["version"]} == {"1.0.0"}
+            cargo["package"]["version"], own_cargo[0]["version"]} == {"1.1.0"}
