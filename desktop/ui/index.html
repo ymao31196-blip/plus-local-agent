@@ -90,13 +90,21 @@
 
             <div class="card mb-lg" id="activity-card">
                 <div class="card-header activity-header">
-                    <h2 class="card-title">最近本地工具活动</h2>
-                    <span class="text-muted text-small">每3秒刷新</span>
+                    <h2 class="card-title">最近本地活动</h2>
+                    <div class="activity-actions">
+                        <select id="activity-filter" aria-label="筛选活动类型">
+                            <option value="all">全部活动</option>
+                            <option value="capability">组件调用</option>
+                            <option value="process">本地执行</option>
+                        </select>
+                        <button id="activity-more" type="button" class="sm" hidden>查看更多</button>
+                        <span class="text-muted text-small">每3秒刷新</span>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div id="activity-list" aria-live="off">读取近期活动中…</div>
                     <p class="text-muted text-small activity-note" id="activity-fetched">尚未读取活动</p>
-                    <p class="text-muted text-small activity-note">仅显示 PLA 本机观测结果，无法判断 ChatGPT 云端是否还在运行。</p>
+                    <p class="text-muted text-small activity-note">显示可核实的本地调用与组件身份；不记录命令参数、文件内容，也无法判断 ChatGPT 云端是否还在运行。</p>
                 </div>
             </div>
 
@@ -266,6 +274,21 @@
                     <button id="view-marketplace">浏览组件</button>
                 </div>
             </div>
+
+            <details class="card mb-lg routing-guide-panel" id="routing-guide-panel">
+                <summary class="routing-guide-summary">路由规则 · CHAGENT.md <span class="text-muted text-small">可查看和编辑，保存后立即生效</span></summary>
+                <div class="card-body mt-md">
+                    <p id="routing-guide-state" class="mb-sm text-small text-muted">展开后读取当前规则。</p>
+                    <p class="mb-md text-small text-muted">规则仅影响组件推荐，不会改变执行授权。保存后无需刷新ChatGPT连接。</p>
+                    <textarea id="routing-guide-content" class="form-textarea routing-guide-editor" rows="12" spellcheck="false" aria-label="路由规则内容"></textarea>
+                    <p id="routing-guide-dirty" class="text-small text-muted">尚未读取</p>
+                    <div class="card-actions">
+                        <button type="button" id="routing-guide-reload">重新读取</button>
+                        <button type="button" id="routing-guide-default">填入默认规则</button>
+                        <button type="button" id="routing-guide-save" class="primary">保存路由规则</button>
+                    </div>
+                </div>
+            </details>
 
             <div id="component-management-content"></div>
 
@@ -539,14 +562,31 @@
                     <h2 class="card-title">PLA Desktop V1</h2>
                 </div>
                 <div class="card-body">
-                    <p class="mb-md">本地未签名测试发行候选。自动更新已禁用，配置存储在独立用户目录。</p>
+                    <p class="mb-md">PLA 配置存储于独立用户目录，软件升级不会自动清除个人配置。</p>
 
                     <div class="checkbox-group">
                         <input id="autostart" type="checkbox">
-                        <label for="autostart">登录 Windows 时打开 PLA Desktop</label>
+                        <label for="autostart">登录 Windows 后后台启动 PLA（Runtime 与 Tunnel）</label>
                     </div>
+                    <p id="autostart-state" class="text-muted text-small mt-md">正在检查 Windows 登录项…</p>
 
                     <p class="text-muted mt-md">关闭主窗口后保留在托盘。托盘提供打开、状态、启动、停止与彻底退出。</p>
+                </div>
+            </div>
+
+            <div class="card mb-lg" id="desktop-updates-panel">
+                <div class="card-header">
+                    <h2 class="card-title">桌面程序更新</h2>
+                </div>
+                <div class="card-body">
+                    <p>启动后自动检查 GitHub 最新稳定版（每天至多一次）。</p>
+                    <p class="text-muted mt-md">签名发行版支持在此确认安装。升级前必须先停止 Runtime、Tunnel 和所有正在执行的任务；未签名构建只提供新版提示。</p>
+                    <p id="desktop-update-state" class="text-muted mt-md">尚未检查。</p>
+                </div>
+                <div class="card-actions">
+                    <button id="check-desktop-update">立即检查</button>
+                    <button id="install-signed-update" class="primary" hidden>安装已签名更新</button>
+                    <button data-link="releases" class="secondary">官方 Releases</button>
                 </div>
             </div>
 

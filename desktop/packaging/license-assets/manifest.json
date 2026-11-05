@@ -26,6 +26,14 @@
     },
     {
       "kind": "rust",
+      "name": "tauri-plugin",
+      "version": "2.7.2",
+      "file": "tauri-plugin-2.7.2-LICENSE-MIT.txt",
+      "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+      "source": "https://github.com/tauri-apps/tauri/blob/tauri-plugin-v2.7.2/LICENSE-MIT"
+    },
+    {
+      "kind": "rust",
       "name": "selectors",
       "version": "0.38.0",
       "file": "MPL-2.0.txt",

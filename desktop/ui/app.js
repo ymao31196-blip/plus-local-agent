@@ -83,6 +83,50 @@ async function rpc(command, args = {}) {
   return invoke('manage', { command, args });
 }
 
+// CHAGENT.md: explicit local editor, read on demand, safe version-bound saves.
+let routingGuideSnapshot = null;
+const routingEditor = $('routing-guide-content');
+const routingPanel = $('routing-guide-panel');
+function routingGuideDirty() {
+  return Boolean(routingGuideSnapshot && routingEditor.value !== routingGuideSnapshot.content);
+}
+function updateRoutingGuideState() {
+  $('routing-guide-dirty').textContent = !routingGuideSnapshot ? '尚未读取'
+    : routingGuideDirty() ? '有未保存的修改' : '当前内容已加载';
+}
+routingEditor.addEventListener('input', updateRoutingGuideState);
+async function loadRoutingGuide() {
+  if (routingGuideDirty() && !window.confirm('当前规则未保存，确定放弃修改并重新读取？')) return;
+  const result = await rpc('routing_guide_read');
+  routingGuideSnapshot = result;
+  routingEditor.value = result.content;
+  const validation = result.validation?.status === 'valid'
+    ? ('已校验 · ' + result.validation.route_count + '条规则')
+    : ('配置需修复：' + (result.validation?.reason || '无效格式'));
+  $('routing-guide-state').textContent = (result.source === 'personal' ? '个人规则' : '默认规则') + ' · ' + validation;
+  updateRoutingGuideState();
+}
+routingPanel.addEventListener('toggle', () => {
+  if (routingPanel.open && !routingGuideSnapshot) action(loadRoutingGuide);
+});
+$('routing-guide-reload').onclick = () => action(loadRoutingGuide);
+$('routing-guide-default').onclick = () => {
+  if (!routingGuideSnapshot) return;
+  routingEditor.value = routingGuideSnapshot.default_content;
+  updateRoutingGuideState();
+};
+$('routing-guide-save').onclick = () => action(async () => {
+  if (!routingGuideSnapshot) throw new Error('请先读取当前规则');
+  const result = await rpc('routing_guide_save', {
+    content: routingEditor.value, expected_sha256: routingGuideSnapshot.expected_sha256
+  });
+  routingGuideSnapshot = result;
+  routingEditor.value = result.content;
+  $('routing-guide-state').textContent = '个人规则 · 已校验 · ' + result.validation.route_count + '条规则';
+  updateRoutingGuideState();
+  notice('路由规则已保存，下一次组件查询立即生效');
+});
+
 // View switching
 function view(name) {
   // Handle legacy provider view redirect
@@ -190,7 +234,11 @@ async function refresh() {
   }
 
   $('credential-status').textContent = c.credential_saved ? '已保存加密凭据' : '尚未保存凭据';
-  $('autostart').checked = c.autostart;
+  const loginRegistered = await invoke('autostart_status');
+  $('autostart').checked = c.autostart && loginRegistered;
+  $('autostart-state').textContent = c.autostart && !loginRegistered
+    ? '已保存的偏好与 Windows 启动项不一致；请重新勾选以修复。'
+    : loginRegistered ? 'Windows 登录项已注册；下次登录将在后台启动服务。' : '未启用登录自启动。';
   $('browser-enabled').checked = c.browser_enabled;
   $('browser-port').value = c.browser_port;
 
@@ -412,6 +460,71 @@ $('autostart').onchange = () => action(async () => {
   notice('登录启动偏好已保存。');
 });
 
+// Signed updater uses a fixed HTTPS endpoint and an embedded Tauri public key.
+// Unsigned builds never expose the installation command.
+async function checkDesktopUpdate(announce = false) {
+  const label = $('desktop-update-state');
+  const install = $('install-signed-update');
+  install.hidden = true;
+  label.textContent = '正在检查 GitHub 稳定版…';
+  let signedError = '';
+  try {
+    const signed = await invoke('signed_update_check', {});
+    if (signed.status === 'available') {
+      label.textContent = '发现已签名更新 ' + signed.version + '，可在停止服务后安装。';
+      install.hidden = false;
+      localStorage.setItem('pla-desktop-last-update-check', String(Date.now()));
+      if (announce) notice(label.textContent);
+      return;
+    }
+    if (signed.status === 'latest') {
+      label.textContent = '已是最新的签名稳定版。';
+      localStorage.setItem('pla-desktop-last-update-check', String(Date.now()));
+      if (announce) notice(label.textContent);
+      return;
+    }
+  } catch (e) {
+    signedError = String(e);
+  }
+  // Unconfigured unsigned builds and temporarily unavailable metadata fall
+  // back to read-only release discovery, never to an unsigned install.
+  try {
+    const result = await rpc('update_check');
+    const latest = result.latest_version || '';
+    const messages = {
+      latest: '已是最新公开稳定版（' + latest + '）。',
+      available_manual: '发现新版本 ' + latest + '；请从官方 Releases 页面手动下载安装。',
+      pending_installer: '已发现新版本 ' + latest + '，安装包尚未发布。',
+      unavailable: result.message || '网络连接失败，无法检查更新。',
+      invalid_release: '最新版本信息格式不符合 PLA 稳定版规则。',
+      unsupported_version: '当前版本格式不受支持。'
+    };
+    label.textContent = messages[result.status] || '更新状态未知。';
+    if (signedError && result.status === 'available_manual') {
+      label.textContent += '（签名更新通道暂不可用）';
+    }
+    if (['latest', 'available_manual', 'pending_installer'].includes(result.status)) {
+      localStorage.setItem('pla-desktop-last-update-check', String(Date.now()));
+    }
+    if (result.status === 'available_manual' || announce) notice(label.textContent);
+  } catch (e) {
+    label.textContent = '暂时无法检查更新，请确认网络或代理连接。';
+    if (announce) notice(friendlyError(e), true);
+  }
+}
+$('check-desktop-update').onclick = () => action(() => checkDesktopUpdate(true));
+$('install-signed-update').onclick = () => action(async () => {
+  if (!window.confirm('安装更新需要退出 PLA。请先停止 Runtime、Tunnel 和所有任务。确定继续吗？')) return;
+  const gate = await rpc('update_preflight');
+  if (!gate.ready) throw new Error('请先在总览页停止 PLA 服务，并结束运行中的任务，然后再安装更新。');
+  $('desktop-update-state').textContent = '正在下载签名更新并校验，成功后将在 Windows 安装器中完成升级…';
+  await invoke('signed_update_install', {});
+});
+setTimeout(() => {
+  const previous = Number(localStorage.getItem('pla-desktop-last-update-check')) || 0;
+  if (Date.now() - previous >= 24 * 60 * 60 * 1000) checkDesktopUpdate(false);
+}, 10000);
+
 $('quit-app').onclick = () => action(() => invoke('quit_app', {}));
 
 // Component Manager Integration
@@ -512,8 +625,16 @@ if ($('view-marketplace')) {
 // Activity polling never invokes the expensive full status/probe path.
 let activityLoading = false;
 let lastActivityRows = [];
+let lastComponentRows = [];
 let lastActivitySuccess = null;
 let activityResponse = null;
+let activityExpanded = false;
+const ACTIVITY_PREVIEW_COUNT = 6;
+$('activity-filter').onchange = () => renderActivity(activityResponse?.available === true);
+$('activity-more').onclick = () => {
+  activityExpanded = !activityExpanded;
+  renderActivity(activityResponse?.available === true);
+};
 
 function renderVerification() {
   const badge = $('verified-status');
@@ -568,39 +689,100 @@ function activityClock(value) {
   return Number.isNaN(date.getTime()) ? '时间未知' : date.toLocaleTimeString('zh-CN', { hour12: false });
 }
 
+function activityProviderName(provider) {
+  const names = { browser: 'Browser', core: 'PLA Core', runtime: 'PLA Runtime',
+    windows: 'Windows', drawio: 'draw.io', 'skill-library': 'Skill Library' };
+  return names[provider] || provider;
+}
+
+function activityDescription(activity) {
+  if (activity.source === 'capability') {
+    const provider = activity.provider;
+    const capability = activity.capability || activity.tool;
+    const action = provider && capability.startsWith(provider + '.')
+      ? capability.slice(provider.length + 1) : capability;
+    return { title: provider ? activityProviderName(provider) : '组件能力',
+      detail: action + ' · 组件调用' };
+  }
+  if (activity.tool === 'run_process') {
+    return { title: activity.program ? '本地程序 · ' + activity.program : '本地程序执行',
+      detail: 'run_process · ' + (activity.source === 'native_mcp' ? 'MCP工具' : '内部Action') };
+  }
+  return { title: activity.tool,
+    detail: activity.source === 'native_mcp' ? 'MCP工具' : '内部Action' };
+}
+
+function activityDetailLine(container, name, value) {
+  if (value === null || value === undefined || value === '') return;
+  const line = document.createElement('div');
+  line.className = 'activity-detail-line';
+  const label = document.createElement('span');
+  label.textContent = name;
+  const content = document.createElement('span');
+  content.textContent = String(value);
+  line.append(label, content);
+  container.append(line);
+}
+
 function renderActivity(available) {
   const list = $('activity-list');
+  const opened = new Set([...list.querySelectorAll('details.activity-row[open]')]
+    .map(el => el.dataset.activityId));
   list.replaceChildren();
+  const filter = $('activity-filter').value;
+  const filtered = (filter === 'capability' ? lastComponentRows : lastActivityRows)
+    .filter(a => filter === 'all'
+    || (filter === 'capability' && a.source === 'capability')
+    || (filter === 'process' && a.source !== 'capability'));
+  const visible = activityExpanded ? filtered : filtered.slice(0, ACTIVITY_PREVIEW_COUNT);
   if (!available && !lastActivityRows.length) {
     list.textContent = '活动数据暂不可用';
-  } else if (!lastActivityRows.length) {
-    list.textContent = '暂无近期工具活动';
+  } else if (!filtered.length) {
+    list.textContent = '暂无符合条件的活动';
   } else {
-    for (const activity of lastActivityRows) {
-      const row = document.createElement('div');
+    for (const activity of visible) {
+      const row = document.createElement('details');
       row.className = 'activity-row';
+      row.dataset.activityId = activity.id;
+      row.open = opened.has(activity.id);
+      const summary = document.createElement('summary');
+      summary.className = 'activity-summary';
       const meta = document.createElement('div');
       meta.className = 'activity-meta';
       const tool = document.createElement('strong');
       tool.className = 'activity-tool';
-      tool.textContent = activity.tool;
+      const description = activityDescription(activity);
+      tool.textContent = description.title;
+      const detail = document.createElement('span');
+      detail.className = 'activity-subtitle';
+      detail.textContent = description.detail;
       const when = document.createElement('small');
       when.className = 'text-muted';
-      when.textContent = activityClock(activity.started_at) + ' · ' + (
-        { native_mcp: 'MCP工具', local_action: '内部Action', capability: '组件能力' }[activity.source] || '本地执行'
-      );
-      meta.append(tool, when);
+      when.textContent = activityClock(activity.started_at);
+      meta.append(tool, detail, when);
       const result = document.createElement('span');
       const age = Date.now() - new Date(activity.started_at).getTime();
-      const state = activity.outcome === 'success' ? '成功'
-        : activity.outcome === 'failed' ? '失败'
-        : age > 120000 ? '结束状态未知' : '尚无结束记录';
       result.className = 'activity-outcome ' + activity.outcome;
-      result.textContent = state;
-      row.append(meta, result);
+      result.textContent = activity.outcome === 'success' ? '成功'
+        : activity.outcome === 'failed' ? '失败'
+        : age > 120000 ? '状态未知' : '进行中';
+      summary.append(meta, result);
+      const body = document.createElement('div');
+      body.className = 'activity-details';
+      activityDetailLine(body, '工具入口', activity.tool);
+      activityDetailLine(body, '组件ID', activity.provider);
+      activityDetailLine(body, '能力ID', activity.capability);
+      activityDetailLine(body, '可执行程序', activity.program);
+      activityDetailLine(body, '开始', activity.started_at);
+      activityDetailLine(body, '结束', activity.finished_at);
+      activityDetailLine(body, '记录ID', activity.id);
+      row.append(summary, body);
       list.append(row);
     }
   }
+  const more = $('activity-more');
+  more.hidden = filtered.length <= ACTIVITY_PREVIEW_COUNT;
+  more.textContent = activityExpanded ? '收起' : '查看更多（' + filtered.length + '条）';
   $('activity-fetched').textContent = lastActivitySuccess
     ? (available ? '最近读取：' : '数据未更新，最后成功读取：') + activityClock(lastActivitySuccess)
     : '尚未成功读取';
@@ -613,6 +795,7 @@ async function refreshActivity() {
     const response = await rpc('activity_recent');
     if (response && response.available === true && Array.isArray(response.activities)) {
       lastActivityRows = response.activities;
+      lastComponentRows = Array.isArray(response.component_activities) ? response.component_activities : [];
       activityResponse = response;
       lastActivitySuccess = new Date().toISOString();
       renderActivity(true);

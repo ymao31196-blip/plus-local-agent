@@ -98,7 +98,7 @@ function renderPetCompanion(row) {
   );
   header.append(badges);
   card.append(header);
-  card.append(node('p', 'Q版角色实时展示PLA工具调用；不占用ChatGPT工具名额。', 'provider-description'));
+  card.append(node('p', 'Q版角色同步展示最近的MCP组件、程序与内部Action活动；不占用ChatGPT工具名额。', 'provider-description'));
   if (!row.installed) {
     card.append(node('div', '首次启用前需准备自有或获授权的32张PNG素材，详见桌宠使用说明；不会从网络自动下载。', 'provider-warning'));
   }

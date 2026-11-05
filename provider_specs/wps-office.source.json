@@ -7,6 +7,7 @@
   "entrypoint": "dist/index.js",
   "node_min_major": 18,
   "patches": [
-    "provider_patches/wps-office/windows-com-compat.patch"
+    "provider_patches/wps-office/windows-com-compat.patch",
+    "provider_patches/wps-office/windows-ppt-actions.patch"
   ]
 }

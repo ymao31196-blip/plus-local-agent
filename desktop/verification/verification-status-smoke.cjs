@@ -22,8 +22,14 @@ const assert = require('node:assert/strict');
         id:'old', tool:'read_text', outcome:'success', source:'native_mcp',
         started_at:new Date(Date.now()-120000).toISOString()
       }];
-      window.__TAURI__ = {core:{invoke:async (method,{command,args})=>{
-        if(method!=='manage') throw Error('Unexpected Tauri command');
+      window.__TAURI__ = {core:{invoke:async (method,request)=>{
+        // Login autostart is a separate native command with no RPC payload.
+        // The browser smoke must model it explicitly; verification continues
+        // to assert the actual activity/session behavior below.
+        if(method==='autostart_status') return false;
+        if(method==='signed_update_check') return {status:'unconfigured',installable:false};
+        if(method!=='manage') throw Error('Unexpected Tauri command: '+method);
+        const {command,args} = request || {};
         if(command==='status') return {
           config:{version:'test',data_directory:'private',onboarding_complete:true,
             runtime_port:18081,health_port:18082,tunnel_id:'',

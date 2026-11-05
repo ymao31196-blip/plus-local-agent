@@ -84,11 +84,16 @@ def load_workspace_roots(
 
     pla_root = pla_root.resolve()
     definitions: dict[str, RootDefinition] = {}
+    seen_names: set[str] = set()
     for name, spec in roots_value.items():
         if not isinstance(name, str) or not WORKSPACE_NAME_PATTERN.fullmatch(name):
             raise ValueError(f"Invalid workspace root name: {name!r}")
-        if name in _RESERVED_ROOT_NAMES:
+        folded_name = name.casefold()
+        if folded_name in _RESERVED_ROOT_NAMES:
             raise ValueError(f"Workspace root name is reserved: {name}")
+        if folded_name in seen_names:
+            raise ValueError(f"Duplicate workspace root names (case-insensitive): {name!r}")
+        seen_names.add(folded_name)
         if not isinstance(spec, dict):
             raise ValueError(f"Workspace root {name!r} must be a mapping")
         if set(spec) - {"path", "read", "write", "execute"}:
@@ -258,12 +263,20 @@ def workspace_registry_upsert(
 ) -> dict:
     with _WORKSPACE_CONFIG_LOCK:
         _assert_workspace_config_sha256(config_path, expected_sha256)
+        if not isinstance(name, str) or not WORKSPACE_NAME_PATTERN.fullmatch(name):
+            raise ValueError(f"Invalid workspace root name: {name!r}")
         payload = _read_workspace_payload(config_path)
         roots = payload.setdefault("roots", {})
         if not isinstance(roots, dict):
             raise ValueError("Workspace config roots must be a mapping")
         payload["version"] = WORKSPACE_CONFIG_VERSION
-        roots[name] = {
+        # Update an existing root without changing its saved/displayed spelling.
+        canonical_name = next(
+            (existing for existing in roots
+             if isinstance(existing, str) and existing.casefold() == name.casefold()),
+            name,
+        )
+        roots[canonical_name] = {
             "path": path,
             "read": read,
             "write": write,
@@ -274,7 +287,7 @@ def workspace_registry_upsert(
         )
         _atomic_write_workspace_config(config_path, rendered)
         result = workspace_registry_status(config_path, pla_root)
-        result["updated_root"] = name
+        result["updated_root"] = canonical_name
         return result
 
 
@@ -287,20 +300,27 @@ def workspace_registry_remove(
 ) -> dict:
     with _WORKSPACE_CONFIG_LOCK:
         _assert_workspace_config_sha256(config_path, expected_sha256)
+        if not isinstance(name, str) or not WORKSPACE_NAME_PATTERN.fullmatch(name):
+            raise ValueError(f"Invalid workspace root name: {name!r}")
         payload = _read_workspace_payload(config_path)
         roots = payload.setdefault("roots", {})
         if not isinstance(roots, dict):
             raise ValueError("Workspace config roots must be a mapping")
-        if name not in roots:
+        canonical_name = next(
+            (existing for existing in roots
+             if isinstance(existing, str) and existing.casefold() == name.casefold()),
+            None,
+        )
+        if canonical_name is None:
             raise ValueError(f"Workspace root is not configured: {name}")
-        del roots[name]
+        del roots[canonical_name]
         payload["version"] = WORKSPACE_CONFIG_VERSION
         rendered = _render_validated_workspace_config(
             payload, config_path, pla_root
         )
         _atomic_write_workspace_config(config_path, rendered)
         result = workspace_registry_status(config_path, pla_root)
-        result["removed_root"] = name
+        result["removed_root"] = canonical_name
         return result
 
 
@@ -322,7 +342,11 @@ class RootPolicy:
     def __init__(self, roots: dict[str, RootDefinition]) -> None:
         if not roots or any(name != definition.name for name, definition in roots.items()):
             raise ValueError("Root registry names must match their definitions")
+        aliases = {name.casefold(): name for name in roots}
+        if len(aliases) != len(roots):
+            raise ValueError("Root registry contains duplicate case-insensitive names")
         self._roots = dict(roots)
+        self._aliases = aliases
 
     def capabilities(self) -> dict[str, dict[str, bool]]:
         return {
@@ -335,8 +359,12 @@ class RootPolicy:
         }
 
     def resolve(self, root_name: str, path: str, access: Access = "read") -> ResolvedPath:
-        if not isinstance(root_name, str) or root_name not in self._roots:
+        if not isinstance(root_name, str):
             raise ValueError(f"Unknown root: {root_name!r}")
+        canonical_name = self._aliases.get(root_name.casefold())
+        if canonical_name is None:
+            raise ValueError(f"Unknown root: {root_name!r}")
+        root_name = canonical_name
         if not isinstance(path, str) or not path:
             raise ValueError("path must be a non-empty string")
         if access not in {"read", "write", "execute"}:
@@ -410,7 +438,9 @@ def build_root_policy(
         "pla": RootDefinition("pla", pla, write=not desktop, execute=not desktop),
     }
     if configured_roots:
-        overlap = set(roots).intersection(configured_roots)
+        overlap = set(roots).intersection(
+            name.casefold() for name in configured_roots
+        )
         if overlap:
             raise ValueError(
                 f"Configured roots conflict with reserved roots: {sorted(overlap)!r}"

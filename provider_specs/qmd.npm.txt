@@ -1,0 +1,2 @@
+# Optional QMD local search engine for PLA workspace-index capabilities
+@tobilu/qmd@2.8.3

@@ -46,6 +46,7 @@ from tooling.local_tools import (
     project_verify_acceptance as internal_project_verify_acceptance,
     list_directory as internal_list_directory,
     read_text as internal_read_text,
+    file_operation as internal_file_operation,
     extract_document_text as internal_extract_document_text,
     replace_text as internal_replace_text,
     run_process as internal_run_process,
@@ -70,6 +71,7 @@ from artifacts.artifact_bridge import (
     verify_artifact_provenance as internal_verify_artifact_provenance,
 )
 from capabilities.capability_registry import CapabilityRegistry
+from routing.agent_guide import live_route_advice
 from runtime.event_runtime import EVENT_STORE
 from runtime.activity_runtime import record_native_activity
 from hooks.observer_hook_runtime import OBSERVER_HOOK_RUNTIME
@@ -147,6 +149,14 @@ async def _runtime_lifespan(_server):
 mcp = FastMCP(
     "Local Agent Tools",
     version="2.0.1",
+    instructions=(
+        "PLA has dynamic capability routing. For a new task, prefer calling "
+        "capability_search with the user task description before choosing generic "
+        "Python/process execution, unless the user explicitly chose a tool. "
+        "The result includes live CHAGENT.md routing_advice and component availability. "
+        "Use capability_describe and capability_invoke as needed; observe all existing "
+        "permissions and confirmations. Routing rules update without MCP metadata refresh."
+    ),
     lifespan=_runtime_lifespan,
 )
 
@@ -158,13 +168,17 @@ def capability_search(
     include_unavailable: bool = False,
     limit: Annotated[int, Field(ge=1, le=100)] = 20,
 ) -> dict:
-    """Search the runtime capability registry without invoking any capability."""
-    return CAPABILITY_REGISTRY.search(
+    """Find live components by task or capability. Returns hot-reloaded CHAGENT.md routing advice when a task matches; prefer this before generic execution. No capability is invoked."""
+    result = CAPABILITY_REGISTRY.search(
         query,
         provider_id=provider_id,
         include_unavailable=include_unavailable,
         limit=limit,
     )
+    guidance = live_route_advice(query, CAPABILITY_REGISTRY)
+    if guidance is not None:
+        result["routing_advice"] = guidance
+    return result
 
 
 @mcp.tool
@@ -349,6 +363,20 @@ def revoke_artifact(artifact_id: str) -> dict:
 def list_directory(path: str = ".", root: str = "workspace") -> list[str]:
     """列出指定受控 root 内的文件和子目录。"""
     return internal_list_directory(path, root)
+
+
+@mcp.tool
+@record_native_activity
+def file_operation(
+    operation: Literal["mkdir", "copy", "move", "rename", "archive_create", "archive_extract"],
+    destination: str, source: str | None = None, sources: list[str] | None = None,
+    root: str = "workspace", destination_root: str | None = None,
+    overwrite: bool = False,
+) -> dict:
+    """受控文件创建、复制、移动、重命名、ZIP压缩与解压；可在execute_actions内批量调用。"""
+    return internal_file_operation(
+        operation, destination, source, sources, root, destination_root, overwrite,
+    )
 
 
 @mcp.tool

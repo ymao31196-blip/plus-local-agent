@@ -6,6 +6,8 @@ capability, create follow-up plans, or bypass target capability policy.
 
 from __future__ import annotations
 
+import asyncio
+
 from artifacts.artifact_bridge import (
     artifact_gc as controlled_artifact_gc,
     artifact_metadata as controlled_artifact_metadata,
@@ -26,6 +28,17 @@ from runtime.event_runtime import EventStore
 from hooks.observer_hook_runtime import ObserverHookRuntime
 from hooks.gate_hook_runtime import GateHookRuntime
 from tooling.internal_tool_executor import INTERNAL_TOOL_SCHEMAS
+from tooling.workspace_index import (
+    index_init as controlled_index_init,
+    index_refresh as controlled_index_refresh,
+    index_status as controlled_index_status,
+    index_search as controlled_index_search,
+)
+from tooling.network_operations import (
+    http_probe as controlled_http_probe,
+    http_download as controlled_http_download,
+    network_diagnose as controlled_network_diagnose,
+)
 from tooling.local_tools import (
     LOCAL_TOOL_FUNCTIONS,
     git_push as controlled_git_push,
@@ -67,6 +80,7 @@ _INTERNAL_SCHEMA_BY_NAME = {
 
 
 _CORE_LOCAL_TOOL_POLICIES = {
+    "file_operation": ("write_local", ("file", "folder", "copy", "move", "rename", "zip", "archive", "文件整理", "压缩", "解压", "重命名", "复制")),
     "git_log": ("read", ("git", "history", "read")),
     "git_show": ("read", ("git", "history", "read")),
     "git_stage": ("write_local", ("git", "stage", "write")),
@@ -727,6 +741,105 @@ def core_artifact_descriptors() -> tuple[CapabilityDescriptor, ...]:
     )
 
 
+def core_network_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Explicit public-network capabilities; no generic process or batch route."""
+    return (
+        _descriptor(
+            "core.http_probe", "http_probe", "Public HTTPS Status Probe",
+            "检查公开HTTPS的HEAD/GET状态与少量响应头；不读取正文。可显式采用本机系统HTTP代理+受验证公网IP连接。",
+            {
+                "type": "object", "properties": {
+                    "url": {"type": "string", "minLength": 1, "maxLength": 2048},
+                    "method": {"type": "string", "enum": ["HEAD", "GET"], "default": "HEAD"},
+                    "timeout": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
+                    "max_redirects": {"type": "integer", "minimum": 0, "maximum": 3, "default": 3},
+                    "transport": {"type": "string", "enum": ["direct", "system_loopback_proxy"], "default": "direct"},
+                }, "required": ["url"], "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("network", "http", "https", "head", "status", "网页状态", "HTTP检查", "网络诊断"),
+        ),
+        _descriptor(
+            "core.http_download", "http_download", "Controlled Public HTTPS Download",
+            "从公网HTTPS下载有限大小文件到已授权目录；默认直连，可显式选择受限本机系统HTTP代理+TLS DoH，不允许局域网目标。需INVOKE确认。",
+            {
+                "type": "object", "properties": {
+                    "url": {"type": "string", "minLength": 1, "maxLength": 2048},
+                    "destination": {"type": "string", "minLength": 1},
+                    "root": {"type": "string", "minLength": 1, "default": "workspace"},
+                    "overwrite": {"type": "boolean", "default": False},
+                    "timeout": {"type": "integer", "minimum": 1, "maximum": 30, "default": 20},
+                    "max_bytes": {"type": "integer", "minimum": 1, "maximum": 52428800, "default": 52428800},
+                    "max_redirects": {"type": "integer", "minimum": 0, "maximum": 3, "default": 3},
+                    "transport": {"type": "string", "enum": ["direct", "system_loopback_proxy"], "default": "direct"},
+                }, "required": ["url", "destination"], "additionalProperties": False,
+            },
+            risk_level="write_local",
+            tags=("network", "https", "download", "file", "下载", "网络获取"),
+            requires_confirmation=True,
+        ),
+        _descriptor(
+            "core.network_diagnose", "network_diagnose", "Public DNS / TCP Diagnosis",
+            "公共域名DNS解析可报告特殊用途IP及联网拦截状态；TCP仅连接公网地址，拒绝本机、私网和IP字面量目标。",
+            {
+                "type": "object", "properties": {
+                    "host": {"type": "string", "minLength": 1, "maxLength": 253},
+                    "kind": {"type": "string", "enum": ["dns", "tcp"], "default": "dns"},
+                    "port": {"type": ["integer", "null"], "minimum": 1, "maximum": 65535, "default": None},
+                    "timeout": {"type": "integer", "minimum": 1, "maximum": 30, "default": 5},
+                }, "required": ["host"], "additionalProperties": False,
+            },
+            risk_level="read",
+            tags=("network", "dns", "tcp", "connectivity", "network-diagnose", "域名解析", "网络诊断", "端口检查"),
+        ),
+    )
+
+
+def core_index_descriptors() -> tuple[CapabilityDescriptor, ...]:
+    """Optional QMD project-local Markdown index; all paths are root-governed."""
+    location = {
+        "root": {"type": "string", "minLength": 1, "default": "workspace"},
+        "directory": {"type": "string", "minLength": 1},
+    }
+    return (
+        _descriptor(
+            "core.workspace_index_init", "workspace_index_init", "Initialize Local Workspace Index",
+            "为已授权工作区创建.qmd本地Markdown索引并执行首次增量扫描；仅使用受控QMD引擎。",
+            {"type": "object", "properties": location,
+             "required": ["directory"], "additionalProperties": False},
+            risk_level="write_local", requires_confirmation=True,
+            tags=("workspace", "index", "qmd", "initialize", "建立索引"),
+        ),
+        _descriptor(
+            "core.workspace_index_refresh", "workspace_index_refresh", "Refresh Workspace Index",
+            "增量刷新已授权工作区的QMD Markdown索引；拒绝未审核的QMD配置。",
+            {"type": "object", "properties": location,
+             "required": ["directory"], "additionalProperties": False},
+            risk_level="write_local", requires_confirmation=True,
+            tags=("workspace", "index", "qmd", "refresh", "更新索引"),
+        ),
+        _descriptor(
+            "core.workspace_index_status", "workspace_index_status", "Workspace Index Status",
+            "读取指定工作区的本地QMD索引状态与覆盖范围。",
+            {"type": "object", "properties": location,
+             "required": ["directory"], "additionalProperties": False},
+            risk_level="read",
+            tags=("workspace", "index", "qmd", "status", "索引状态"),
+        ),
+        _descriptor(
+            "core.workspace_index_search", "workspace_index_search", "Search Workspace Index",
+            "基于授权工作区的本地QMD关键词索引搜索Markdown，返回校验后的相对路径和片段。",
+            {"type": "object", "properties": {
+                **location,
+                "query": {"type": "string", "minLength": 1, "maxLength": 120},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
+            }, "required": ["directory", "query"], "additionalProperties": False},
+            risk_level="read",
+            tags=("workspace", "index", "qmd", "search", "检索索引", "文档搜索"),
+        ),
+    )
+
+
 def core_workspace_descriptors() -> tuple[CapabilityDescriptor, ...]:
     """Machine-local workspace authorization controls."""
 
@@ -821,6 +934,8 @@ def register_core_transaction_capabilities(
         *core_release_descriptors(),
         *core_artifact_descriptors(),
         *core_workspace_descriptors(),
+        *core_network_descriptors(),
+        *core_index_descriptors(),
         *core_local_tool_descriptors(),
     ]
     if event_store is not None:
@@ -1001,6 +1116,30 @@ def register_core_transaction_capabilities(
             args["expected_sha256"],
         ),
     )
+    # HTTP and TCP operations block on sockets; offload to avoid freezing
+    # the MCP event loop. asyncio.to_thread also carries cancellation context.
+    async def _network_probe_handler(args: dict) -> dict:
+        return await asyncio.to_thread(controlled_http_probe, **args)
+
+    async def _network_download_handler(args: dict) -> dict:
+        return await asyncio.to_thread(controlled_http_download, **args)
+
+    async def _network_diagnose_handler(args: dict) -> dict:
+        return await asyncio.to_thread(controlled_network_diagnose, **args)
+
+    broker.register_internal_handler("core.http_probe", _network_probe_handler)
+    broker.register_internal_handler("core.http_download", _network_download_handler)
+    broker.register_internal_handler("core.network_diagnose", _network_diagnose_handler)
+
+    for name, function in (
+        ("workspace_index_init", controlled_index_init),
+        ("workspace_index_refresh", controlled_index_refresh),
+        ("workspace_index_status", controlled_index_status),
+        ("workspace_index_search", controlled_index_search),
+    ):
+        async def _index_handler(args: dict, function=function) -> dict:
+            return await asyncio.to_thread(function, **args)
+        broker.register_internal_handler(f"core.{name}", _index_handler)
     for tool_name in _CORE_LOCAL_TOOL_POLICIES:
         function = LOCAL_TOOL_FUNCTIONS[tool_name]
         broker.register_internal_handler(

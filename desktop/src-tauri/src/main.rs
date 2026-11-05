@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod signed_updates;
+
 use serde_json::{json, Value};
 use std::{io::{BufRead, BufReader, Write}, process::{Child, ChildStdin, Command, Stdio}, sync::{Mutex, mpsc}, time::Duration};
 use std::os::windows::{io::AsRawHandle, process::CommandExt};
@@ -47,8 +49,11 @@ fn quit_app(app: tauri::AppHandle) { app.exit(0); }
 
 #[tauri::command]
 async fn manage(command: String, args: Value, state: State<'_, Backend>) -> Result<Value,String> {
-    const ALLOWED: &[&str] = &["activity_recent","status","pet_status","pet_action","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","program_permissions","verify","diagnose","logs","detect_legacy","provider_catalog","provider_import","provider_package","provider_bundle","provider_configuration","provider_details","provider_action","skill_action","provider_install","installation_status","skill_permissions","repository_list","repository_add","repository_remove","provider_discover","provider_details_remote","provider_install_remote","provider_upgrade_remote","provider_uninstall_remote","provider_health_check","provider_installed_list"];
+    const ALLOWED: &[&str] = &["activity_recent","routing_guide_read","routing_guide_save","update_check","update_preflight","autostart_preference","status","pet_status","pet_action","start","stop","restart","connect","configure","credential","workspace_save","workspace_remove","program_permissions","verify","diagnose","logs","detect_legacy","provider_catalog","provider_import","provider_package","provider_bundle","provider_configuration","provider_details","provider_action","skill_action","provider_install","installation_status","skill_permissions","repository_list","repository_add","repository_remove","provider_discover","provider_details_remote","provider_install_remote","provider_upgrade_remote","provider_uninstall_remote","provider_health_check","provider_installed_list"];
     if !ALLOWED.contains(&command.as_str()) { return Err("Unsupported management command".into()); }
+    if signed_updates::is_installing() && !matches!(command.as_str(), "status" | "logs") {
+        return Err("Signed update in progress; management changes are temporarily disabled".into());
+    }
     state.0.lock().map_err(|_| "Manager lock unavailable")?.call(&command,args)
 }
 
@@ -57,9 +62,10 @@ fn autostart(enabled: bool, app: tauri::AppHandle, state: State<'_, Backend>) ->
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
     let key = RegKey::predef(HKEY_CURRENT_USER).create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run").map_err(|e| e.to_string())?.0;
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-    let own_registration = format!("\"{}\"", executable.display());
+    let legacy_registration = format!("\"{}\"", executable.display());
+    let own_registration = format!("{legacy_registration} --autostart");
     let previous: Option<String> = match key.get_value("PLADesktop") { Ok(value)=>Some(value), Err(error) if error.kind()==std::io::ErrorKind::NotFound=>None, Err(error)=>return Err(error.to_string()) };
-    if previous.as_ref().is_some_and(|value| !value.eq_ignore_ascii_case(&own_registration)) {
+    if previous.as_ref().is_some_and(|value| !value.eq_ignore_ascii_case(&own_registration) && !value.eq_ignore_ascii_case(&legacy_registration)) {
         return Err("A different PLA Desktop startup registration exists; it was preserved".into());
     }
     if enabled {
@@ -74,16 +80,56 @@ fn autostart(enabled: bool, app: tauri::AppHandle, state: State<'_, Backend>) ->
 }
 
 #[tauri::command]
+fn autostart_status() -> Result<bool,String> {
+    use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+    let key = match RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run") {
+        Ok(key) => key,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.to_string()),
+    };
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let expected = format!("\"{}\" --autostart", executable.display());
+    match key.get_value::<String,_>("PLADesktop") {
+        Ok(value) => Ok(value.eq_ignore_ascii_case(&expected)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
 fn official_link(topic: String) -> Result<(), String> {
     let url = match topic.as_str() {
         "tunnels" => "https://platform.openai.com/settings/organization/tunnels",
         "keys" => "https://platform.openai.com/api-keys",
         "guide" => "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
+        "releases" => "https://github.com/ymao31196-blip/plus-local-agent/releases",
         _ => return Err("Unknown help topic".into())
     };
     // Fixed official URLs; no user-controlled arguments or general Shell interface.
     let system_root = std::env::var_os("SystemRoot").ok_or("Windows system directory is unavailable")?;
     Command::new(std::path::PathBuf::from(system_root).join("System32/rundll32.exe")).args(["url.dll,FileProtocolHandler",url]).creation_flags(0x08000000).spawn().map_err(|e|e.to_string())?;
+    Ok(())
+}
+
+fn restore_autostart_after_upgrade(app: &tauri::AppHandle) -> Result<(), String> {
+    use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+    let backend = app.state::<Backend>();
+    let preference = backend.0.lock().map_err(|_| "Manager lock unavailable")?
+        .call("autostart_preference", json!({}))?;
+    let enabled = preference["enabled"] == true;
+    if !enabled { return Ok(()); }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let key = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+        .map_err(|e| e.to_string())?.0;
+    let legacy = format!(r#""{}""#, exe.display());
+    let desired = format!("{legacy} --autostart");
+    let previous = key.get_value::<String, _>("PLADesktop");
+    if matches!(&previous, Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+        || previous.as_ref().is_ok_and(|value| value.eq_ignore_ascii_case(&legacy)) {
+        key.set_value("PLADesktop", &desired).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -94,7 +140,8 @@ fn show(app: &tauri::AppHandle) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
-        .invoke_handler(tauri::generate_handler![manage, autostart, official_link, quit_app])
+        .invoke_handler(tauri::generate_handler![manage, autostart, autostart_status, official_link, quit_app,
+            signed_updates::signed_update_check, signed_updates::signed_update_install])
         .setup(|app| {
             let resources = app.path().resource_dir()?.join("resources");
             let arguments: Vec<String> = std::env::args().collect();
@@ -119,6 +166,11 @@ fn main() {
             let (sender,output)=mpsc::sync_channel(1);
             std::thread::spawn(move || { for line in reader.lines() { match line { Ok(line) if line.len() <= 4_000_000 => { if sender.send(line).is_err() {break;} }, _=>break } } });
             app.manage(Backend(Mutex::new(Bridge{child,input,output,job,broken:false})));
+            app.manage(signed_updates::PendingUpdate(Mutex::new(None)));
+            signed_updates::register_updater(app.handle())?;
+            // NSIS may remove the Run entry while uninstalling the old package.
+            // Restore it only when the saved user preference is enabled.
+            let _ = restore_autostart_after_upgrade(app.handle());
             let open=MenuItem::with_id(app,"open","打开管理界面 / Open",true,None::<&str>)?;
             let start=MenuItem::with_id(app,"start","启动 Runtime / Start",true,None::<&str>)?;
             let stop=MenuItem::with_id(app,"stop","停止 Runtime / Stop",true,None::<&str>)?;
@@ -128,11 +180,37 @@ fn main() {
             let mut tray=TrayIconBuilder::new().menu(&menu).tooltip("PLA Desktop — ChatGPT is the interface")
                 .on_menu_event(|app,event| match event.id.as_ref() {
                     "open"|"status" => show(app),
-                    "start"|"stop" => { let app=app.clone(); let command=event.id.as_ref().to_owned(); tauri::async_runtime::spawn(async move { let state=app.state::<Backend>(); let result=state.0.lock().unwrap().call(&command,json!({})); if result.is_err() { show(&app); } }); },
+                    "start"|"stop" => { if signed_updates::is_installing() { show(app); return; } let app=app.clone(); let command=event.id.as_ref().to_owned(); tauri::async_runtime::spawn(async move { let state=app.state::<Backend>(); let result=state.0.lock().unwrap().call(&command,json!({})); if result.is_err() { show(&app); } }); },
                     "quit" => app.exit(0), _=>()
                 }).on_tray_icon_event(|tray,event| if let TrayIconEvent::Click{button:MouseButton::Left,button_state:MouseButtonState::Up,..}=event {show(tray.app_handle());});
             if let Some(icon)=app.default_window_icon() {tray=tray.icon(icon.clone());}
             tray.build(app)?;
+            if arguments.iter().any(|arg| arg == "--autostart") {
+                // Login launch is headless. Normal launches retain the explicit
+                // Start / Connect workflow, avoiding surprise background work.
+                if let Some(window) = app.get_webview_window("main") { let _ = window.hide(); }
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let state = handle.state::<Backend>();
+                    let enabled = state.0.lock().ok().and_then(|mut bridge|
+                        bridge.call("status", json!({})).ok()
+                    ).is_some_and(|status| status["config"]["autostart"] == true);
+                    if !enabled { return; }
+                    let started = state.0.lock().ok().and_then(|mut bridge|
+                        bridge.call("start", json!({})).ok()
+                    );
+                    if let Some(status) = started {
+                        if status["config"]["credential_saved"] == true
+                            && status["config"]["tunnel_id"].as_str().is_some_and(|id| !id.is_empty()) {
+                            if let Ok(mut bridge) = state.0.lock() {
+                                let _ = bridge.call("connect", json!({}));
+                            }
+                        }
+                    }
+                });
+            } else {
+                show(&app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window,event| if let tauri::WindowEvent::CloseRequested{api,..}=event {api.prevent_close();let _=window.hide();})

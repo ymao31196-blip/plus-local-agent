@@ -1,0 +1,51 @@
+--- a/wps-office-mcp/scripts/wps-com.ps1
++++ b/wps-office-mcp/scripts/wps-com.ps1
+@@ -2837,6 +2837,39 @@
+         Output-Json @{ success = $true; data = @{ slideIndex = $position; layout = $layoutKey } }
+     }
+ 
++    "setSlideSize" {
++        $ppt = Get-WpsPpt
++        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
++        $pres = Get-TargetPres $ppt $p
++        if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; exit }
++        $width = [double]$p.width
++        $height = [double]$p.height
++        if ($width -le 0 -or $height -le 0) { Output-Json @{ success = $false; error = "Slide dimensions must be positive" }; exit }
++        $pres.PageSetup.SlideWidth = $width
++        $pres.PageSetup.SlideHeight = $height
++        Output-Json @{ success = $true; data = @{ width = $pres.PageSetup.SlideWidth; height = $pres.PageSetup.SlideHeight } }
++    }
++
++    "setFontColor" {
++        $ppt = Get-WpsPpt
++        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
++        $pres = Get-TargetPres $ppt $p
++        if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; exit }
++        $slideIndex = [int]$p.slideIndex
++        $shapeIndex = [int]$p.shapeIndex
++        if ($slideIndex -lt 1 -or $shapeIndex -lt 1) { Output-Json @{ success = $false; error = "Slide and shape indexes must be positive" }; exit }
++        $colorName = ([string]$p.color).Trim().ToLowerInvariant()
++        $namedColors = @{ red = "#FF0000"; blue = "#0000FF"; green = "#008000"; black = "#000000"; white = "#FFFFFF"; yellow = "#FFFF00"; gray = "#808080"; grey = "#808080" }
++        if ($namedColors.ContainsKey($colorName)) { $colorName = $namedColors[$colorName] }
++        if ($colorName -notmatch '^#?([0-9a-f]{3}|[0-9a-f]{6})$') { Output-Json @{ success = $false; error = "Unsupported font color" }; exit }
++        $rgb = Convert-HexColorToRgbInt $colorName
++        $slide = $pres.Slides.Item($slideIndex)
++        $shape = $slide.Shapes.Item($shapeIndex)
++        if (-not $shape.HasTextFrame) { Output-Json @{ success = $false; error = "Shape has no text frame" }; exit }
++        $shape.TextFrame.TextRange.Font.Color.RGB = $rgb
++        Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; shapeIndex = $shapeIndex; color = $colorName } }
++    }
++
+     "addTextBox" {
+         $ppt = Get-WpsPpt
+         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
+@@ -2851,7 +2884,7 @@
+         $shape.TextFrame.TextRange.Text = $p.text
+         if ($p.fontSize) { $shape.TextFrame.TextRange.Font.Size = $p.fontSize }
+         if ($p.fontName) { $shape.TextFrame.TextRange.Font.Name = $p.fontName }
+-        Output-Json @{ success = $true; data = @{ shapeName = $shape.Name } }
++        Output-Json @{ success = $true; data = @{ name = $shape.Name; shapeName = $shape.Name; slideIndex = $slideIndex } }
+     }
+ 
+     "deleteTextBox" {

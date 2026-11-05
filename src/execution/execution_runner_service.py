@@ -105,7 +105,7 @@ def _resolve_cwd(selected_root: str, cwd_relative: str) -> Path:
     if not isinstance(cwd_relative, str) or not cwd_relative:
         raise ValueError("cwd_relative must be a non-empty string")
     configured_roots = {}
-    if selected_root not in {"workspace", "pla"}:
+    if selected_root.casefold() not in {"workspace", "pla"}:
         configured_roots = load_workspace_roots(_workspace_config_path(), PROJECT_ROOT)
     policy = build_root_policy(WORKSPACE_ROOT, PROJECT_ROOT, configured_roots)
     resolved = policy.resolve(selected_root, cwd_relative, "execute")

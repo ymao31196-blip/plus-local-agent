@@ -20,7 +20,7 @@ EXECUTABLE_LOCAL_TOOLS = frozenset(LOCAL_TOOL_FUNCTIONS)
 # and governed Git mutations remain individually callable through the same
 # executor (including submit_task) but cannot be composed in a batch.
 ACTION_LOCAL_TOOLS = frozenset({
-    "list_directory", "read_text", "extract_document_text", "write_text", "replace_text", "search_text",
+    "file_operation", "list_directory", "read_text", "extract_document_text", "write_text", "replace_text", "search_text",
     "git_status", "git_diff", "git_log", "git_show",
     "project_state_get", "project_decisions_get", "project_evidence_get",
     "project_acceptance_get", "project_acceptance_evaluations_get",
@@ -39,6 +39,16 @@ INTERNAL_TOOL_SCHEMAS = [
      "input_schema": {"type": "object", "properties": {
          "path": {"type": "string", "default": "."},
          "root": {"type": "string", "minLength": 1, "default": "workspace"}}}},
+    {"name": "file_operation", "description": "安全文件整理：创建目录、复制文件、移动、重命名、ZIP压缩、解压。 Safely manage files and folders with bounded ZIP operations.",
+     "input_schema": {"type": "object", "properties": {
+         "operation": {"type": "string", "enum": ["mkdir", "copy", "move", "rename", "archive_create", "archive_extract"]},
+         "destination": {"type": "string", "minLength": 1},
+         "source": {"type": ["string", "null"], "default": None},
+         "sources": {"type": ["array", "null"], "items": {"type": "string"}, "maxItems": 128, "default": None},
+         "root": {"type": "string", "minLength": 1, "default": "workspace"},
+         "destination_root": {"type": ["string", "null"], "default": None},
+         "overwrite": {"type": "boolean", "default": False}},
+         "required": ["operation", "destination"], "additionalProperties": False}},
     {"name": "read_text", "description": "Read selected lines from a UTF-8 text file.",
      "input_schema": {"type": "object", "properties": {
          "path": {"type": "string"}, "start_line": {"type": "integer", "default": 1},
@@ -364,14 +374,16 @@ def _execute_local_tool(tool_name: str, arguments: dict[str, Any]) -> LocalToolR
 def execute_local_tool(tool_name: str, arguments: dict[str, Any]) -> LocalToolResult:
     # Unrecognized caller strings may contain user data; never persist them.
     activity_name = tool_name if tool_name in EXECUTABLE_LOCAL_TOOLS else "unknown_local_tool"
-    call_id = record_internal_action_start(activity_name)
+    call_id = record_internal_action_start(activity_name, arguments)
     observe("action_started", tool=tool_name)
     try:
         outcome = _execute_local_tool(tool_name, arguments)
-    except BaseException:
-        record_internal_action_finish(activity_name, call_id, False)
+    except BaseException as exc:
+        record_internal_action_finish(activity_name, call_id, False, exception=exc)
         raise
-    record_internal_action_finish(activity_name, call_id, outcome.ok)
+    record_internal_action_finish(
+        activity_name, call_id, outcome.ok, result=outcome.result, error=outcome.error,
+    )
     if tool_name in {"run_process", "run_powershell"} and isinstance(outcome.result, dict):
         for stream in ("stdout", "stderr"):
             value = outcome.result

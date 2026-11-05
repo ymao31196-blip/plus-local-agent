@@ -15,19 +15,26 @@ const assert = require('node:assert/strict');
     await page.addInitScript(() => {
       window.rpcCalls = [];
       window.activityUnavailable = false;
+      window.moreActivities = false;
       window.__TAURI__ = { core: { invoke: async (command, request) => {
         if (command !== 'manage') throw new Error('Unexpected native RPC');
         window.rpcCalls.push(request.command);
         if (request.command === 'activity_recent') {
+          const component = { id: '3', tool: 'browser.navigate', source: 'capability',
+            provider: 'browser', capability: 'browser.navigate',
+            started_at: new Date().toISOString(), outcome: 'failed' };
           return window.activityUnavailable ? { available: false, activities: [] } : {
             available: true, activities: [
               { id: '1', tool: 'write_text', source: 'native_mcp',
                 started_at: new Date().toISOString(), outcome: 'success' },
-              { id: '2', tool: 'run_process', source: 'native_mcp',
+              { id: '2', tool: 'run_process', source: 'native_mcp', program: 'python.exe',
                 started_at: new Date().toISOString(), outcome: 'unknown' },
-              { id: '3', tool: 'browser.navigate', source: 'capability',
-                started_at: new Date().toISOString(), outcome: 'failed' }
-            ]
+              component,
+              ...(window.moreActivities ? Array.from({ length: 8 }, (_, i) => ({
+                id: 'extra-' + i, tool: 'run_process', source: 'native_mcp', program: 'python',
+                started_at: new Date().toISOString(), outcome: 'success'
+              })) : [])
+            ], component_activities: [component]
           };
         }
         if (request.command === 'status') return {
@@ -43,8 +50,28 @@ const assert = require('node:assert/strict');
     await page.goto(pathToFileURL(path.join(__dirname, '../ui/index.html')).href);
     await page.waitForFunction(() => document.querySelectorAll('.activity-row').length === 3);
     assert.match(await page.locator('#activity-list').textContent(), /write_text.*成功/s);
-    assert.match(await page.locator('#activity-list').textContent(), /run_process.*尚无结束记录/s);
-    assert.match(await page.locator('#activity-list').textContent(), /browser.navigate.*失败/s);
+    assert.match(await page.locator('#activity-list').textContent(), /python.exe.*run_process.*进行中/s);
+    assert.match(await page.locator('#activity-list').textContent(), /Browser.*navigate.*失败/s);
+    await page.locator('#activity-filter').selectOption('capability');
+    assert.equal(await page.locator('.activity-row').count(), 1);
+    assert.match(await page.locator('#activity-list').textContent(), /Browser.*navigate/s);
+    await page.locator('.activity-row summary').click();
+    assert.ok(await page.locator('.activity-details').isVisible());
+    assert.match(await page.locator('.activity-details').textContent(), /组件ID.*browser/s);
+    await page.locator('#activity-filter').selectOption('process');
+    assert.equal(await page.locator('.activity-row').count(), 2);
+    await page.locator('#activity-filter').selectOption('all');
+
+    await page.evaluate(() => { window.moreActivities = true; });
+    await page.evaluate(() => refreshActivity());
+    assert.equal(await page.locator('.activity-row').count(), 6);
+    assert.ok(await page.locator('#activity-more').isVisible());
+    await page.locator('#activity-more').click();
+    assert.equal(await page.locator('.activity-row').count(), 11);
+    await page.locator('#activity-more').click();
+    assert.equal(await page.locator('.activity-row').count(), 6);
+    await page.evaluate(() => { window.moreActivities = false; });
+    await page.evaluate(() => refreshActivity());
 
     await page.evaluate(() => notice('已保存', false));
     assert.ok(await page.locator('#notice').isVisible());

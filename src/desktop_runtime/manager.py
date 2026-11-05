@@ -19,6 +19,9 @@ from desktop_runtime.config import DesktopConfig, atomic_write, redact
 from desktop_runtime.health import TunnelReadiness
 from desktop_runtime.components import ComponentProject
 from desktop_runtime.pet_companion import PetCompanion
+from desktop_runtime.routing_guide import read_guide, save_guide
+from desktop_runtime.updates import check_stable_release
+from desktop_runtime.update_safety import unfinished_tasks
 from desktop_runtime.capability_bridge import checked_provider_action, checked_skill_action
 from host.workspace_manager import workspace_registry_status, workspace_registry_upsert, workspace_registry_remove
 from execution.user_program_permissions import snapshot as program_permissions_snapshot, change_permission
@@ -399,13 +402,47 @@ class Manager:
             raise ValueError("Arguments must be an object")
         if command == "status":
             return self.status()
+        if command == "update_check":
+            if args:
+                raise ValueError("Update check takes no arguments")
+            return check_stable_release(self.config.public()["version"])
+        if command == "autostart_preference":
+            if args:
+                raise ValueError("Autostart preference takes no arguments")
+            return {"enabled": self.config.value["autostart"]}
+        if command == "update_preflight":
+            if args:
+                raise ValueError("Update preflight takes no arguments")
+            active = sorted(role for role in self.children if self._alive(role))
+            if self._installer_locks:
+                active.append("component_installation_lock")
+            # The runner may have outlived a crashed Runtime. The durable task
+            # ledger must also show no queued/running jobs before installation.
+            count, task_error = unfinished_tasks(self.config.root / "state" / "tasks.sqlite3")
+            if task_error:
+                active.append(task_error)
+            elif count:
+                active.append("unfinished_background_tasks")
+            return {"ready": not active, "active_roles": active,
+                    "unfinished_tasks": count}
         if command == "activity_recent":
             if args:
                 raise ValueError("Recent activity takes no arguments")
-            activity = recent_activity(self.config.root / "state" / "events.sqlite3", limit=5)
+            event_db = self.config.root / "state" / "events.sqlite3"
+            activity = recent_activity(event_db, limit=18)
+            component_activity = recent_activity(event_db, limit=12, only_components=True)
             alive = self._alive("runtime")
-            return {**activity, "runtime_alive": alive,
+            return {**activity,
+                    "available": activity["available"] and component_activity["available"],
+                    "component_activities": component_activity["activities"],
+                    "runtime_alive": alive,
                     "runtime_started_at": self.runtime_started_at if alive else None}
+        if command == "routing_guide_read":
+            if args:
+                raise ValueError("Routing read takes no arguments")
+            return read_guide(self.config.root, self.resources)
+        if command == "routing_guide_save":
+            return save_guide(self.config.root, self.resources, args)
         if command == "pet_status":
             if args:
                 raise ValueError("Pet status takes no arguments")

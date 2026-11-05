@@ -6,19 +6,30 @@ Loads user-supplied PNG animation frames without registering a PLA MCP tool.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
 import random
+import re
 import sqlite3
 import sys
 import time
 
 BASE = Path(__file__).resolve().parent
-EVENT_NAMES = ("capability.before_invoke", "capability.succeeded", "capability.failed",
-               "native_tool.started", "native_tool.succeeded", "native_tool.failed")
+EVENT_NAMES = (
+    "capability.before_invoke", "capability.succeeded",
+    "capability.failed", "capability.gate_denied", "capability.policy_denied",
+    "native_tool.started", "native_tool.succeeded", "native_tool.failed",
+    "local_action.started", "local_action.succeeded", "local_action.failed",
+)
+_SAFE_PROGRAM = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}\Z")
+PROVIDER_NAMES = {
+    "browser": "Browser", "drawio": "draw.io", "skill-library": "Skill Library",
+    "core": "PLA Core", "runtime": "PLA Runtime", "windows": "Windows",
+}
 POLL_MS = 1200
-MAX_ROWS = 5
+MAX_ROWS = 4
 ACTIVE_SECONDS = 20
 QUIET_SECONDS = 90
 PENDING_STALE_SECONDS = 900
@@ -45,6 +56,38 @@ def parse_timestamp(iso: str) -> float | None:
         return None
 
 
+def last_call_label(last_event: float | None, now: float | None = None) -> str:
+    """Short relative timing followed by stable local clock labels."""
+    if last_event is None:
+        return "尚无调用记录"
+    now = time.time() if now is None else now
+    age = max(0, int(now - last_event))
+    if age < 20:
+        return "刚刚调用"
+    if age < 60:
+        return "上次调用 · 不到1分钟前"
+    if age < 15 * 60:
+        return f"上次调用 · {age // 60}分钟前"
+    recent = datetime.fromtimestamp(last_event)
+    today = datetime.fromtimestamp(now).date()
+    if recent.date() == today:
+        when = f"今天 {recent:%H:%M}"
+    elif recent.date() == today - timedelta(days=1):
+        when = f"昨天 {recent:%H:%M}"
+    else:
+        when = recent.strftime("%m-%d %H:%M")
+    return f"上次调用 · {when}"
+
+
+def fit_text_width(text: str, measure, max_width: int) -> str:
+    """Keep canvas labels one line without relying on character count."""
+    if measure(text) <= max_width:
+        return text
+    while text and measure(text + "…") > max_width:
+        text = text[:-1]
+    return text + "…" if text else "…"
+
+
 @dataclass(frozen=True)
 class ToolCall:
     name: str
@@ -52,6 +95,22 @@ class ToolCall:
     event_time: float
     started_sequence: int
     status: str  # running | succeeded | failed
+    source: str = "native_mcp"
+    provider: str | None = None
+    program: str | None = None
+
+
+def describe_call(call: ToolCall) -> tuple[str, str]:
+    """User-facing identity without inferring a component from a process name."""
+    if call.source == "capability":
+        provider = call.provider or "组件能力"
+        label = PROVIDER_NAMES.get(provider, provider)
+        operation = call.name.removeprefix(provider + ".")
+        return label, f"{operation} · 组件调用"
+    if call.name == "run_process":
+        return f"程序 · {call.program or '未知程序'}", "run_process · 本地执行"
+    kind = "MCP工具" if call.source == "native_mcp" else "内部Action"
+    return call.name, kind
 
 
 @dataclass(frozen=True)
@@ -62,36 +121,58 @@ class Snapshot:
     last_event: float | None
 
 
+def _program_label(value: object) -> str | None:
+    # The runtime writes a sanitized basename. Re-validate on read because event
+    # databases can also contain legacy/third-party records.
+    return value if isinstance(value, str) and _SAFE_PROGRAM.fullmatch(value) else None
+
+
 def build_snapshot(rows: list[tuple], now: float, max_rows: int = MAX_ROWS) -> Snapshot:
-    # Collapse "before" and terminal events into one row per invocation.
-    calls: dict[str, dict] = {}
+    # Collapse start and terminal events. Never read tool arguments or file data.
+    calls: dict[tuple[str, str], dict] = {}
     latest: float | None = None
-    for seq, timestamp, event_type, capability_id, correlation_id in reversed(rows):
+    for row in reversed(rows):
+        seq, timestamp, event_type, name, correlation_id, *extra = row
+        source = extra[0] if len(extra) > 0 else "native_mcp"
+        provider = extra[1] if len(extra) > 1 and source == "capability" else None
+        raw_payload = extra[2] if len(extra) > 2 else None
         at = parse_timestamp(timestamp)
         if at is None:
             continue
         latest = max(latest or at, at)
-        key = str(correlation_id or f"seq-{seq}")
+        key = (source, str(correlation_id or f"seq-{seq}"))
         entry = calls.setdefault(key, {
-            "name": str(capability_id or "unknown")[:96],
+            "name": str(name or "unknown")[:96],
             "first": at, "sequence": int(seq), "status": "running",
+            "source": source, "provider": str(provider)[:64] if provider else None,
+            "program": None,
         })
-        if event_type in ("capability.before_invoke", "native_tool.started"):
-            entry["first"] = at
-            entry["sequence"] = int(seq)
-        elif event_type in ("capability.succeeded", "native_tool.succeeded"):
+        if event_type.endswith((".started", ".before_invoke")):
+            entry["first"], entry["sequence"] = at, int(seq)
+            if entry["name"] == "run_process" and raw_payload:
+                try:
+                    payload = json.loads(raw_payload)
+                    if isinstance(payload, dict):
+                        entry["program"] = _program_label(payload.get("program"))
+                except (TypeError, ValueError):
+                    pass
+        elif event_type.endswith((".succeeded",)):
             entry["status"] = "succeeded"
-        elif event_type in ("capability.failed", "native_tool.failed"):
+        elif event_type.endswith((".failed", ".gate_denied", ".policy_denied")):
             entry["status"] = "failed"
     picked = sorted(calls.values(), key=lambda x: x["sequence"], reverse=True)[:max_rows]
-    records = tuple(ToolCall(x["name"], datetime.fromtimestamp(x["first"]).strftime("%H:%M:%S"),
-                             x["first"], x["sequence"], x["status"]) for x in picked)
+    records = tuple(
+        ToolCall(x["name"], datetime.fromtimestamp(x["first"]).strftime("%H:%M:%S"),
+                 x["first"], x["sequence"], x["status"], x["source"],
+                 x["provider"], x["program"])
+        for x in picked
+    )
     if latest is None:
-        return Snapshot((), "idle", "尚无Capability事件", None)
+        return Snapshot((), "idle", "尚无本地工具活动", None)
     age = max(0.0, now - latest)
-    waiting = any(v["status"] == "running" for v in calls.values())
+    # A stale older start must not conceal newer successful tool calls.
+    waiting = bool(records and records[0].status == "running")
     if waiting and age < PENDING_STALE_SECONDS:
-        # No terminal event does not imply AI has stopped.
         mode, message = ("active", "调用尚未返回") if age < ACTIVE_SECONDS else ("pending", "可能仍在执行 · 等待返回")
     elif age <= ACTIVE_SECONDS:
         mode, message = "active", "最近有工具活动"
@@ -105,22 +186,33 @@ def build_snapshot(rows: list[tuple], now: float, max_rows: int = MAX_ROWS) -> S
 def fetch_rows(db: Path, limit: int = 250) -> list[tuple]:
     if not db.is_file():
         raise FileNotFoundError(str(db))
-    # SQLite read-only URI: no changes to PLA's event database, schema or WAL.
+    # Read-only SQLite snapshot; no schema migrations or runtime writes.
     uri = db.resolve().as_uri() + "?mode=ro"
     connection = sqlite3.connect(uri, uri=True, timeout=0.3)
     try:
         connection.execute("PRAGMA query_only=ON")
         sql = """
             SELECT sequence, timestamp, event_type,
-                   COALESCE(capability_id, subject) AS tool_name, correlation_id
+                   COALESCE(capability_id, subject) AS tool_name,
+                   correlation_id,
+                   CASE WHEN source = 'capability_broker' THEN 'capability' ELSE source END,
+                   CASE WHEN source = 'capability_broker' THEN provider_id ELSE NULL END,
+                   payload
             FROM runtime_events
             WHERE
                 (source = 'native_mcp'
                  AND event_type IN ('native_tool.started','native_tool.succeeded','native_tool.failed'))
                 OR
+                (source = 'local_action'
+                 AND event_type IN ('local_action.started','local_action.succeeded','local_action.failed'))
+                OR
                 (source = 'capability_broker'
-                 AND capability_id != 'runtime.provider_catalog'
-                 AND event_type IN ('capability.before_invoke','capability.succeeded','capability.failed'))
+                 AND subject NOT LIKE 'runtime.%'
+                 AND subject NOT LIKE 'core.event_%'
+                 AND subject NOT LIKE 'core.hook_%'
+                 AND subject NOT LIKE 'core.gate_%'
+                 AND event_type IN ('capability.before_invoke','capability.succeeded',
+                                    'capability.failed','capability.gate_denied','capability.policy_denied'))
             ORDER BY sequence DESC
             LIMIT ?
         """
@@ -226,6 +318,7 @@ class StatusPhraseController:
 
 def run_gui() -> None:
     import tkinter as tk
+    from tkinter import font as tkfont
 
     root = tk.Tk()
     root.title("PLA Agent Pet")
@@ -237,8 +330,8 @@ def run_gui() -> None:
     fg = "#f2f6ff"
     muted = "#9bacbe"
     font = "Microsoft YaHei UI"
-    # Compact floating panel: keep the original-size character, compress its log.
-    width, height = 480, 224
+    # Restore a compact width while preserving the existing 200px Q character.
+    width, height = 490, 246
     screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
     root.geometry(f"{width}x{height}+{max(0, screen_w-width-40)}+{max(0, screen_h-height-70)}")
     root.configure(bg=trans)
@@ -254,8 +347,8 @@ def run_gui() -> None:
         return canvas.create_polygon(ps, smooth=True, splinesteps=16, fill=fill, outline=outline)
 
     # No separate title, branding card or decorative label below the pet.
-    round_rect(203, 12, 471, 212, 16, bg, "#344257")
-    round_rect(211, 51, 463, 183, 10, panel)
+    round_rect(203, 12, 483, 237, 16, bg, "#344257")
+    round_rect(211, 51, 475, 210, 10, panel)
 
     db = default_database()
     frames = {}
@@ -298,19 +391,55 @@ def run_gui() -> None:
     root.bind("<Button-3>", show_menu)
     root.bind("<Escape>",lambda e:root.destroy())
 
-    # One compact status line, then five single-line tool records.
-    status_text = canvas.create_text(218, 31, anchor="w", text="", font=(font,10,"bold"),fill=fg)
-    status_dot = canvas.create_oval(447, 26, 455, 34, fill="#8599b1",outline="")
+    # Two lines per action. The outcome symbol follows the title, not the panel edge.
+    title_font = tkfont.Font(root=root, family=font, size=10, weight="bold")
+    sub_font = tkfont.Font(root=root, family=font, size=8)
+    header_font = tkfont.Font(root=root, family=font, size=10, weight="bold")
+    status_text = canvas.create_text(218, 31, anchor="w", text="", font=header_font, fill=fg)
+    status_dot = canvas.create_oval(462, 26, 470, 34, fill="#8599b1",outline="")
     detail = []
     for i in range(MAX_ROWS):
-        y = 64 + i*25
+        y = 62 + i * 40
         if i:
-            canvas.create_line(219,y-12,451,y-12,fill="#354359")
-        left = canvas.create_text(219,y,anchor="w",text="",font=(font,9),fill=muted)
-        middle=canvas.create_text(282,y,anchor="w",text="",font=(font,10),fill=fg)
-        right=canvas.create_text(450,y,anchor="e",text="",font=(font,11,"bold"),fill="#66d7af")
-        detail.append((left,middle,right))
-    footer=canvas.create_text(218,199,anchor="w",text="",font=(font,8),fill=muted)
+            canvas.create_line(218,y-14,464,y-14,fill="#354359")
+        left = canvas.create_text(218,y+6,anchor="w",text="",font=(font,9),fill=muted)
+        title = canvas.create_text(276,y,anchor="w",text="",font=title_font,fill=fg)
+        description = canvas.create_text(276,y+14,anchor="w",text="",font=sub_font,fill=muted)
+        right = canvas.create_text(460,y+4,anchor="center",text="",font=(font,11,"bold"),fill="#66d7af")
+        detail.append((left,title,description,right))
+    footer=canvas.create_text(218,225,anchor="w",text="",font=(font,8),fill=muted)
+    # Keep the pet narrow: hovering over a clipped label reveals its full name.
+    tooltip = {"window": None}
+    def hide_tooltip(_event=None):
+        if tooltip["window"] is not None:
+            tip = tooltip["window"]
+            tooltip["window"] = None
+            tip.destroy()
+    def show_tooltip(index):
+        hide_tooltip()
+        if not last_snapshot or index >= len(last_snapshot.calls):
+            return
+        call = last_snapshot.calls[index]
+        name, subtitle = describe_call(call)
+        if title_font.measure(name) <= 161 and sub_font.measure(subtitle) <= 185:
+            return
+        popup = tk.Toplevel(root)
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+        tk.Label(popup, text=name + "\n" + subtitle + "\n" + call.name,
+                 bg="#202d43", fg="#f2f6ff", font=(font,9),
+                 justify="left", padx=10, pady=8, wraplength=310).pack()
+        popup.update_idletasks()
+        x = min(root.winfo_screenwidth() - popup.winfo_width(),
+                root.winfo_pointerx() + 14)
+        y = min(root.winfo_screenheight() - popup.winfo_height(),
+                root.winfo_pointery() + 22)
+        popup.geometry(f"+{max(0,x)}+{max(0,y)}")
+        tooltip["window"] = popup
+    for index, widgets in enumerate(detail):
+        for item in widgets[1:3]:
+            canvas.tag_bind(item, "<Enter>", lambda _e, i=index: show_tooltip(i))
+            canvas.tag_bind(item, "<Leave>", hide_tooltip)
     colors={"active":"#65d8a4","pending":"#f0bf6d","quiet":"#9ab3ff",
             "idle":"#899bb1","failed":"#f38181","disconnected":"#f38181"}
     phrases = StatusPhraseController()
@@ -322,25 +451,31 @@ def run_gui() -> None:
         last_snapshot=s
         last_poll=time.time()
         status_line, current_mode = phrases.update(s, now=last_poll)
-        canvas.itemconfigure(status_text,text=status_line,fill=colors.get(current_mode,fg))
+        if current_mode in {"active", "pending", "failed"} and s.calls:
+            current_title, _ = describe_call(s.calls[0])
+            status_line += " · " + current_title[:16]
+        canvas.itemconfigure(status_text,
+                             text=fit_text_width(status_line, header_font.measure, 233),
+                             fill=colors.get(current_mode,fg))
         canvas.itemconfigure(status_dot,fill=colors.get(current_mode,muted))
         for i, widgets in enumerate(detail):
             if i < len(s.calls):
                 call=s.calls[i]
-                name=call.name if len(call.name)<=19 else "…"+call.name[-18:]
+                title, subtitle = describe_call(call)
+                title = fit_text_width(title, title_font.measure, 161)
+                subtitle = fit_text_width(subtitle, sub_font.measure, 185)
                 state={"running":"…","succeeded":"✓","failed":"×"}.get(call.status,"–")
                 state_color={"running":"#f0bf6d","succeeded":"#67d8ad","failed":"#f38181"}.get(call.status,fg)
+                # Keep the state glyph close to its text even for short labels.
+                state_x = min(461, 276 + title_font.measure(title) + 14)
+                canvas.coords(widgets[3], state_x, 62 + i * 40 + 4)
                 canvas.itemconfigure(widgets[0],text=call.time_label)
-                canvas.itemconfigure(widgets[1],text=name)
-                canvas.itemconfigure(widgets[2],text=state,fill=state_color)
+                canvas.itemconfigure(widgets[1],text=title)
+                canvas.itemconfigure(widgets[2],text=subtitle)
+                canvas.itemconfigure(widgets[3],text=state,fill=state_color)
             else:
                 for item in widgets: canvas.itemconfigure(item,text="")
-        if s.last_event:
-            diff=int(max(0,time.time()-s.last_event))
-            ago=f"上次调用 {diff}秒前" if diff<3600 else f"上次调用 {diff//60}分钟前"
-        else:
-            ago="等待工具记录"
-        canvas.itemconfigure(footer,text=ago)
+        canvas.itemconfigure(footer,text=last_call_label(s.last_event, last_poll))
 
     def tick():
         nonlocal frame_idx
@@ -362,7 +497,8 @@ if __name__ == "__main__":
         print(f"db={default_database()}")
         print(f"mode={snapshot.mode} message={snapshot.message}")
         for r in snapshot.calls:
-            print(f"{r.time_label} | {r.name} | {r.status}")
+            title, subtitle = describe_call(r)
+            print(f"{r.time_label} | {title} | {subtitle} | {r.status}")
     else:
         try:
             run_gui()

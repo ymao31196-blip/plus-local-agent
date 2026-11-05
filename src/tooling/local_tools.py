@@ -114,7 +114,7 @@ def truncate_text(value: str, limit: int = MAX_TEXT_CHARACTERS) -> dict[str, Any
 def root_policy(root_hint: str | None = None) -> RootPolicy:
     """Build built-ins directly; load machine-local roots only when needed."""
     configured_roots = {}
-    if root_hint not in {"workspace", "pla"}:
+    if not isinstance(root_hint, str) or root_hint.casefold() not in {"workspace", "pla"}:
         configured_roots = load_workspace_roots(workspace_config_path(), PLA_ROOT)
     return build_root_policy(WORKSPACE, PLA_ROOT, configured_roots)
 
@@ -553,6 +553,8 @@ def search_text(
         needle = query if case_sensitive else query.casefold()
         matches: list[dict[str, Any]] = []
         truncated = False
+        skipped_count = 0
+        skipped_examples: list[dict[str, str]] = []
         deadline = datetime.now(timezone.utc).timestamp() + 30
 
         def fallback_files():
@@ -578,26 +580,43 @@ def search_text(
             relative = _relative_path(resolved, root)
             if glob is not None and not Path(relative).match(glob):
                 continue
+            # Stage matches per file so a later decoding error cannot leak
+            # partial results from a binary or otherwise unreadable file.
+            pending_matches: list[dict[str, Any]] = []
+            skip_reason: str | None = None
             try:
-                handle = resolved.open("r", encoding="utf-8")
-            except (OSError, UnicodeError):
+                with resolved.open("rb") as handle:
+                    for line_number, raw_line in enumerate(handle, start=1):
+                        if b"\x00" in raw_line:
+                            skip_reason = "binary_content"
+                            break
+                        try:
+                            line = raw_line.decode("utf-8")
+                        except UnicodeError:
+                            skip_reason = "invalid_utf8"
+                            break
+                        haystack = line if case_sensitive else line.casefold()
+                        if needle not in haystack:
+                            continue
+                        if len(matches) + len(pending_matches) == max_results:
+                            truncated = True
+                            break
+                        pending_matches.append({
+                            "path": relative,
+                            "line": line_number,
+                            "text": line.rstrip("\r\n"),
+                        })
+            except OSError:
+                skip_reason = "unreadable"
+            if skip_reason is not None:
+                skipped_count += 1
+                if len(skipped_examples) < 10:
+                    skipped_examples.append({"path": relative, "reason": skip_reason})
                 continue
-            with handle:
-                for line_number, line in enumerate(handle, start=1):
-                    haystack = line if case_sensitive else line.casefold()
-                    if needle not in haystack:
-                        continue
-                    if len(matches) == max_results:
-                        truncated = True
-                        break
-                    matches.append({
-                        "path": relative,
-                        "line": line_number,
-                        "text": line.rstrip("\r\n"),
-                    })
+            matches.extend(pending_matches)
             if truncated:
                 break
-        return {
+        result = {
             "status": "completed",
             "query": query,
             "path": _relative_path(target, root),
@@ -605,6 +624,12 @@ def search_text(
             "match_count": len(matches),
             "truncated": truncated,
         }
+        if skipped_count:
+            result["skipped_files"] = {
+                "count": skipped_count,
+                "examples": skipped_examples,
+            }
+        return result
 
     command = [executable, "--json", "--color", "never", "--fixed-strings"]
     if not case_sensitive:
@@ -3421,7 +3446,19 @@ def project_verifications_get(
     return get_verifications(project_path, limit, root)
 
 
+@workspace_mutation
+def file_operation(
+    operation: str, destination: str,
+    source: str | None = None, sources: list[str] | None = None,
+    root: str = "workspace", destination_root: str | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    from tooling.file_operations import file_operation as perform
+    return perform(operation, destination, source, sources, root, destination_root, overwrite)
+
+
 LOCAL_TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
+    "file_operation": file_operation,
     "list_directory": list_directory,
     "read_text": read_text,
     "extract_document_text": extract_document_text,

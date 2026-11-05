@@ -3,10 +3,11 @@ import argparse
 import importlib.metadata
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import tarfile
 import tomllib
 
 
@@ -47,21 +48,63 @@ def required_cargo_packages(lock_path, target=None):
     return target, packages
 
 
-def preserve_source_archive(package, cargo_home, output):
-    """Retain original checksum-verified MPL source; never substitute a source offer alone."""
+def preserve_source_archive(package, cargo_home, output, subdirectory='mpl-sources'):
+    """Preserve a crates.io archive only after verifying its Cargo.lock checksum."""
     basename = f"{package['name']}-{package['version']}.crate"
-    archives = list((cargo_home / 'registry/cache').glob(f'*/{basename}'))
+    archives = sorted((cargo_home / 'registry/cache').glob(f'*/{basename}'))
     if not archives:
-        raise ValueError(f'MPL source archive missing: {basename}')
-    data = archives[0].read_bytes()
-    if hashlib.sha256(data).hexdigest() != package['checksum']:
-        raise ValueError(f'MPL source archive hash mismatch: {basename}')
-    destination = output / 'mpl-sources' / basename
+        raise ValueError(f'Rust source archive missing: {basename}')
+    expected = package.get('checksum')
+    if not expected or len(expected) != 64:
+        raise ValueError(f'Missing Cargo.lock checksum for Rust source: {basename}')
+    source = None
+    for candidate in archives:
+        if hashlib.sha256(candidate.read_bytes()).hexdigest() == expected:
+            source = candidate
+            break
+    if source is None:
+        raise ValueError(f'Rust source archive hash mismatch: {basename}')
+    destination = output / subdirectory / basename
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(data)
-    return {'name': package['name'], 'version': package['version'], 'sha256': package['checksum'],
+    shutil.copyfile(source, destination)
+    return {'name': package['name'], 'version': package['version'], 'sha256': expected,
             'archive': str(destination.relative_to(output)),
             'source': f"https://static.crates.io/crates/{package['name']}/{basename}"}
+
+
+def license_from_verified_archive(package, archive, output):
+    """Read only LICENSE files and Cargo metadata from a checksum-verified .crate.
+
+    Rust's cargo fetch downloads registry/cache archives without necessarily
+    expanding them into registry/src. Never treat an unverified archive as source
+    or extract arbitrary archive members to the destination.
+    """
+    basename = f"{package['name']}-{package['version']}"
+    prefix = basename + '/'
+    texts = []
+    metadata = {}
+    with tarfile.open(archive, mode='r:gz') as distribution:
+        for member in distribution:
+            if not member.isfile() or not member.name.startswith(prefix):
+                continue
+            relative = PurePosixPath(member.name[len(prefix):])
+            if (not relative.parts or relative.is_absolute()
+                    or '..' in relative.parts or member.size > 2_000_000):
+                continue
+            if str(relative) == 'Cargo.toml':
+                file = distribution.extractfile(member)
+                if file is not None:
+                    metadata = tomllib.loads(file.read().decode('utf-8'))['package']
+            if not is_license_text(relative.name):
+                continue
+            file = distribution.extractfile(member)
+            if file is None:
+                continue
+            destination = output / 'rust' / basename / Path(*relative.parts)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(file.read())
+            texts.append(str(destination.relative_to(output)))
+    return texts, metadata
 
 
 def main():
@@ -100,13 +143,16 @@ def main():
         target, required = required_cargo_packages(args.cargo_lock, args.cargo_target)
         entries = []
         source_archives = []
+        cached_archives = []
         for package in packages:
             if not package.get('source', '').startswith('registry+'):
                 continue
+            required_for_target = (package['name'], package['version']) in required
             directory = next((registry / f"{package['name']}-{package['version']}" for registry in registries
                               if (registry / f"{package['name']}-{package['version']}").is_dir()), None)
             metadata = tomllib.loads((directory / 'Cargo.toml').read_text(encoding='utf-8'))['package'] if directory else {}
             texts = []
+            archive_record = None
             if directory:
                 for source in directory.rglob('*'):
                     if source.is_file() and is_license_text(source.name):
@@ -114,19 +160,31 @@ def main():
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copyfile(source, destination)
                         texts.append(str(destination.relative_to(args.output)))
+            elif required_for_target:
+                # cargo fetch may have downloaded the verified .crate while
+                # leaving registry/src empty; preserve the complete source
+                # archive in the delivery instead of claiming source is absent.
+                archive_record = preserve_source_archive(
+                    package, args.cargo_home, args.output, subdirectory='rust-source-archives')
+                archived_texts, metadata = license_from_verified_archive(
+                    package, args.output / archive_record['archive'], args.output)
+                texts.extend(archived_texts)
+                cached_archives.append(archive_record)
             supplemental_source = None
             if not texts:
                 texts, supplemental_source = supplemental_license('rust', package['name'], package['version'], args.output)
-            required_for_target = (package['name'], package['version']) in required
-            if required_for_target and (directory is None or not texts):
+            source_available = directory is not None or archive_record is not None
+            if required_for_target and (not source_available or not texts):
                 raise ValueError(f'Target dependency has no preserved source/license: {package["name"]} {package["version"]}')
             if required_for_target and 'MPL' in (metadata.get('license') or ''):
                 source_archives.append(preserve_source_archive(package, args.cargo_home, args.output))
             entries.append({'name': package['name'], 'version': package['version'], 'checksum': package.get('checksum'),
-                            'license': metadata.get('license'), 'license_files': texts, 'source_available': directory is not None,
+                            'license': metadata.get('license'), 'license_files': texts, 'source_available': source_available,
+                            'source_archive': archive_record['archive'] if archive_record else None,
                             'required_for_target': required_for_target, 'target': target,
                             'supplemental_source': supplemental_source})
         (args.output / 'rust-resolved-dependencies.json').write_text(json.dumps(entries, indent=2), encoding='utf-8')
+        (args.output / 'rust-source-archives.json').write_text(json.dumps(cached_archives, indent=2), encoding='utf-8')
         (args.output / 'mpl-source-archives.json').write_text(json.dumps(source_archives, indent=2), encoding='utf-8')
 
 

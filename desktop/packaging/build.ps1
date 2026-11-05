@@ -5,7 +5,10 @@ param(
     [string]$SkillLibrarySource = "",
     [string]$SkillLibraryWheel = "",
     [switch]$SkipRuntime,
-    [switch]$SkipAcceptance
+    [switch]$SkipAcceptance,
+    [string]$UpdaterPublicKeyFile = "",
+    [switch]$LocalSignedTest,
+    [ValidateRange(1,16)][int]$CargoJobs = 2
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
@@ -13,6 +16,28 @@ $buildRoot = Join-Path $projectRoot ".desktop-build"
 $resources = Join-Path $projectRoot "desktop\src-tauri\resources"
 $originalDirectory = Get-Location
 $originalPath = $env:PATH
+$originalUpdaterKey = $env:PLA_UPDATER_PUBLIC_KEY
+$originalCargoBuildJobs = $env:CARGO_BUILD_JOBS
+$useSignedUpdater = -not [string]::IsNullOrWhiteSpace($UpdaterPublicKeyFile)
+if ($LocalSignedTest -and -not $useSignedUpdater) {
+    throw "-LocalSignedTest requires a signing public key file; unsigned builds are already available."
+}
+# Preflight the exact CLI that patches the Tauri binary. CLI 2.8.x expects
+# a .taubndl PE section; Rust Tauri 2.12.x emits a different token. Catch
+# stale or unsynchronized npm lockfiles BEFORE expensive runtime work.
+$npmManifest = Get-Content -LiteralPath (Join-Path $projectRoot "desktop\package.json") -Raw | ConvertFrom-Json
+$cliRequested = [string]$npmManifest.devDependencies.'@tauri-apps/cli'
+# npm lockfile v3 contains a legal empty-string key under "packages".
+# Windows PowerShell 5.1 ConvertFrom-Json rejects empty property names, so
+# use the already-required Python JSON parser for this single lookup.
+$lockPath = Join-Path $projectRoot "desktop\package-lock.json"
+$cliLocked = & $Python -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8-sig'))['packages']['node_modules/@tauri-apps/cli']['version'])" $lockPath
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($cliLocked)) {
+    throw "Unable to read the locked Tauri CLI version from package-lock.json."
+}
+if ($cliRequested -ne "2.12.2" -or $cliLocked -ne $cliRequested) {
+    throw "Incompatible Tauri CLI or stale npm lockfile. From desktop, run: npm.cmd install --save-dev --save-exact @tauri-apps/cli@2.12.2"
+}
 function Assert-Exit([string]$Phase) {
     if ($LASTEXITCODE -ne 0) { throw "$Phase failed with exit code $LASTEXITCODE; inspect build logs." }
 }
@@ -45,6 +70,42 @@ function Get-VerifiedArchive([string]$Url, [string]$Name, [string]$Hash) {
 try {
     Set-Location -LiteralPath $projectRoot
     New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
+    # Signing is opt-in and fails closed. Never read or print the private key.
+    Remove-Item Env:PLA_UPDATER_PUBLIC_KEY -ErrorAction SilentlyContinue
+    if ($useSignedUpdater) {
+        if (-not (Test-Path -LiteralPath $UpdaterPublicKeyFile -PathType Leaf)) {
+            throw "Signed release requires a local Tauri public key file."
+        }
+        if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw "Signed release requires TAURI_SIGNING_PRIVATE_KEY in the build environment."
+        }
+        $pubkey = [IO.File]::ReadAllText([IO.Path]::GetFullPath($UpdaterPublicKeyFile), [Text.Encoding]::UTF8).Trim()
+        # Tauri CLI writes the public key as Base64-encoded minisign text.
+        # The decoded text contains 'untrusted comment: minisign public key'
+        # followed by the RW... key line. Do not confuse it with the raw
+        # minisign format, and never expose the signing private key in logs.
+        try {
+            if ($pubkey.Length -lt 80 -or $pubkey.Length -gt 4096) {
+                throw "Unexpected public key length"
+            }
+            $decodedPubkey = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($pubkey))
+            if (-not $decodedPubkey.StartsWith("untrusted comment: minisign public key") -or
+                $decodedPubkey -notmatch '(?m)^RW[A-Za-z0-9+/=]{40,}\r?$') {
+                throw "Invalid minisign public key content"
+            }
+        } catch {
+            throw "The supplied Tauri public key file is invalid: expected a Base64-encoded Tauri minisign public key."
+        }
+        $env:PLA_UPDATER_PUBLIC_KEY = $pubkey
+        # Signed development checks may use a dirty worktree, but are isolated
+        # from publishable release artifacts and visibly marked as test only.
+        if (-not $LocalSignedTest) {
+            & git diff --quiet HEAD --
+            if ($LASTEXITCODE -ne 0 -or @(& git ls-files --others --exclude-standard).Count -gt 0) {
+                throw "Signed release requires a clean reviewed Git worktree."
+            }
+        }
+    }
     if ($ToolchainBin) { $env:PATH = "$ToolchainBin;$env:PATH" }
     # Rustup on Windows sometimes leaves the per-user cargo directory out of PATH.
     # Only use an existing trusted per-user toolchain; never change permanent PATH.
@@ -55,11 +116,24 @@ try {
             $env:PATH = "$cargoBin;$env:PATH"
         }
     }
-    # The previously verified local GNU linker is needed by rustc's Windows GNU target.
-    $mingwBin = Join-Path $buildRoot "toolchain\mingw64\bin"
-    if (-not (Get-Command gcc.exe -ErrorAction SilentlyContinue) -and
-        (Test-Path -LiteralPath (Join-Path $mingwBin "gcc.exe") -PathType Leaf)) {
-        $env:PATH = "$mingwBin;$env:PATH"
+    # Windows GNU builds need a complete MinGW binutils set, including
+    # as.exe. The previously bundled toolchain may have been cleaned up.
+    $mingwCandidates = @(
+        (Join-Path $buildRoot "toolchain\mingw64\bin"),
+        "C:\msys64\mingw64\bin"
+    )
+    $gnuToolsFound = ((Get-Command gcc.exe -ErrorAction SilentlyContinue) -and
+                      (Get-Command as.exe -ErrorAction SilentlyContinue) -and
+                      (Get-Command ld.exe -ErrorAction SilentlyContinue))
+    if (-not $gnuToolsFound) {
+        foreach ($mingwBin in $mingwCandidates) {
+            if ((Test-Path -LiteralPath (Join-Path $mingwBin "gcc.exe") -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $mingwBin "as.exe") -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $mingwBin "ld.exe") -PathType Leaf)) {
+                $env:PATH = "$mingwBin;$env:PATH"
+                break
+            }
+        }
     }
     if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) {
         throw "Cargo not found. Install the Rust toolchain or specify -ToolchainBin; expected per-user location: %USERPROFILE%\.cargo\bin."
@@ -97,6 +171,9 @@ try {
         }
     }
     New-Item -ItemType Directory -Force -Path $resources | Out-Null
+    # Ship editable advisory defaults; user overrides live under PLA_DATA_ROOT/config.
+    Copy-Item -LiteralPath (Join-Path $projectRoot "CHAGENT.md") `
+        -Destination (Join-Path $resources "CHAGENT.md") -Force
     # Local releases rebuild from the exact reviewed source. CI can instead
     # supply the identical SHA-256-verified wheel without private repo access.
     if ($SkillLibrarySource -and $SkillLibraryWheel) {
@@ -217,19 +294,68 @@ try {
         & npm.cmd ci 2>&1 |
             Out-File -FilePath (Join-Path $buildRoot "frontend-dependencies.log") -Encoding utf8 -ErrorAction Stop
     }
+    $tauriArgs = @("run", "build", "--")
+    if ($useSignedUpdater) {
+        # The Tauri CLI reads plugins.updater.pubkey from its merged build
+        # config when signing. The Rust compile-time key alone is not enough.
+        # Keep the tracked template key-free and generate an ignored local
+        # config containing only the *public* key.
+        $updaterTemplatePath = Join-Path $projectRoot "desktop\src-tauri\tauri.updater.conf.json"
+        $updaterConfig = Get-Content -LiteralPath $updaterTemplatePath -Raw | ConvertFrom-Json
+        if ($updaterConfig.bundle.createUpdaterArtifacts -ne $true -or
+            -not $updaterConfig.plugins.updater) {
+            throw "Invalid Tauri updater configuration template."
+        }
+        $updaterConfig.plugins.updater.pubkey = $pubkey
+        $generatedUpdaterConfig = Join-Path $buildRoot "tauri.updater.generated.conf.json"
+        $updaterJson = $updaterConfig | ConvertTo-Json -Depth 20
+        [IO.File]::WriteAllText($generatedUpdaterConfig, $updaterJson)
+        $tauriArgs += @("--config", $generatedUpdaterConfig)
+    }
+    $tauriArgs += @("--", "--locked")
+    # Bound concurrent rustc processes to reduce memory/commit pressure on
+    # 16 GiB Windows machines. -CargoJobs 1 is available for tight systems.
+    $env:CARGO_BUILD_JOBS = [string]$CargoJobs
     Invoke-LoggedNative "Tauri NSIS installer" {
-        & npm.cmd run build -- -- --locked 2>&1 |
+        & npm.cmd @tauriArgs 2>&1 |
             Out-File -FilePath (Join-Path $buildRoot "installer-build.log") -Encoding utf8 -ErrorAction Stop
     }
-    $releaseRoot = Join-Path $projectRoot "dist\desktop-v1"
+    if ($useSignedUpdater) {
+        # A successful NSIS build is not sufficient if Tauri failed to embed
+        # the bundle-type marker required to select the correct updater.
+        $installerBuildLog = Get-Content -LiteralPath (Join-Path $buildRoot "installer-build.log") -Raw
+        if ($installerBuildLog -match '__TAURI_BUNDLE_TYPE variable not found in binary') {
+            throw "Tauri bundle-type marker is missing; signed updater build cannot be trusted. See installer-build.log."
+        }
+    }
+    $releaseRoot = Join-Path $projectRoot $(if ($LocalSignedTest) { "dist\desktop-local-signed-test" } else { "dist\desktop-v1" })
     New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
     $releaseVersion = (Get-Content -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json).version
     $installers = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\target\release\bundle\nsis") -Filter "PLA Desktop_${releaseVersion}_x64-setup.exe")
     if ($installers.Count -ne 1) { throw "Expected one NSIS installer" }
-    Copy-Item -LiteralPath $installers[0].FullName -Destination $releaseRoot -Force
-    $installer = Join-Path $releaseRoot $installers[0].Name
+    # In Tauri v2 createUpdaterArtifacts=true, the NSIS .exe is itself the
+    # signed update artifact; v1Compatible alone creates .nsis.zip archives.
+    $assetName = "PLA.Desktop_${releaseVersion}_x64-setup.exe"
+    $installer = Join-Path $releaseRoot $assetName
+    Copy-Item -LiteralPath $installers[0].FullName -Destination $installer -Force
     $digest = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-    [IO.File]::WriteAllText((Join-Path $releaseRoot "SHA256SUMS.txt"), "$digest  $($installers[0].Name)`n")
+    [IO.File]::WriteAllText((Join-Path $releaseRoot "SHA256SUMS.txt"), "$digest  $assetName`n")
+    if ($useSignedUpdater) {
+        $sourceSignature = "$($installers[0].FullName).sig"
+        if (-not (Test-Path -LiteralPath $sourceSignature -PathType Leaf)) {
+            throw "Tauri did not produce the signed NSIS installer .exe.sig; signed release blocked."
+        }
+        $assetSignature = Join-Path $releaseRoot "$assetName.sig"
+        Copy-Item -LiteralPath $sourceSignature -Destination $assetSignature -Force
+        & $Python (Join-Path $projectRoot "scripts/build_signed_updater_manifest.py") --version $releaseVersion --installer $installer --signature $assetSignature --output (Join-Path $releaseRoot "latest.json")
+        Assert-Exit "Signed updater manifest"
+    } else {
+        # Do not accidentally publish signed artifacts from an earlier build.
+        foreach ($obsolete in @("latest.json", "$assetName.sig", "PLA.Desktop_${releaseVersion}_x64-setup.nsis.zip", "PLA.Desktop_${releaseVersion}_x64-setup.nsis.zip.sig")) {
+            $obsoletePath = Join-Path $releaseRoot $obsolete
+            if (Test-Path -LiteralPath $obsoletePath) { Remove-Item -LiteralPath $obsoletePath -Force }
+        }
+    }
     $revision = & git rev-parse HEAD
     # Git status can retain a stat-only change after Tauri rewrites CRLF/LF.
     # Compare actual tracked content (staged and unstaged) and non-ignored new files.
@@ -238,7 +364,10 @@ try {
     $trackedContentDirty = $LASTEXITCODE -eq 1
     $untrackedSource = @(& git -C $projectRoot ls-files --others --exclude-standard)
     Assert-Exit "Untracked source inventory"
-    [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = ($trackedContentDirty -or $untrackedSource.Count -gt 0); installer = $installers[0].Name; sha256 = $digest; signed = $false; updates = "disabled" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
+    [ordered]@{ version = $releaseVersion; source_commit = $revision; source_dirty = ($trackedContentDirty -or $untrackedSource.Count -gt 0); release_channel = $(if ($LocalSignedTest) { "local-test-only" } else { "stable-candidate" }); publishable = (-not $LocalSignedTest -and -not ($trackedContentDirty -or $untrackedSource.Count -gt 0)); installer = $assetName; sha256 = $digest; updater_signature = [bool]$useSignedUpdater; windows_authenticode_signed = $false; updates = $(if ($useSignedUpdater) { "signed_tauri_updater" } else { "disabled" }) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot "build-manifest.json") -Encoding utf8
+    if ($LocalSignedTest) {
+        [IO.File]::WriteAllText((Join-Path $releaseRoot "DO_NOT_PUBLISH.txt"), "Local signed test build from an unreviewed worktree. Do not upload or publish these artifacts.`n")
+    }
     # Refresh the delivery's notices from this exact build, not an earlier candidate.
     $noticeTarget = Join-Path $releaseRoot "third-party-licenses\runtime"
     New-Item -ItemType Directory -Force -Path $noticeTarget | Out-Null
@@ -254,5 +383,15 @@ try {
     Write-Output "SHA-256: $digest"
 } finally {
     $env:PATH = $originalPath
+    if ($null -eq $originalCargoBuildJobs) {
+        Remove-Item Env:CARGO_BUILD_JOBS -ErrorAction SilentlyContinue
+    } else {
+        $env:CARGO_BUILD_JOBS = $originalCargoBuildJobs
+    }
+    if ($null -eq $originalUpdaterKey) {
+        Remove-Item Env:PLA_UPDATER_PUBLIC_KEY -ErrorAction SilentlyContinue
+    } else {
+        $env:PLA_UPDATER_PUBLIC_KEY = $originalUpdaterKey
+    }
     Set-Location -LiteralPath $originalDirectory
 }

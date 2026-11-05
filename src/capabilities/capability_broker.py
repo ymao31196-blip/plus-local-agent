@@ -24,6 +24,7 @@ from jsonschema.exceptions import SchemaError
 from artifacts.artifact_runtime import ArtifactInvocation
 from capabilities.capability_registry import CapabilityRegistry
 from runtime.event_runtime import EventStore
+from runtime.failure_diagnostics import exception_diagnostic, result_diagnostic
 from hooks.observer_hook_runtime import ObserverHookRuntime
 from hooks.gate_hook_runtime import GateHookRuntime
 from mcp_runtime.mcp_client_manager import MCPClientManager
@@ -429,12 +430,26 @@ class CapabilityBroker:
             ):
                 raise ValueError("transaction_id must be a bounded non-empty string")
             transaction_id = transaction_id.strip()
-        descriptor, provider_arguments = self._validated_descriptor_and_arguments(
-            capability_id,
-            arguments,
-            confirmation,
-            transaction_context,
-        )
+        try:
+            descriptor, provider_arguments = self._validated_descriptor_and_arguments(
+                capability_id,
+                arguments,
+                confirmation,
+                transaction_context,
+            )
+        except PermissionError as exc:
+            # Record only known capability IDs; never persist arbitrary caller strings.
+            try:
+                known_descriptor = self._registry.describe(capability_id)
+                self._emit_runtime_event(
+                    "capability.policy_denied", known_descriptor, capability_id,
+                    correlation_id=uuid4().hex, causation_id=None,
+                    transaction_id=None,
+                    payload=exception_diagnostic(exc),
+                )
+            except Exception:
+                pass  # Telemetry cannot change enforcement or invocation.
+            raise
         correlation_id = uuid4().hex
         arguments_sha256 = _stable_sha256(provider_arguments)
         control_tags = {"event-control", "hook-control", "gate-control"}
@@ -489,6 +504,8 @@ class CapabilityBroker:
                         "deny_hook_ids": list(gate_result.get("deny_hook_ids") or []),
                         "reason_codes": reason_codes,
                         "persistence_failed": bool(gate_result.get("persistence_failed")),
+                        "failure_class": "policy_denied",
+                        "policy_reason": "gate_hook_denied",
                     },
                 )
                 raise PermissionError(
@@ -548,6 +565,7 @@ class CapabilityBroker:
                         str(exc).encode("utf-8", errors="replace")
                     ).hexdigest(),
                     "message_length": len(str(exc)),
+                    **exception_diagnostic(exc),
                 },
             )
             raise
@@ -571,6 +589,7 @@ class CapabilityBroker:
                 "result_sha256": _stable_sha256(result),
                 "semantic_status": semantic_status,
                 "is_error": bool(result.get("is_error")),
+                **(result_diagnostic(result) if failed else {}),
                 "artifact_ids": [
                     item.get("artifact_id")
                     for item in result.get("artifacts", [])
