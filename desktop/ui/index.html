@@ -102,6 +102,12 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <div class="conversation-strip" id="conversation-summary" role="group" aria-label="最近60秒ChatGPT对话活动">
+                        <span class="conversation-primary"><span>活跃对话</span><strong id="conversation-count">—</strong></span>
+                        <span class="conversation-secondary">未识别调用 <strong id="conversation-unknown">—</strong></span>
+                        <span class="conversation-period" id="conversation-period">近60秒</span>
+                        <span class="conversation-help" title="按MCP请求中的匿名会话标识统计，60秒无调用后自动减少；不代表所有打开的窗口。" aria-label="统计口径说明">ⓘ</span>
+                    </div>
                     <div id="activity-list" aria-live="off">读取近期活动中…</div>
                     <p class="text-muted text-small activity-note" id="activity-fetched">尚未读取活动</p>
                     <p class="text-muted text-small activity-note">显示可核实的本地调用与组件身份；不记录命令参数、文件内容，也无法判断 ChatGPT 云端是否还在运行。</p>

@@ -615,6 +615,13 @@ button.sm {
 .activity-detail-line > span:first-child { color: var(--color-text-secondary); }
 .activity-detail-line > span:last-child { overflow-wrap: anywhere; font-family: var(--font-mono); }
 .activity-note { margin-top: 10px; }
+.conversation-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; margin: 6px 0 8px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); background: var(--color-bg-secondary); font-size: var(--text-sm); }
+.conversation-primary { display: inline-flex; align-items: baseline; gap: 9px; color: var(--color-text-primary); }
+.conversation-primary strong { font-size: var(--text-xl); font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1; }
+.conversation-secondary { display: inline-flex; align-items: baseline; gap: 5px; color: var(--color-text-secondary); font-size: var(--text-xs); }
+.conversation-secondary strong { font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.conversation-period { margin-left: auto; white-space: nowrap; color: var(--color-text-secondary); font-size: var(--text-xs); }
+.conversation-help { color: var(--color-text-secondary); cursor: help; user-select: none; }
 @media (max-width: 600px) {
   .activity-actions { width: 100%; }
   .activity-detail-line { grid-template-columns: 68px minmax(0, 1fr); }

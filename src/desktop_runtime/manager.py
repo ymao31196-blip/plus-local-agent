@@ -27,6 +27,7 @@ from host.workspace_manager import workspace_registry_status, workspace_registry
 from execution.user_program_permissions import snapshot as program_permissions_snapshot, change_permission
 from runtime.runtime_context import terminate_owned_process_tree
 from runtime.activity_runtime import recent_activity
+from runtime.conversation_activity import automatic_conversation_summary, DESKTOP_MANAGEMENT_META
 
 
 class Manager:
@@ -196,6 +197,7 @@ class Manager:
         env = self._environment()
         env["PLA_PET_FRAMES_DIR"] = str(self.pet.frames)
         env["PLA_PET_EVENT_DB"] = str(self.config.root / "state" / "events.sqlite3")
+        env["PLA_PET_RUNTIME_STARTED_AT"] = self.runtime_started_at or ""
         process = self._spawn("agent-pet", self._command("pet"), env)
         time.sleep(0.2)
         if process.poll() is not None:
@@ -216,7 +218,7 @@ class Manager:
             if "diagnose_client" not in {tool.name for tool in tools}:
                 raise RuntimeError("Unexpected MCP Runtime tool catalog")
             if verify:
-                result = await client.call_tool("diagnose_client", {})
+                result = await client.call_tool("diagnose_client", {}, meta=DESKTOP_MANAGEMENT_META)
                 if result.is_error:
                     raise RuntimeError("Runtime diagnostic tool failed")
                 return result.data
@@ -338,7 +340,7 @@ class Manager:
             except Exception as exc:
                 self.last_error = redact(str(exc), self._secret)
         skill_state = observed_providers.get('skill-library')
-        office_states = {name: observed_providers.get(name) for name in ('pdf', 'office-enhancement', 'wps-office')}
+        office_states = {name: observed_providers.get(name) for name in ('office', 'pdf')}
         return {"config": self.config.public(), "runtime": "ready" if ready else "starting" if alive else "exited" if "runtime" in self.children else "stopped",
                 "owned_processes": {role: {"pid": process.pid, "exit_code": process.poll()} for role, process in self.children.items()},
                 "tunnel": tunnel, "chatgpt_authorization": "not_observable_locally",
@@ -352,7 +354,8 @@ class Manager:
     async def _browser_probe(self):
         from fastmcp import Client
         async with Client(f"http://127.0.0.1:{self.config.value['runtime_port']}/mcp", timeout=5) as client:
-            result = await client.call_tool("capability_describe", {"capability_id": "browser.inspect"}, raise_on_error=False)
+            result = await client.call_tool("capability_describe", {"capability_id": "browser.inspect"},
+                                            raise_on_error=False, meta=DESKTOP_MANAGEMENT_META)
             if result.is_error:
                 return "unavailable"
             # Availability comes from actual provider discovery, not Node PID.
@@ -372,7 +375,7 @@ class Manager:
         if not self._alive("runtime"):
             raise ValueError("Runtime is stopped")
         async with Client(f"http://127.0.0.1:{self.config.value['runtime_port']}/mcp", timeout=90) as client:
-            result = await client.call_tool(tool, arguments)
+            result = await client.call_tool(tool, arguments, meta=DESKTOP_MANAGEMENT_META)
             if result.is_error:
                 raise RuntimeError("Runtime rejected the management operation")
             data = result.data
@@ -432,9 +435,12 @@ class Manager:
             activity = recent_activity(event_db, limit=18)
             component_activity = recent_activity(event_db, limit=12, only_components=True)
             alive = self._alive("runtime")
+            conversations = automatic_conversation_summary(
+                event_db, runtime_started_at=self.runtime_started_at if alive else None)
             return {**activity,
                     "available": activity["available"] and component_activity["available"],
                     "component_activities": component_activity["activities"],
+                    "conversations": conversations,
                     "runtime_alive": alive,
                     "runtime_started_at": self.runtime_started_at if alive else None}
         if command == "routing_guide_read":
@@ -475,6 +481,10 @@ class Manager:
             repository_installs = {row['provider_id']: row for row in self.components.list_installed_providers()['providers']}
             known = {row['provider_id'] for row in catalog['providers']}
             for provider_id in sorted(repository_installs.keys() - known):
+                # Retired bundled Office entries are internal backend receipts,
+                # not missing user-facing providers.
+                if provider_id in {'wps-office', 'office-enhancement'} and 'office' in known:
+                    continue
                 catalog['providers'].append({'provider_id': provider_id, 'runtime_kind': 'missing_manifest',
                     'manifest_missing': True, 'requested_enabled': False, 'python_exists': False})
             for row in catalog['providers']:
@@ -666,6 +676,11 @@ class Manager:
                 for path in sorted(receipts.glob('*.json')):
                     if not path.stem.startswith('repository-') and path.stem.isascii() and path.stem.replace('-', '').replace('_', '').isalnum():
                         records.append(path.stem)
+            # The two engines are internal Office dependencies, not separate
+            # installed components in the Desktop UI.
+            if 'office' in {row['provider_id'] for row in self.components.catalog()['providers']}:
+                records = [name for name in records
+                           if name not in {'wps-office', 'office-enhancement'}]
             return {'jobs': jobs, 'installed_receipts': records}
         if command == 'skill_permissions':
             reconciliation = self._reconcile_skill_permissions()

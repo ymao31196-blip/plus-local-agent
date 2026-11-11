@@ -84,4 +84,4 @@ def test_desktop_stable_candidate_version_fields_are_consistent():
     assert len(own_cargo) == 1
     assert {VERSION, package["version"], lock["version"],
             lock["packages"][""]["version"], tauri["version"],
-            cargo["package"]["version"], own_cargo[0]["version"]} == {"1.1.0"}
+            cargo["package"]["version"], own_cargo[0]["version"]} == {"1.2.0"}

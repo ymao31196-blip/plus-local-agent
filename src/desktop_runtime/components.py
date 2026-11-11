@@ -65,21 +65,37 @@ class ComponentProject:
         asset_records = json.loads(self.asset_record_path.read_text()) if self.asset_record_path.exists() else {}
         if not isinstance(asset_records, dict) or any(not isinstance(key, str) or not PROVIDER_ID.fullmatch(key) or not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value) for key, value in asset_records.items()):
             raise ValueError('Invalid builtin manifest provenance record; existing files preserved')
-        # Retire only the unchanged, provenance-tracked builtin DOCX manifest.
-        # User imports/edits and installed environments remain user-owned.
-        retired = self.manifest_dir / 'docx.json'
-        if (retired.is_file() and not retired.is_symlink()
-                and hashlib.sha256(retired.read_bytes()).hexdigest() == asset_records.get('docx')
-                and not (templates / 'provider_manifests/docx.json').exists()):
-            preferences = self.preferences()
-            preferences['enabled'] = [name for name in preferences['enabled'] if name != 'docx']
-            atomic_write(self.preferences_path, json.dumps(preferences).encode())
+        # An upgraded NSIS installation can retain old resource files even
+        # after a new build drops them. Office's reviewed bundle takes priority
+        # over legacy standalone manifests; their engines/specs remain in place.
+        # Reconcile only provenance-tracked originals, never user-edited imports.
+        office_bundle = templates / 'provider_manifests/office.json'
+        unified_office = False
+        if office_bundle.is_file() and not office_bundle.is_symlink():
+            try:
+                unified_office = json.loads(office_bundle.read_text(encoding='utf-8')).get('id') == 'office'
+            except (OSError, ValueError, AttributeError):
+                unified_office = False
+        retired_office_ids = {'wps-office', 'office-enhancement'} if unified_office else set()
+        for old_id in ('docx', 'wps-office', 'office-enhancement'):
+            retired = self.manifest_dir / (old_id + '.json')
+            should_retire = (old_id in retired_office_ids
+                             or not (templates / 'provider_manifests' / (old_id + '.json')).exists())
+            if not (retired.is_file() and not retired.is_symlink()
+                    and hashlib.sha256(retired.read_bytes()).hexdigest() == asset_records.get(old_id)
+                    and should_retire):
+                continue
+            prefs = self.preferences()
+            if old_id in prefs['enabled']:
+                prefs['enabled'] = [name for name in prefs['enabled'] if name != old_id]
+                atomic_write(self.preferences_path, json.dumps(prefs, indent=2).encode())
             retired.unlink()
-            asset_records.pop('docx', None)
-            spec = self.root / 'provider_specs/docx.txt'
-            if (spec.is_file() and not spec.is_symlink()
-                    and spec.read_bytes().replace(b'\r\n', b'\n') == b'docx-mcp-server==0.7.4\nmcp==1.30.0\n'):
-                spec.unlink()
+            asset_records.pop(old_id, None)
+            if old_id == 'docx':
+                spec = self.root / 'provider_specs/docx.txt'
+                if (spec.is_file() and not spec.is_symlink()
+                        and spec.read_bytes().replace(b'\r\n', b'\n') == b'docx-mcp-server==0.7.4\nmcp==1.30.0\n'):
+                    spec.unlink()
         for folder, suffixes in (('providers', {'.py', '.mjs'}), ('provider_specs', {'.txt', '.json'})):
             source = templates / folder
             if source.is_dir():
@@ -109,6 +125,10 @@ class ComponentProject:
                 provider_id = value.get('id')
                 if not isinstance(provider_id, str) or not PROVIDER_ID.fullmatch(provider_id):
                     raise ValueError('Invalid bundled provider ID')
+                # Ignore obsolete upgrade leftovers even when NSIS leaves
+                # their JSON files in the previous installation directory.
+                if provider_id in retired_office_ids:
+                    continue
                 runtime = value['runtime']
                 if runtime.get('command') == 'node.exe':
                     runtime['command'] = str(self.resources / 'node.exe')

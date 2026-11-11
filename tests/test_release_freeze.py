@@ -15,14 +15,12 @@ def test_release_version_and_provider_catalog():
         "computer",
         "markitdown",
         "office",
-        "office-enhancement",
         "pdf",
         "qmd",
         "skill-library",
         "software-migration",
         "winget",
         "windows-management",
-        "wps-office",
     }
     assert manifests["winget"].runtime_kind == "executable_stdio"
     assert manifests["computer"].runtime_kind == "isolated_python_stdio"
@@ -36,7 +34,7 @@ def test_release_version_and_provider_catalog():
         limit=100,
     )
     runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
-    assert runtime_caps["match_count"] == 32
+    assert runtime_caps["match_count"] == 36
     assert runtime_ids == {
         "runtime.provider_catalog",
         "runtime.capability_catalog",
@@ -70,6 +68,10 @@ def test_release_version_and_provider_catalog():
         "runtime.browser_diagnostics",
         "runtime.browser_start",
         "runtime.browser_stop",
+        "runtime.desktop_install_preview",
+        "runtime.desktop_install_status",
+        "runtime.desktop_package_preview",
+        "runtime.desktop_package_commit",
     }
 
     core_caps = server.CAPABILITY_REGISTRY.search(

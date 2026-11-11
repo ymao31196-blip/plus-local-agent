@@ -22,13 +22,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_unified_office_manifest_preserves_specialist_security_overrides():
     manifests = load_provider_manifests(PROJECT_ROOT)
     merged = manifests["office"]
-    wps = manifests["wps-office"]
-    enhancement = manifests["office-enhancement"]
+    assert 'wps-office' not in manifests
+    assert 'office-enhancement' not in manifests
     assert merged.runtime_kind == "isolated_python_stdio"
     assert merged.routing_authority == "preferred"
     assert merged.args == ("providers/office_server.py",)
-    for name, config in {**wps.tool_overrides, **enhancement.tool_overrides}.items():
-        assert merged.tool_overrides[name] == config
+    for name in ('wps_excel_read_range', 'wps_excel_write_range',
+                 'wps_excel_delete_sheet', 'wps_execute_method',
+                 'pptx_inspect', 'pptx_merge_overlay',
+                 'powerpoint_render_pdf', 'pdf_extract_images'):
+        assert name in merged.tool_overrides
+    assert merged.tool_overrides['wps_excel_delete_sheet']['requires_confirmation'] is True
+    assert merged.tool_overrides['wps_execute_method']['risk_level'] == 'privileged'
     assert merged.tool_overrides["office_status"]["risk_level"] == "read"
     # Unlike the former experimental combined Provider, do not require a
     # hardcoded list including nonexistent tools such as wps_macro.

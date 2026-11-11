@@ -209,8 +209,12 @@ def test_internal_action_is_single_pair_and_no_args(tmp_path, monkeypatch):
 def test_private_rpc_is_read_only_and_stopped_runtime_safe(tmp_path):
     manager = Manager(tmp_path / "data", tmp_path / "resources")
     result = manager.dispatch("activity_recent", {})
-    assert result == {"activities": [], "component_activities": [], "available": True,
-                      "runtime_alive": False, "runtime_started_at": None}
+    assert result["activities"] == []
+    assert result["component_activities"] == []
+    assert result["available"] is True
+    assert result["runtime_alive"] is False
+    assert result["runtime_started_at"] is None
+    assert result["conversations"]["identified_count"] == 0
     assert not (manager.config.root / "state" / "events.sqlite3").exists()
     with pytest.raises(ValueError, match="no arguments"):
         manager.dispatch("activity_recent", {"sql": "SELECT * FROM runtime_events"})

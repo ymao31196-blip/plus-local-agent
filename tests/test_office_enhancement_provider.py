@@ -114,11 +114,12 @@ def _write_fixture(path: Path, *, overlay: bool) -> None:
 
 def test_office_enhancement_manifest_is_reviewed_and_bounded():
     manifests = load_provider_manifests(PROJECT_ROOT)
-    provider = manifests["office-enhancement"]
+    assert "office-enhancement" not in manifests
+    provider = manifests["office"]
 
     assert provider.runtime_kind == "isolated_python_stdio"
     assert provider.routing_authority == "preferred"
-    assert set(provider.tool_allowlist or ()) == {
+    assert set(provider.tool_overrides) >= {
         "office_enhancement_status",
         "artifact_build_overlay",
         "pptx_inspect",

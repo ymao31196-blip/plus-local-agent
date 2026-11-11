@@ -26,6 +26,37 @@ def test_pet_footer_time_transitions_to_stable_clock():
     assert label((local - timedelta(days=3)).timestamp(), now) == "上次调用 · 10-22 20:00"
 
 
+def test_pet_registered_dialogue_count_uses_runtime_boundary(tmp_path):
+    db = tmp_path / "events.sqlite3"
+    store = EventStore(db)
+    started_at = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+    try:
+        store.emit("conversation.tool_started", source="conversation_transport",
+                   subject="read_text", payload={"fingerprint": "a" * 64})
+        store.emit("conversation.tool_finished", source="conversation_transport",
+                   subject="read_text", payload={"fingerprint": "a" * 64})
+        store.emit("conversation.tool_started", source="conversation_transport",
+                   subject="run_process", payload={"fingerprint": "b" * 64})
+        assert pet_viewer.registered_dialogues_label(db, started_at) == "活跃 2"
+        store.emit("conversation.tool_started", source="conversation_transport",
+                   subject="run_process", payload={"identity": "missing"})
+        assert pet_viewer.registered_dialogues_label(db, started_at) == "活跃 2 · 未识别1"
+        assert pet_viewer.registered_dialogues_label(
+            db, (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+        ) == "活跃 0"
+        assert pet_viewer.registered_dialogues_label(db, None) == "会话未知"
+    finally:
+        store.close()
+
+
+def test_pet_registered_dialogue_unavailable_is_explicit(tmp_path):
+    db = tmp_path / "events.sqlite3"
+    db.write_bytes(b"corrupt-sqlite")
+    assert pet_viewer.registered_dialogues_label(
+        db, datetime.now(timezone.utc).isoformat()
+    ) == "会话不可用"
+
+
 def test_pet_one_line_label_uses_rendered_width():
     width = lambda s: sum(2 if ord(c) > 127 else 1 for c in s)
     assert pet_viewer.fit_text_width("Skill Library", width, 20) == "Skill Library"
@@ -155,6 +186,7 @@ def test_manager_explicit_enable_disable_owns_only_pet(tmp_path, monkeypatch):
         assert argv[-1] == "pet"
         assert Path(env["PLA_PET_FRAMES_DIR"]).is_dir()
         assert env["PLA_PET_EVENT_DB"].endswith("events.sqlite3")
+        assert env["PLA_PET_RUNTIME_STARTED_AT"] == (manager.runtime_started_at or "")
         process = FakeProcess(202)
         spawned.append(process)
         manager.children[role] = process
@@ -187,6 +219,9 @@ def test_pet_starts_when_runtime_ready_and_stops_on_runtime_stop(tmp_path, monke
 
     def fake_spawn(role, argv, env):
         roles.append(role)
+        if role == "agent-pet":
+            assert env["PLA_PET_RUNTIME_STARTED_AT"] == manager.runtime_started_at
+            assert manager.runtime_started_at is not None
         child = FakeProcess(501 if role == "runtime" else 502)
         manager.children[role] = child
         return child

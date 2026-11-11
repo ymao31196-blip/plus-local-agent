@@ -146,7 +146,13 @@ class DesktopComponentBroker:
 
     def _receipts(self) -> list[str]:
         folder = self.project.root / "receipts"
-        return sorted(path.stem for path in folder.glob("*.json")) if folder.is_dir() else []
+        if not folder.is_dir():
+            return []
+        records = sorted(path.stem for path in folder.glob("*.json"))
+        if "office" in {row["provider_id"] for row in self.project.catalog()["providers"]}:
+            return [name for name in records
+                    if name not in {"wps-office", "office-enhancement"}]
+        return records
 
     def _stop_children(self):
         with self._lock:

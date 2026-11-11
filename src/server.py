@@ -74,6 +74,8 @@ from capabilities.capability_registry import CapabilityRegistry
 from routing.agent_guide import live_route_advice
 from runtime.event_runtime import EVENT_STORE
 from runtime.activity_runtime import record_native_activity
+from runtime.conversation_activity import session_diagnostic
+from runtime.conversation_middleware import AutoConversationMiddleware
 from hooks.observer_hook_runtime import OBSERVER_HOOK_RUNTIME
 from host.computer_use_indicator import computer_use_indicator_observer
 from hooks.gate_hook_runtime import GATE_HOOK_RUNTIME
@@ -155,10 +157,14 @@ mcp = FastMCP(
         "Python/process execution, unless the user explicitly chose a tool. "
         "The result includes live CHAGENT.md routing_advice and component availability. "
         "Use capability_describe and capability_invoke as needed; observe all existing "
-        "permissions and confirmations. Routing rules update without MCP metadata refresh."
+        "permissions and confirmations. Routing rules update without MCP metadata refresh. "
+        "PLA records anonymized ChatGPT conversation activity automatically when "
+        "the host provides openai/session in MCP request metadata. No check-in "
+        "tool or periodic heartbeat is needed; missing IDs are reported as unknown."
     ),
     lifespan=_runtime_lifespan,
 )
+mcp.add_middleware(AutoConversationMiddleware())
 
 
 @mcp.tool
@@ -871,6 +877,7 @@ async def diagnose_client(ctx: Context) -> dict:
         "fastmcp_version": version("fastmcp"),
         "mcp_version": version("mcp"),
         "protocol_mode": protocol_mode(ctx),
+        "conversation_session": session_diagnostic(ctx),
         "mainline": "chatgpt_native_agent_loop",
         "available_roots": available_roots(),
     }

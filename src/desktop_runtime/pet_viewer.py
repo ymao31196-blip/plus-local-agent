@@ -16,6 +16,8 @@ import sqlite3
 import sys
 import time
 
+from runtime.conversation_activity import automatic_conversation_summary
+
 BASE = Path(__file__).resolve().parent
 EVENT_NAMES = (
     "capability.before_invoke", "capability.succeeded",
@@ -77,6 +79,22 @@ def last_call_label(last_event: float | None, now: float | None = None) -> str:
     else:
         when = recent.strftime("%m-%d %H:%M")
     return f"上次调用 · {when}"
+
+
+def registered_dialogues_label(
+    db: Path, runtime_started_at: str | None, *, now: datetime | None = None,
+) -> str:
+    """Count sessions from real MCP tool calls when the host provides IDs."""
+    if not runtime_started_at:
+        return "会话未知"
+    summary = automatic_conversation_summary(db, runtime_started_at=runtime_started_at, now=now)
+    if not summary["available"]:
+        return "会话不可用"
+    suffix = "+" if summary["truncated"] else ""
+    label = f"活跃 {summary['identified_count']}{suffix}"
+    if summary["unattributed_calls"]:
+        label += f" · 未识别{summary['unattributed_calls']}"
+    return label
 
 
 def fit_text_width(text: str, measure, max_width: int) -> str:
@@ -351,6 +369,7 @@ def run_gui() -> None:
     round_rect(211, 51, 475, 210, 10, panel)
 
     db = default_database()
+    runtime_started_at = os.environ.get("PLA_PET_RUNTIME_STARTED_AT", "").strip() or None
     frames = {}
     frame_idx = 0
     for mode, prefix, count in [
@@ -408,6 +427,8 @@ def run_gui() -> None:
         right = canvas.create_text(460,y+4,anchor="center",text="",font=(font,11,"bold"),fill="#66d7af")
         detail.append((left,title,description,right))
     footer=canvas.create_text(218,225,anchor="w",text="",font=(font,8),fill=muted)
+    registered_font = tkfont.Font(root=root, family=font, size=8)
+    registered = canvas.create_text(462,225,anchor="e",text="",font=registered_font,fill=muted)
     # Keep the pet narrow: hovering over a clipped label reveals its full name.
     tooltip = {"window": None}
     def hide_tooltip(_event=None):
@@ -475,7 +496,12 @@ def run_gui() -> None:
                 canvas.itemconfigure(widgets[3],text=state,fill=state_color)
             else:
                 for item in widgets: canvas.itemconfigure(item,text="")
-        canvas.itemconfigure(footer,text=last_call_label(s.last_event, last_poll))
+        registered_text = registered_dialogues_label(db, runtime_started_at)
+        canvas.itemconfigure(registered, text=registered_text)
+        # Footer shares its existing line; do not enlarge the pet or overlap labels.
+        free_width = max(36, 462 - registered_font.measure(registered_text) - 12 - 218)
+        canvas.itemconfigure(footer, text=fit_text_width(
+            last_call_label(s.last_event, last_poll), sub_font.measure, free_width))
 
     def tick():
         nonlocal frame_idx

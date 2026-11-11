@@ -4,13 +4,13 @@
 
 PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows电脑，包括本地文件、程序、浏览器、桌面软件和按需安装的MCP组件。ChatGPT负责理解任务和决定工具调用，PLA负责在授权范围内执行。只要目标电脑运行PLA和Secure MCP Tunnel，你也能在手机等其他设备上使用ChatGPT操控它。
 
-**当前公开版本：PLA Desktop v1.1.0（Windows 10/11 x64）。** 新增可选开机登录自启动和Tauri应用内签名更新。安装包未获得Windows Authenticode发布者签名，PLA不提供操作系统级沙箱。
+**当前公开版本：PLA Desktop v1.2.0（Windows 10/11 x64）。** 新增匿名ChatGPT对话活动统计、精简状态显示和Office组件合并升级清理，保留Tauri签名更新机制。安装包未获得Windows Authenticode发布者签名，PLA不提供操作系统级沙箱。
 
 **开源许可证：** PLA自有源码采用[Apache-2.0](LICENSE)。第三方组件及其依赖保留各自的许可证，详见[第三方许可说明](docs/desktop-v1-third-party-notices.md)。
 
-[**下载PLA Desktop v1.1.0**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0) · [全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
+[**下载PLA Desktop v1.2.0**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.2.0) · [全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [English](README.md) · [源码安装（进阶）](#源码安装进阶)
 
-**v1.1.0更新：** 新增可选Windows登录自启动、受控Tauri签名更新、Office统一能力入口，改进工具路由与活动诊断，并扩展可选工作区索引、网络与文件工具。v1.0.0用户需要先手动安装一次v1.1.0，后续版本才能使用签名更新。已验证范围及限制见[v1.1.0发布说明](docs/desktop-v1.1.0-release-notes.md)。
+**v1.2.0更新：** 根据MCP元数据自动区分ChatGPT对话，优化桌面端和桌宠的活动显示，修复内部状态轮询产生的未知调用虚增；整合Office组件入口并修复Windows升级后残留旧清单的问题。验收范围及限制见[v1.2.0发布说明](docs/desktop-v1.2.0-release-notes.md)。
 
 ## PLA Desktop：软件下载、安装与连接教程
 
@@ -18,16 +18,16 @@ PLA（plus-local-agent）让ChatGPT通过受控工具操作你自己的Windows�
 
 ### 第一步：正确下载安装包
 
-1. 打开[PLA Desktop v1.1.0发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0)，历史版本可从[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)查找。
-2. 展开**Assets（资源）**，下载Windows x64安装文件[`PLA.Desktop_1.1.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/PLA.Desktop_1.1.0_x64-setup.exe)，以及对应的[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
+1. 打开[PLA Desktop v1.2.0发布页面](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.2.0)，历史版本可从[全部Releases](https://github.com/ymao31196-blip/plus-local-agent/releases)查找。
+2. 展开**Assets（资源）**，下载Windows x64安装文件[`PLA.Desktop_1.2.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.2.0/PLA.Desktop_1.2.0_x64-setup.exe)，以及对应的[`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.2.0/SHA256SUMS.txt)。**不要把“Source code (zip/tar.gz)”当作安装包。**
 
 3. 在PowerShell中运行以下命令（下载路径不同请自行调整），将输出的SHA-256与`SHA256SUMS.txt`中安装包对应的值核对。
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.1.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.2.0_x64-setup.exe"
 ~~~
 
-请将命令输出与v1.1.0 Release附件`SHA256SUMS.txt`中对应的安装包哈希核对。不要把本地签名测试包的SHA-256当成正式发布哈希。
+请将命令输出与v1.2.0 Release附件`SHA256SUMS.txt`中对应的安装包哈希核对。不要把本地签名测试包的SHA-256当成正式发布哈希。
 
 ### 第二步：安装并启动软件
 
@@ -397,15 +397,14 @@ Workspace修改需要显式**INVOKE**，并要求乐观config-SHA匹配。Custom
 - WinGet软件包发现与经过审查的安装
 - Windows系统观察与边界严格的应用管理
 - 软件迁移工作流
-- WPS Office自动化，通过经过审查的`lc2panda/wps-skills` MCP Provider覆盖文档、表格、演示文稿和更广泛的Office工具面
-- Office补强（`office-enhancement`）：artifact-tool可编辑PPT overlay、ZIP/OpenXML精细merge、Microsoft PowerPoint COM渲染/溢出检查，以及PyMuPDF图片提取
+- 统一Office（`office`）：整合WPS文档、表格、演示文稿编辑，以及artifact-tool可编辑叠加、OpenXML精细合并、PowerPoint COM验证与PyMuPDF图片提取
 - Skill Library：提供可复用`SKILL.md`经验，支持cache-first搜索/读取以及Git-backed refresh
 
-WPS Office Provider以source-backed Node Provider方式安装，并固定到经过审查的upstream commit。PLA会在build前应用自己维护的Windows COM兼容patch，再把upstream MCP tools接入同一个Capability Registry。常见表格读取被分类为`read`；普通写入、格式化和保存为`write_local`；删除工作表/行/列等破坏性操作以及raw method execution仍然需要confirmation。WPS仍是日常文档、表格和演示编辑的主要Office自动化路径；旧的独立DOCX Provider源码保留，但不再自动启动。Windows环境要求WPS Office与Node.js 18+。
+统一的`office` Provider在底层组合WPS Node引擎和Python增强引擎；WPS源码固定到经过审查的upstream commit。PLA会在build前应用自己维护的Windows COM兼容patch，再把upstream MCP tools接入同一个Capability Registry。常见表格读取被分类为`read`；普通写入、格式化和保存为`write_local`；删除工作表/行/列等破坏性操作以及raw method execution仍然需要confirmation。WPS仍是日常文档、表格和演示编辑的主要Office自动化路径；旧的独立DOCX Provider源码保留，但不再自动启动。Windows环境要求WPS Office与Node.js 18+。
 
 ### Office补强
 
-`office-enhancement`用于普通Office编辑不足以完成的精细PPT任务。它把四种互补技术收在同一个经过审查的Provider后面：
+统一`office`中的增强引擎用于普通Office编辑不足以完成的精细PPT任务，提供四种互补技术：
 
 ~~~text
 structured artifact-tool overlay

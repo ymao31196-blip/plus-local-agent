@@ -1,3 +1,6 @@
 # Reviewed supplemental license assets have SHA-256 pins over LF bytes.
 # Never let Windows Git checkout convert them to CRLF.
 desktop/packaging/license-assets/*.txt text eol=lf
+
+# This legacy source file is tracked with CRLF: ignore the CR in diff whitespace checks.
+src/desktop_runtime/installer.py whitespace=cr-at-eol

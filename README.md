@@ -4,13 +4,13 @@
 
 PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop applications and optional MCP providers on your own Windows PC, within explicitly configured permissions. ChatGPT handles reasoning and tool selection; PLA runs the local tools. The ChatGPT app can be on another device, including your phone, while the Windows PC runs PLA through Secure MCP Tunnel.
 
-**Release channel: PLA Desktop v1.1.0 (Windows 10/11 x64).** This release adds opt-in Windows login startup and an application-level, signed Tauri update channel. The installer is not Windows Authenticode signed. PLA is not an operating-system sandbox or a commercially supported product.
+**Release channel: PLA Desktop v1.2.0 (Windows 10/11 x64).** Automatic anonymous ChatGPT conversation activity counting, a compact Desktop/pet display and consolidated Office management. Tauri-signed updates introduced in v1.1.0 remain available; the installer is not Windows Authenticode signed. PLA is not an operating-system sandbox.
 
 **License:** PLA-owned source uses [Apache-2.0](LICENSE); bundled and optional third-party dependencies retain their own licenses. See [third-party notices](docs/desktop-v1-third-party-notices.md).
 
-[**Download PLA Desktop v1.1.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
+[**Download PLA Desktop v1.2.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.2.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
-**v1.1.0 release:** User-controlled login startup, Tauri-signed in-app update support, unified Office integration, routing and activity diagnostics improvements, optional workspace indexing and safer network/file tools. v1.0.0 users must manually install v1.1.0 once; this is the first version with the signed updater. See [v1.1.0 release notes](docs/desktop-v1.1.0-release-notes.md) for validation and limitations.
+**v1.2.0 release:** Automatic privacy-preserving ChatGPT conversation attribution, more readable activity indicators, internal-polling noise filtering, and one Office component entry with reliable upgrade cleanup. See [v1.2.0 release notes](docs/desktop-v1.2.0-release-notes.md) for validation and limitations.
 
 ## PLA Desktop: download, install and connect
 
@@ -18,16 +18,16 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 ### 1. Download the correct file
 
-1. Go to the [PLA Desktop v1.1.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.1.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
-2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.1.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/PLA.Desktop_1.1.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.1.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+1. Go to the [PLA Desktop v1.2.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.2.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
+2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.2.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.2.0/PLA.Desktop_1.2.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.2.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
 
 3. Open PowerShell and run the command below. Compare its hash with the matching installer entry in `SHA256SUMS.txt` (change the path if your download directory differs).
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.1.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.2.0_x64-setup.exe"
 ~~~
 
-Compare the output with the exact v1.1.0 installer entry in the release's `SHA256SUMS.txt`. The hash is specific to the official release artifact; do not substitute the hash of a local signed test build.
+Compare the output with the exact v1.2.0 installer entry in the release's `SHA256SUMS.txt`. The hash is specific to the official release artifact; do not substitute the hash of a local signed test build.
 
 ### 2. Install and open PLA
 
@@ -573,13 +573,12 @@ The production Provider set includes capabilities for:
 - WinGet package discovery and reviewed installation
 - Windows observation and narrowly controlled application management
 - Software migration workflows
-- WPS Office automation through the reviewed `lc2panda/wps-skills` MCP provider, including documents, spreadsheets, presentations and the broader Office tool surface
-- Office补强 (`office-enhancement`) for artifact-tool editable PPT overlays, ZIP/OpenXML surgical merges, Microsoft PowerPoint COM rendering/overflow inspection, and PyMuPDF figure extraction
+- Unified Office (`office`): WPS document/spreadsheet/presentation editing plus editable PPT overlays, OpenXML merges, PowerPoint COM verification and PyMuPDF image extraction
 - Skill Library access for advisory reusable `SKILL.md` experience, with cache-first search/read and Git-backed refresh
 
-The WPS Office Provider is installed as a source-backed Node Provider pinned to a reviewed upstream
-commit. PLA applies its tracked Windows COM compatibility patch before build, then exposes the
-upstream MCP tools through the same capability registry. Common spreadsheet reads are classified as
+The unified `office` Provider uses a source-backed WPS Node engine pinned to a reviewed upstream
+commit and a specialist Python enhancement engine. PLA applies its tracked Windows COM compatibility
+patch before build, then exposes both engines through one public Provider. Common spreadsheet reads are classified as
 `read`, ordinary writes/formatting/saves as `write_local`, while destructive worksheet/row/column
 operations and raw method execution remain confirmation-gated. WPS remains the primary Office
 automation surface for ordinary document, spreadsheet and presentation editing. The standalone
@@ -587,8 +586,8 @@ DOCX MCP component has been removed. Windows use requires WPS Office and Node.js
 
 ### Office补强
 
-`office-enhancement` is the specialist path for presentation work where ordinary Office editing is
-not enough. It keeps four complementary techniques behind one reviewed Provider:
+The unified `office` Provider also offers a specialist enhancement engine for presentation work where
+ordinary Office editing is not enough. It provides four complementary techniques:
 
 ~~~text
 structured artifact-tool overlay

@@ -104,3 +104,18 @@ def test_primary_buttons_have_readable_white_text():
     v = color.group(1)
     rgb = tuple(int(v[i:i + 2], 16) for i in (0, 2, 4))
     assert 1.05 / (_luminance(rgb) + 0.05) >= 4.5
+
+
+
+def test_conversation_activity_is_compact_and_accessibly_labeled():
+    p = Elements()
+    p.feed(HTML)
+    assert {"conversation-summary", "conversation-count",
+            "conversation-unknown", "conversation-period"} <= set(p.ids)
+    assert 'role="group" aria-label="最近60秒ChatGPT对话活动"' in HTML
+    assert "renderConversationSummary(conversations)" in APP
+    assert "renderConversationSummary(null)" in APP
+    assert "近60秒自动识别的 ChatGPT 对话：" not in APP
+    css = (UI / "style.css").read_text(encoding="utf-8")
+    assert ".conversation-strip" in css
+    assert ".conversation-primary strong" in css

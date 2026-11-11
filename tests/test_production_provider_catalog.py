@@ -23,13 +23,12 @@ def test_production_provider_catalog_matches_specs():
         "computer",
         "markitdown",
         "office",
-        "office-enhancement",
+        "qmd",
         "pdf",
         "skill-library",
         "software-migration",
         "winget",
         "windows-management",
-        "wps-office",
     }
     assert spec_ids == {
         "browser",
@@ -37,6 +36,7 @@ def test_production_provider_catalog_matches_specs():
         "markitdown",
         "office",
         "office-enhancement",
+        "qmd",
         "pdf",
         "skill-library",
         "software-migration",
@@ -44,19 +44,20 @@ def test_production_provider_catalog_matches_specs():
     }
     assert manifests["winget"].runtime_kind == "executable_stdio"
     assert manifests["winget"].python_path is None
-    assert all(manifest.autostart for name, manifest in manifests.items() if name != "office")
+    assert all(manifest.autostart for name, manifest in manifests.items() if name not in {"office", "qmd"})
     assert manifests["office"].autostart is False
 
 
 def test_wps_office_provider_is_pinned_source_backed_stdio():
     manifests = load_provider_manifests(PROJECT_ROOT)
-    provider = manifests["wps-office"]
+    assert "wps-office" not in manifests
+    provider = manifests["office"]
 
-    assert provider.runtime_kind == "executable_stdio"
+    assert provider.runtime_kind == "isolated_python_stdio"
     assert provider.mode == "auto"
     assert provider.routing_authority == "preferred"
     assert provider.tool_allowlist is None
-    assert provider.args == ("dist/index.js",)
+    assert provider.args == ("providers/office_server.py",)
 
     source_spec = json.loads(
         (PROJECT_ROOT / "provider_specs" / "wps-office.source.json").read_text(

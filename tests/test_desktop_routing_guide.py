@@ -22,8 +22,9 @@ def test_routing_editor_view_and_hot_save(tmp_path):
     assert "office-routine" in first["content"]
 
     changed = first["content"].replace(
-        '"providers": ["office", "wps-office", "office-enhancement"]',
-        '"providers": ["office-enhancement", "office", "wps-office"]',
+        '"providers": ["office"]',
+        '"providers": ["office", "pdf"]',
+        1,
     )
     assert changed != first["content"]
     saved = manager.dispatch("routing_guide_save", {
@@ -37,7 +38,7 @@ def test_routing_editor_view_and_hot_save(tmp_path):
     assert (manager.config.root / "config" / "CHAGENT.md").read_text(encoding="utf-8") == changed
 
     registry = CapabilityRegistry()
-    for provider in ("wps-office", "office-enhancement"):
+    for provider in ("office", "pdf"):
         registry.register_provider(provider, [
             CapabilityDescriptor(
                 id=provider + ".ppt_edit", provider_id=provider,
@@ -46,7 +47,7 @@ def test_routing_editor_view_and_hot_save(tmp_path):
             )
         ])
     live = live_route_advice("制作PPT", registry, data_root=manager.config.root)
-    assert live["preferred_provider"] == "office-enhancement"
+    assert live["preferred_provider"] == "office"
 
 
 def test_routing_editor_rejects_stale_and_invalid_save(tmp_path):

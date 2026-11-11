@@ -788,12 +788,25 @@ function renderActivity(available) {
     : '尚未成功读取';
 }
 
+function renderConversationSummary(conversations) {
+  const ready = conversations?.available === true;
+  $('conversation-count').textContent = ready
+    ? String(conversations.identified_count) + (conversations.truncated ? '+' : '')
+    : '—';
+  $('conversation-unknown').textContent = ready
+    ? String(conversations.unattributed_calls ?? 0)
+    : '—';
+  $('conversation-period').textContent = ready ? '近60秒' : '统计不可用';
+}
+
 async function refreshActivity() {
   if (activityLoading || $('overview').classList.contains('hidden')) return;
   activityLoading = true;
   try {
     const response = await rpc('activity_recent');
     if (response && response.available === true && Array.isArray(response.activities)) {
+      const conversations = response.conversations;
+      renderConversationSummary(conversations);
       lastActivityRows = response.activities;
       lastComponentRows = Array.isArray(response.component_activities) ? response.component_activities : [];
       activityResponse = response;
@@ -801,11 +814,13 @@ async function refreshActivity() {
       renderActivity(true);
       renderVerification();
     } else {
+      renderConversationSummary(null);
       activityResponse = null;
       renderActivity(false);
       renderVerification();
     }
   } catch (_error) {
+    renderConversationSummary(null);
     activityResponse = null;
     renderActivity(false);
     renderVerification();

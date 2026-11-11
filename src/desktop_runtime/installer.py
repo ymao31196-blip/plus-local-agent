@@ -109,6 +109,8 @@ class ComponentInstaller:
                    else bundled_skill_package(self.resources)) if provider_id == 'skill-library' else None
         if skill_package and provider_id != 'skill-library':
             raise ValueError('A local package is accepted only for Skill Library')
+        # Include the reviewed WPS and Enhancement engines in the Office plan.
+        deps = [self.plan(name) for name in ('office-enhancement', 'wps-office')] if provider_id == 'office' else []
         return {'provider_id': provider_id, 'python_version': PYTHON_VERSION,
                 'environment': str((self.resources if provider_id == 'browser' else self.project.root) / f'.provider_envs/{provider_id}'),
                 'bundled_component': provider_id == 'browser',
@@ -117,7 +119,8 @@ class ComponentInstaller:
                 'skill_package': str(package) if package else None,
                 'skill_package_origin': ('local' if skill_package else 'bundled') if package else None,
                 'skill_package_sha256': package_sha256(package) if package else None,
-                'installer_tool': {'name': 'uv', 'version': '0.12.24', 'source': UV_URL,
+                'dependencies': deps,
+                 'installer_tool': {'name': 'uv', 'version': '0.12.24', 'source': UV_URL,
                                    'archive_sha256': UV_ARCHIVE_SHA256, 'download_on_demand': True} if provider_id != 'browser' else None,
                 'installs_into_private_data': provider_id != 'browser', 'activates_provider': False,
                  'source': 'bundled' if present[0].is_relative_to(self.resources) else 'user_custom'}
@@ -226,6 +229,10 @@ class ComponentInstaller:
     def install(self, provider_id, skill_package=None):
         plan = self.plan(provider_id, skill_package)
         self.project.stage(int(os.environ.get('PLA_BROWSER_PORT', '18931')))
+        if provider_id == 'office':
+            # Legacy provider IDs are now internal-only dependency installers.
+            for backend in ('office-enhancement', 'wps-office'):
+                self.install(backend)
         from desktop_runtime.custom_packages import get_spec_paths
         reviewed_specs = {path.name: path for path in get_spec_paths(self.project, provider_id)}
         python_spec = reviewed_specs.get(f'{provider_id}.txt')
@@ -298,7 +305,7 @@ class ComponentInstaller:
 
 
 CORE_BUNDLE_IDS = (
-    'computer', 'markitdown', 'office-enhancement',
+    'computer', 'markitdown', 'office',
     'pdf', 'software-migration', 'windows-management',
 )
 

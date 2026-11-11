@@ -14,6 +14,8 @@ def _resources(tmp_path):
     specs.mkdir(parents=True)
     for name in CORE_BUNDLE_IDS:
         (specs / (name + ".txt")).write_text("fastmcp==4.0.3\n", encoding="utf-8")
+    (specs / "office-enhancement.txt").write_text("fastmcp==4.0.3\n", encoding="utf-8")
+    (specs / "wps-office.source.json").write_text("{}", encoding="utf-8")
     return root
 
 
