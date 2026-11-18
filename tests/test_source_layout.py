@@ -1,4 +1,5 @@
 from pathlib import Path
+import importlib
 import json
 import os
 import re
@@ -68,6 +69,7 @@ PACKAGE_MODULES = {
         "capability_steering.py",
         "declared_routing.py",
         "routing_audit.py",
+        "agent_guide.py",
     },
     "runtime": {
         "activity_runtime.py",
@@ -79,6 +81,10 @@ PACKAGE_MODULES = {
         "runtime_parity.py",
         "session_runtime.py",
         "task_store.py",
+        "web_api.py",
+        "conversation_activity.py",
+        "conversation_middleware.py",
+        "failure_diagnostics.py",
     },
     "hooks": {
         "external_observer_runtime.py",
@@ -143,6 +149,10 @@ PACKAGE_MODULES = {
         "local_tools.py",
         "tool_registry.py",
         "tool_schema.py",
+        "file_operations.py",
+        "network_operations.py",
+        "proxy_dns_transport.py",
+        "workspace_index.py",
     },
     "mcp_runtime": {
         "mcp_client_manager.py",
@@ -334,9 +344,16 @@ def test_python_entry_paths_exist_and_old_root_entries_are_not_dependencies():
     assert runtime_lifecycle_broker.RESTART_SCRIPT == PROJECT_ROOT / "restart_pla.ps1"
 
 
-def test_browser_persistent_paths_stay_at_project_root():
+def test_browser_persistent_paths_stay_at_project_root(monkeypatch):
+    # Source-layout assertions must not inherit the installed Desktop data root
+    # from the PLA Runtime process that happens to launch pytest.
+    monkeypatch.setenv("PLA_DATA_ROOT", str(PROJECT_ROOT))
+    monkeypatch.setenv("PLA_INSTALL_RESOURCES", str(PROJECT_ROOT))
+    monkeypatch.setenv("PLA_RESOURCE_ROOT", str(PROJECT_ROOT))
     from browser import browser_runtime as runtime
     from browser import browser_session_keeper as keeper
+    runtime = importlib.reload(runtime)
+    keeper = importlib.reload(keeper)
     assert runtime.PROJECT_ROOT == PROJECT_ROOT
     assert runtime.STATE_DIR == PROJECT_ROOT / "state/browser_runtime"
     assert runtime.PROFILE_DIR == PROJECT_ROOT / ".browser_profiles/v13-default"

@@ -24,6 +24,7 @@ from jsonschema.exceptions import SchemaError
 from artifacts.artifact_runtime import ArtifactInvocation
 from capabilities.capability_registry import CapabilityRegistry
 from runtime.event_runtime import EventStore
+from runtime.conversation_activity import current_conversation_number
 from runtime.failure_diagnostics import exception_diagnostic, result_diagnostic
 from hooks.observer_hook_runtime import ObserverHookRuntime
 from hooks.gate_hook_runtime import GateHookRuntime
@@ -384,6 +385,10 @@ class CapabilityBroker:
         if control_tags.intersection(set(descriptor.get("tags") or [])):
             return None
         try:
+            event_payload = dict(payload)
+            conversation_number = current_conversation_number()
+            if conversation_number is not None:
+                event_payload["conversation_number"] = conversation_number
             event = self._event_store.emit(
                 event_type,
                 source="capability_broker",
@@ -393,7 +398,7 @@ class CapabilityBroker:
                 capability_id=capability_id,
                 provider_id=descriptor.get("provider_id"),
                 transaction_id=transaction_id,
-                payload=payload,
+                payload=event_payload,
             )
         except Exception:
             # The event plane is observability, not the source of capability

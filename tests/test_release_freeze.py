@@ -1,7 +1,9 @@
 from pathlib import Path
+import os
 
 import server
 from provider.provider_manifest import load_provider_manifests
+from capabilities.provider_runtime_capabilities import desktop_component_descriptors
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -34,8 +36,7 @@ def test_release_version_and_provider_catalog():
         limit=100,
     )
     runtime_ids = {item["id"] for item in runtime_caps["capabilities"]}
-    assert runtime_caps["match_count"] == 36
-    assert runtime_ids == {
+    base_runtime_ids = {
         "runtime.provider_catalog",
         "runtime.capability_catalog",
         "runtime.provider_import",
@@ -68,11 +69,19 @@ def test_release_version_and_provider_catalog():
         "runtime.browser_diagnostics",
         "runtime.browser_start",
         "runtime.browser_stop",
+    }
+    desktop_ids = {item.id for item in desktop_component_descriptors()}
+    assert desktop_ids == {
         "runtime.desktop_install_preview",
         "runtime.desktop_install_status",
         "runtime.desktop_package_preview",
         "runtime.desktop_package_commit",
     }
+    expected_runtime_ids = base_runtime_ids | (
+        desktop_ids if os.environ.get("PLA_DESKTOP_RUNTIME") == "1" else set()
+    )
+    assert runtime_ids == expected_runtime_ids
+    assert runtime_caps["match_count"] == len(expected_runtime_ids)
 
     core_caps = server.CAPABILITY_REGISTRY.search(
         "",

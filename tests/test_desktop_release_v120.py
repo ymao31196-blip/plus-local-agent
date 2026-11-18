@@ -1,4 +1,4 @@
-"""Desktop v1.2.0 release metadata and upgrade contracts."""
+"""Current Desktop version consistency and v1.2.0 upgrade compatibility contracts."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_desktop_release_version_consistent():
     desktop = ROOT / "desktop"
-    version = "1.2.0"
+    version = "1.3.0"
     assert json.loads((desktop / "package.json").read_text(encoding="utf-8"))["version"] == version
     lock = json.loads((desktop / "package-lock.json").read_text(encoding="utf-8"))
     assert lock["version"] == version
@@ -18,9 +18,9 @@ def test_desktop_release_version_consistent():
     config = json.loads((desktop / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
     assert config["version"] == version
     cargo = (desktop / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
-    assert re.search(r'(?m)^version = "1\.2\.0"$', cargo)
+    assert re.search(rf'(?m)^version = "{re.escape(version)}"$', cargo)
     cargo_lock = (desktop / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
-    assert re.search(r'(?m)^name = "pla-desktop"\nversion = "1\.2\.0"$', cargo_lock)
+    assert re.search(rf'(?m)^name = "pla-desktop"\nversion = "{re.escape(version)}"$', cargo_lock)
 
 
 def test_release_docs_point_to_v120_and_preserve_signed_update_caveat():

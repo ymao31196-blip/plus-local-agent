@@ -21,6 +21,133 @@ def test_configuration_is_atomic_persistent_and_secret_free(tmp_path):
     assert 'secret' not in json.dumps(config.public())
 
 
+def test_web_api_configuration_is_disabled_by_default_and_restricts_origins(tmp_path):
+    config = DesktopConfig(tmp_path)
+    assert config.public()["web_api_enabled"] is False
+    assert config.public()["web_api_allowed_tools"] == ["list_directory", "read_text", "search_text"]
+    assert config.public()["web_api_allowed_roots"] == ["workspace"]
+    config.save({
+        "web_api_enabled": True,
+        "web_api_allowed_origins": ["http://127.0.0.1:3000", "http://localhost:4173"],
+        "web_api_allowed_tools": ["read_text", "run_process"],
+        "web_api_allowed_roots": ["workspace"],
+    })
+    before = config.path.read_bytes()
+    for origin in (
+        "https://example.com",
+        "http://127.0.0.1:3000/",
+        "http://127.0.0.1.evil:3000",
+        "file://localhost/index.html",
+        "http://127.0.0.1:80",
+    ):
+        with pytest.raises(ValueError, match="Web API origins"):
+            config.save({"web_api_allowed_origins": [origin]})
+        assert config.path.read_bytes() == before
+    with pytest.raises(ValueError, match="tool choices"):
+        config.save({"web_api_allowed_tools": ["run_powershell"]})
+    with pytest.raises(ValueError, match="workspace root names"):
+        config.save({"web_api_allowed_roots": ["../private"]})
+
+
+def test_runtime_web_api_opt_in_uses_ephemeral_token_and_existing_runtime_command(tmp_path, monkeypatch):
+    manager = Manager(tmp_path / "data", tmp_path / "resources")
+    monkeypatch.setattr(manager, "_environment", lambda: {"PLA_DESKTOP_RUNTIME": "1"})
+    monkeypatch.setattr(manager, "_command", lambda role: ["pla-runtime.exe", role])
+
+    command, env = manager._runtime_launch()
+    assert "--web-api" not in command
+    assert "PLA_WEB_API_TOKEN" not in env
+    assert manager._web_api_token == ""
+
+    manager.config.save({
+        "web_api_enabled": True,
+        "web_api_allowed_origins": ["http://127.0.0.1:3000"],
+        "web_api_allowed_tools": ["read_text", "run_process"],
+        "web_api_allowed_roots": ["workspace"],
+    })
+    command, env = manager._runtime_launch()
+    token = env["PLA_WEB_API_TOKEN"]
+    assert "--web-api" in command
+    assert len(token) >= 32
+    assert env["PLA_WEB_ALLOWED_TOOLS"] == "read_text,run_process"
+    assert env["PLA_WEB_ALLOWED_ORIGINS"] == "http://127.0.0.1:3000"
+    assert env["PLA_WEB_ALLOWED_ROOTS"] == "workspace"
+    assert token not in json.dumps(manager.config.public())
+
+    manager._record("diagnostic token=" + token)
+    assert token not in "\n".join(manager.logs)
+    monkeypatch.setattr(manager, "_alive", lambda role: role == "runtime")
+    credentials = manager.dispatch("web_api_token", {})
+    assert credentials["token"] == token
+    assert credentials["endpoint"].endswith("/web/v1")
+    manager.stop()
+    assert manager._web_api_token == ""
+
+
+def test_web_api_connection_check_without_token_exposure(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    import io
+
+    manager = Manager(tmp_path / "data", tmp_path / "resources")
+    manager.config.save({
+        "web_api_enabled": True,
+        "web_api_allowed_origins": ["http://127.0.0.1:8896"],
+        "web_api_allowed_tools": ["read_text", "run_process"],
+        "web_api_allowed_roots": ["workspace"],
+    })
+    manager._web_api_token = "a" * 43
+    monkeypatch.setattr(manager, "_alive", lambda role: role == "runtime")
+
+    class Response:
+        def __enter__(self):
+            return io.BytesIO(json.dumps({
+                "tools": [{"name": "read_text"}, {"name": "run_process"}],
+                "allowed_roots": ["workspace"],
+            }).encode("utf-8"))
+
+        def __exit__(self, *args):
+            pass
+
+    opener = Mock()
+    opener.open.return_value = Response()
+    monkeypatch.setattr("desktop_runtime.manager.urllib.request.build_opener", lambda *args: opener)
+    result = manager.dispatch("web_api_test", {})
+    assert result["ok"] is True
+    assert result["tool_count"] == 2
+    assert result["root_count"] == 1
+    assert manager._web_api_token not in json.dumps(result)
+    request = opener.open.call_args.args[0]
+    assert request.get_header("Authorization") == "Bearer " + manager._web_api_token
+    assert request.get_header("Origin") == "http://127.0.0.1:8896"
+    assert request.full_url.endswith("/web/v1/tools")
+    assert opener.open.call_args.kwargs["timeout"] == 4
+    with pytest.raises(ValueError, match="takes no arguments"):
+        manager.dispatch("web_api_test", {"extra": True})
+    manager.config.save({"web_api_allowed_tools": ["read_text"]})
+    assert manager.dispatch("web_api_test", {})["status"] == "configuration_mismatch"
+
+
+def test_removing_workspace_revokes_its_web_api_grant(tmp_path):
+    manager = Manager(tmp_path / "data", tmp_path / "resources")
+    project = tmp_path / "project"
+    project.mkdir()
+    created = manager.dispatch("workspace_save", {
+        "mode": "create", "name": "project", "path": str(project),
+        "read": True, "write": False, "execute": False, "expected_sha256": None,
+    })
+    manager.config.save({
+        "web_api_enabled": True,
+        "web_api_allowed_origins": ["http://127.0.0.1:3000"],
+        "web_api_allowed_tools": ["read_text"],
+        "web_api_allowed_roots": ["workspace", "project"],
+    })
+    manager.dispatch("workspace_remove", {
+        "name": "project", "expected_sha256": created["config_sha256"],
+    })
+    assert manager.config.value["web_api_allowed_roots"] == ["workspace"]
+    assert manager.config.value["web_api_enabled"] is True
+
+
 @pytest.mark.skipif(os.name != 'nt', reason='Windows DPAPI')
 def test_dpapi_roundtrip_and_no_plaintext_key(tmp_path):
     secret = 'sk-test-desktop-private-value'

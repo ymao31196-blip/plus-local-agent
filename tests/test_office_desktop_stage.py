@@ -17,7 +17,7 @@ def _sandbox(tmp_path):
     templates = resources / "provider-assets"
     for folder, names in {
         "provider_manifests": ("office.json",),
-        "provider_specs": ("office.txt",),
+        "provider_specs": ("office.txt", "office-enhancement.txt", "wps-office.source.json"),
         "providers": ("office_server.py",),
     }.items():
         dest = templates / folder

@@ -152,15 +152,13 @@ mcp = FastMCP(
     "Local Agent Tools",
     version="2.0.1",
     instructions=(
-        "PLA has dynamic capability routing. For a new task, prefer calling "
-        "capability_search with the user task description before choosing generic "
-        "Python/process execution, unless the user explicitly chose a tool. "
-        "The result includes live CHAGENT.md routing_advice and component availability. "
-        "Use capability_describe and capability_invoke as needed; observe all existing "
-        "permissions and confirmations. Routing rules update without MCP metadata refresh. "
-        "PLA records anonymized ChatGPT conversation activity automatically when "
-        "the host provides openai/session in MCP request metadata. No check-in "
-        "tool or periodic heartbeat is needed; missing IDs are reported as unknown."
+        "PLA uses dynamic capability routing. For new tasks, prefer capability_search "
+        "with the user task description before generic Python/process execution unless "
+        "the user chose a tool. Results include live CHAGENT.md routing_advice and "
+        "component availability. Use capability_describe and capability_invoke as "
+        "needed; honor permissions and confirmations. Routing rules hot-update. "
+        "PLA attributes calls with hashed openai/session metadata when available; "
+        "no check-in is needed; missing IDs stay unknown."
     ),
     lifespan=_runtime_lifespan,
 )
@@ -905,7 +903,34 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--path", default="/mcp")
+    parser.add_argument(
+        "--web-api", action="store_true",
+        help="Opt in to the authenticated local browser API on the same HTTP listener",
+    )
     args = parser.parse_args()
+    if args.web_api:
+        if not args.http or args.host != "127.0.0.1":
+            parser.error("--web-api requires --http --host 127.0.0.1")
+        from runtime.web_api import names_from_env, register_web_api
+
+        register_web_api(
+            mcp,
+            TASK_STORE,
+            token=os.environ.get("PLA_WEB_API_TOKEN", ""),
+            host_port=args.port,
+            allowed_tools=names_from_env(
+                os.environ.get("PLA_WEB_ALLOWED_TOOLS"),
+                frozenset({"list_directory", "read_text", "search_text"}),
+            ),
+            allowed_origins=names_from_env(
+                os.environ.get("PLA_WEB_ALLOWED_ORIGINS"),
+                frozenset({f"http://127.0.0.1:{args.port}"}),
+            ),
+            allowed_roots=names_from_env(
+                os.environ.get("PLA_WEB_ALLOWED_ROOTS"),
+                frozenset({"workspace"}),
+            ),
+        )
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     # Storage failure remains available as structured task-tool errors; other
     # local capabilities can still start. Recovery never replays old requests.

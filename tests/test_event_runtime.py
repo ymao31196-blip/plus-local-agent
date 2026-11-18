@@ -4,6 +4,7 @@ import json
 import pytest
 
 from runtime.event_runtime import EVENT_SCHEMA_VERSION, EventStore
+from runtime.conversation_activity import format_conversation_label
 
 
 def test_event_store_emit_and_query_envelope(tmp_path):
@@ -112,6 +113,34 @@ def test_event_store_query_cursor_and_filters(tmp_path):
         }
     finally:
         store.close()
+
+
+def test_conversation_registry_is_persistent_and_has_no_two_digit_ceiling(tmp_path):
+    path = tmp_path / "events.sqlite3"
+    store = EventStore(path)
+    first_fingerprint = f"{1:064x}"
+    second_fingerprint = f"{2:064x}"
+    try:
+        assert store.register_conversation(first_fingerprint) == 1
+        assert store.register_conversation(second_fingerprint) == 2
+        assert store.register_conversation(first_fingerprint) == 1
+        for value in range(3, 1001):
+            assert store.register_conversation(f"{value:064x}") == value
+        assert format_conversation_label(1) == "C01"
+        assert format_conversation_label(99) == "C99"
+        assert format_conversation_label(100) == "C100"
+        assert format_conversation_label(1000) == "C1000"
+        assert format_conversation_label(10000) == "C10000"
+        assert format_conversation_label(None) == "?"
+    finally:
+        store.close()
+
+    reopened = EventStore(path)
+    try:
+        assert reopened.register_conversation(first_fingerprint) == 1
+        assert reopened.register_conversation(f"{1001:064x}") == 1001
+    finally:
+        reopened.close()
 
 
 def test_event_store_is_append_only_across_reopen(tmp_path):

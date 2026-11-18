@@ -192,9 +192,9 @@ def test_desktop_build_uses_native_exit_codes_instead_of_powershell_51_stderr():
     assert '$exitCode = $LASTEXITCODE' in script
     assert 'if ($null -eq $exitCode -or $exitCode -ne 0)' in script
     # Includes the mandatory UI smoke preflight before the expensive build.
-    assert script.count('Invoke-LoggedNative "') == 10
-    assert script.count('2>&1 |') == 11
-    assert script.count('-Encoding utf8 -ErrorAction Stop') == 11
+    assert script.count('Invoke-LoggedNative "') == 11
+    assert script.count('2>&1 |') == 12
+    assert script.count('-Encoding utf8 -ErrorAction Stop') == 12
     assert 'Invoke-LoggedNative "Skill quick source UI smoke"' in script
     assert 'Invoke-LoggedNative "Reviewed Skill Library Wheel"' in script
     assert '*>' not in script, "Old PowerShell native-output redirections must not reappear"

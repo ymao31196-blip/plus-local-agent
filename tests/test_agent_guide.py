@@ -38,13 +38,13 @@ def test_live_hot_update_and_preferred_available(tmp_path):
     register(reg, "office-enhancement", "pptx_overlay")
     path = tmp_path / "CHAGENT.md"
     path.write_text(DEFAULT, encoding="utf-8")
-    first = live_route_advice("帮我制作PPT", reg, default_path=path)
+    first = live_route_advice("帮我制作PPT", reg, data_root=tmp_path, default_path=path)
     assert first["preferred_provider"] == "wps-office"
     assert first["rule_id"] == "routine"
     assert first["providers"][0]["candidate_capabilities"][0]["id"] == "wps-office.wps_ppt_add_slide"
-    assert live_route_advice("帮我复用元素制作PPT", reg, default_path=path)["rule_id"] == "special"
+    assert live_route_advice("帮我复用元素制作PPT", reg, data_root=tmp_path, default_path=path)["rule_id"] == "special"
     path.write_text(DEFAULT.replace('"wps-office", "office-enhancement"', '"office-enhancement", "wps-office"'), encoding="utf-8")
-    updated = live_route_advice("帮我制作PPT", reg, default_path=path)
+    updated = live_route_advice("帮我制作PPT", reg, data_root=tmp_path, default_path=path)
     assert updated["preferred_provider"] == "office-enhancement"
     assert first["revision"] != updated["revision"]
 
@@ -56,12 +56,12 @@ def test_disabled_preferred_uses_live_fallback_without_reconnect(tmp_path):
     path = tmp_path / "CHAGENT.md"
     path.write_text(DEFAULT, encoding="utf-8")
     reg.set_provider_enabled("wps-office", False)
-    hint = live_route_advice("做一页PPT", reg, default_path=path)
+    hint = live_route_advice("做一页PPT", reg, data_root=tmp_path, default_path=path)
     assert hint["preferred_provider"] == "office-enhancement"
     assert hint["providers"][0]["available"] is False
     assert hint["providers"][1]["available"] is True
     reg.set_provider_enabled("office-enhancement", False)
-    assert live_route_advice("做一页PPT", reg, default_path=path)["preferred_provider"] is None
+    assert live_route_advice("做一页PPT", reg, data_root=tmp_path, default_path=path)["preferred_provider"] is None
 
 
 def test_user_overlay_preferred_and_invalid_not_silent(tmp_path):
@@ -89,21 +89,21 @@ def test_unsafe_symlink_rejected(tmp_path):
         path.symlink_to(actual)
     except (OSError, NotImplementedError):
         pytest.skip("Symlinks unavailable")
-    assert live_route_advice("PPT", reg, default_path=path)["code"] == "symlink_not_allowed"
+    assert live_route_advice("PPT", reg, data_root=tmp_path, default_path=path)["code"] == "symlink_not_allowed"
 
 
 def test_unrelated_queries_get_no_advisory(tmp_path):
     reg = CapabilityRegistry()
     p = tmp_path / "CHAGENT.md"
     p.write_text(DEFAULT, encoding="utf-8")
-    assert live_route_advice("查询代码仓库状态", reg, default_path=p) is None
+    assert live_route_advice("查询代码仓库状态", reg, data_root=tmp_path, default_path=p) is None
 
 
 def test_only_recognized_provider_ids_no_markdown_instruction_reflection(tmp_path):
     reg = CapabilityRegistry()
     p = tmp_path / "CHAGENT.md"
     p.write_text(DEFAULT.replace("office-enhancement", "new-uninstalled"), encoding="utf-8")
-    result = live_route_advice("PPT", reg, default_path=p)
+    result = live_route_advice("PPT", reg, data_root=tmp_path, default_path=p)
     assert result["preferred_provider"] is None
     assert result["providers"][1]["provider_id"] == "new-uninstalled"
     assert result["providers"][1]["available"] is False

@@ -12,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 from tooling.internal_tool_executor import execute_actions_request, execute_local_tool
 from runtime.runtime_context import CURRENT, ExecutionContext
+from runtime.conversation_activity import CURRENT_CONVERSATION_NUMBER, current_conversation_number
 
 TERMINAL = {"completed", "failed", "cancelled"}
 MAX_EVENTS = 256
@@ -76,14 +77,16 @@ class TaskStore:
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA synchronous=FULL")
-            db.execute("CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, request TEXT NOT NULL, result TEXT, error TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, dropped_cursor INTEGER NOT NULL DEFAULT 0)")
+            db.execute("CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, request TEXT NOT NULL, result TEXT, error TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, dropped_cursor INTEGER NOT NULL DEFAULT 0, conversation_number INTEGER)")
+            if not any(col["name"] == "conversation_number" for col in db.execute("PRAGMA table_info(tasks)")):
+                db.execute("ALTER TABLE tasks ADD COLUMN conversation_number INTEGER")
             db.execute("CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, kind TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL)")
             db.execute("CREATE INDEX IF NOT EXISTS events_by_task ON events(task_id, seq)")
             self._db = db
-            recoveries: list[tuple[str, dict[str, Any], str]] = []
+            recoveries: list[tuple[str, dict[str, Any], str, int | None]] = []
             with db:
                 pending = db.execute(
-                    "SELECT task_id,status,request FROM tasks WHERE status IN ('queued', 'running')"
+                    "SELECT task_id,status,request,conversation_number FROM tasks WHERE status IN ('queued', 'running')"
                 ).fetchall()
                 for row in pending:
                     task_id = row["task_id"]
@@ -114,7 +117,7 @@ class TaskStore:
                             lambda kind, data, task_id=task_id: self._observe(task_id, kind, data),
                             task_id=task_id,
                         )
-                        recoveries.append((task_id, request, recovery_request_id))
+                        recoveries.append((task_id, request, recovery_request_id, row["conversation_number"]))
                         self._event(
                             task_id,
                             "task_recovery_queued",
@@ -130,13 +133,14 @@ class TaskStore:
                         (_now(), json.dumps(error), task_id),
                     )
                     self._event(task_id, "task_failed", {"error": error})
-            for task_id, request, request_id in recoveries:
+            for task_id, request, request_id, conversation_number in recoveries:
                 try:
                     self._workers.submit(
                         self._recover_production_task,
                         task_id,
                         request,
                         request_id,
+                        conversation_number,
                     )
                 except Exception as exc:
                     self._contexts.pop(task_id, None)
@@ -190,7 +194,11 @@ class TaskStore:
                     return _error("TaskQueueFull", "At most 256 active tasks are allowed")
                 task_id = uuid4().hex
                 with db:
-                    db.execute("INSERT INTO tasks(task_id,status,created_at,request) VALUES (?, 'queued', ?, ?)", (task_id, _now(), serialized))
+                    db.execute(
+                        "INSERT INTO tasks(task_id,status,created_at,request,conversation_number) "
+                        "VALUES (?, 'queued', ?, ?, ?)",
+                        (task_id, _now(), serialized, current_conversation_number()),
+                    )
                     self._event(task_id, "task_queued", {})
                 self._contexts[task_id] = ExecutionContext(
                     lambda kind, data: self._observe(task_id, kind, data),
@@ -220,8 +228,12 @@ class TaskStore:
         task_id: str,
         request: dict[str, Any],
         execution_request_id: str,
+        conversation_number: int | None = None,
     ) -> None:
         token = None
+        conversation_token = CURRENT_CONVERSATION_NUMBER.set(
+            conversation_number if type(conversation_number) is int and conversation_number > 0 else None
+        )
         try:
             context = self._contexts[task_id]
             token = CURRENT.set(context)
@@ -292,11 +304,13 @@ class TaskStore:
         finally:
             if token is not None:
                 CURRENT.reset(token)
+            CURRENT_CONVERSATION_NUMBER.reset(conversation_token)
             with self._lock:
                 self._contexts.pop(task_id, None)
 
     def _run(self, task_id: str) -> None:
         token = None
+        conversation_token = None
         try:
             with self._lock:
                 db = self._ensure()
@@ -308,6 +322,12 @@ class TaskStore:
                     db.execute("UPDATE tasks SET status='running',started_at=? WHERE task_id=?", (_now(), task_id))
                     self._event(task_id, "task_started", {})
                 request = json.loads(row["request"])
+                number = row["conversation_number"]
+            # Worker threads do not inherit ContextVar state; restore only the
+            # numeric identity, not MCP request objects or other contexts.
+            conversation_token = CURRENT_CONVERSATION_NUMBER.set(
+                number if type(number) is int and number > 0 else None
+            )
             token = CURRENT.set(context)
             context.check()
             if "actions" in request:
@@ -335,6 +355,8 @@ class TaskStore:
         finally:
             if token is not None:
                 CURRENT.reset(token)
+            if conversation_token is not None:
+                CURRENT_CONVERSATION_NUMBER.reset(conversation_token)
             with self._lock:
                 self._contexts.pop(task_id, None)
 

@@ -28,28 +28,43 @@ class AutoConversationMiddleware(Middleware):
             getattr(context.message, "name", None)
         )
         call_id = uuid4().hex
-
-        conversation_activity.emit_tool_activity(
-            "conversation.tool_started",
-            correlation_id=call_id,
-            tool=subject,
-            fingerprint=identity["fingerprint"],
-        )
+        conversation_number = None
+        if identity["available"] and identity["fingerprint"]:
+            try:
+                conversation_number = conversation_activity.EVENT_STORE.register_conversation(
+                    identity["fingerprint"]
+                )
+            except Exception:
+                # Attribution is observability only; never block a real tool call.
+                conversation_number = None
+        token = conversation_activity.CURRENT_CONVERSATION_NUMBER.set(conversation_number)
         try:
-            result = await call_next(context)
-        except BaseException:
             conversation_activity.emit_tool_activity(
-                "conversation.tool_failed",
+                "conversation.tool_started",
                 correlation_id=call_id,
                 tool=subject,
                 fingerprint=identity["fingerprint"],
+                conversation_number=conversation_number,
             )
-            raise
-        else:
-            conversation_activity.emit_tool_activity(
-                "conversation.tool_finished",
-                correlation_id=call_id,
-                tool=subject,
-                fingerprint=identity["fingerprint"],
-            )
-            return result
+            try:
+                result = await call_next(context)
+            except BaseException:
+                conversation_activity.emit_tool_activity(
+                    "conversation.tool_failed",
+                    correlation_id=call_id,
+                    tool=subject,
+                    fingerprint=identity["fingerprint"],
+                    conversation_number=conversation_number,
+                )
+                raise
+            else:
+                conversation_activity.emit_tool_activity(
+                    "conversation.tool_finished",
+                    correlation_id=call_id,
+                    tool=subject,
+                    fingerprint=identity["fingerprint"],
+                    conversation_number=conversation_number,
+                )
+                return result
+        finally:
+            conversation_activity.CURRENT_CONVERSATION_NUMBER.reset(token)

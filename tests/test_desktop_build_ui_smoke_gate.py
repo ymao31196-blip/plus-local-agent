@@ -26,3 +26,15 @@ def test_release_build_runs_smoke_as_blocking_preflight_before_nsis():
     assert build.index(guard) < build.index('Invoke-LoggedNative "Frozen Runtime"')
     assert build.index(guard) < build.index('Invoke-LoggedNative "Tauri NSIS installer"')
     assert "if (-not $SkipAcceptance)" in build
+
+
+def test_packaged_runtime_acceptance_exercises_web_api_end_to_end():
+    acceptance = (ROOT / "desktop/verification/packaged_mcp.py").read_text(encoding="utf-8")
+    spec = (ROOT / "desktop/packaging/runtime.spec").read_text(encoding="utf-8")
+    assert "'runtime.web_api'" in spec
+    assert "'web_api_enabled': True" in acceptance
+    assert "rpc('web_api_token')" in acceptance
+    assert "rpc('web_api_test')" in acceptance
+    assert "PLA_WEB_API_PACKAGED_OK" in acceptance
+    assert "/artifact?root=workspace&path=packaged-web-api.png" in acceptance
+    assert "Web API token rotation" in acceptance

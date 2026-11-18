@@ -28,7 +28,7 @@ for package in ('desktop_runtime', 'execution', 'capabilities', 'routing', 'runt
 datas += copy_metadata('fastmcp') + copy_metadata('mcp')
 # Windows-local pet is a managed GUI role of the frozen Desktop runtime.
 # Explicitly bundle Tkinter and its _tkinter/Tcl-Tk dependencies.
-hiddenimports += ['tkinter', '_tkinter', 'pypdf']
+hiddenimports += ['tkinter', '_tkinter', 'pypdf', 'runtime.web_api']
 a = Analysis([str(root / 'src/desktop_runtime/entry.py')], pathex=[str(root / 'src')],
              binaries=binaries, datas=datas, hiddenimports=hiddenimports,
              hookspath=[], runtime_hooks=[], excludes=['pytest', 'IPython', 'numpy', 'pandas'])

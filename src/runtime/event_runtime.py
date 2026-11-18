@@ -199,6 +199,15 @@ class EventStore:
                 "CREATE INDEX IF NOT EXISTS runtime_events_by_transaction "
                 "ON runtime_events(transaction_id, sequence)"
             )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_registry (
+                    conversation_number INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fingerprint TEXT NOT NULL UNIQUE,
+                    first_seen TEXT NOT NULL
+                )
+                """
+            )
             self._db = db
             return db
         except Exception:
@@ -404,6 +413,32 @@ class EventStore:
             "has_more": has_more,
             "returned_count": len(events),
         }
+
+    def register_conversation(self, fingerprint: str) -> int:
+        """Return a persistent, monotonically increasing local conversation number."""
+        if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+            raise ValueError("fingerprint must be a lowercase SHA-256 hex digest")
+        with self._lock:
+            db = self._ensure()
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                row = db.execute(
+                    "SELECT conversation_number FROM conversation_registry WHERE fingerprint = ?",
+                    (fingerprint,),
+                ).fetchone()
+                if row is None:
+                    cursor = db.execute(
+                        "INSERT INTO conversation_registry(fingerprint, first_seen) VALUES (?, ?)",
+                        (fingerprint, _now()),
+                    )
+                    number = int(cursor.lastrowid)
+                else:
+                    number = int(row["conversation_number"])
+                db.commit()
+                return number
+            except BaseException:
+                db.rollback()
+                raise
 
     def initialize(self) -> dict[str, Any]:
         with self._lock:

@@ -8,8 +8,28 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from urllib.parse import urlsplit
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
+WEB_API_TOOL_CHOICES = frozenset({"list_directory", "read_text", "search_text", "run_process"})
+_WEB_API_ROOT_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+
+
+def _valid_web_api_origin(origin):
+    if not isinstance(origin, str):
+        return False
+    try:
+        parsed = urlsplit(origin)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname in {"127.0.0.1", "localhost"}
+        and port is not None and 1024 <= port <= 65535
+        and parsed.netloc == f"{parsed.hostname}:{port}"
+        and not parsed.path and not parsed.query and not parsed.fragment
+    )
 
 
 def atomic_write(path: Path, content: bytes):
@@ -68,6 +88,9 @@ class DesktopConfig:
         for directory in ("config", "state", "logs", "workspace", "cache"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         self.value = {"schema_version": 1, "runtime_port": 18766, "health_port": 18082, "browser_port": 18931, "browser_enabled": False,
+                      "web_api_enabled": False, "web_api_allowed_origins": [],
+                      "web_api_allowed_tools": ["list_directory", "read_text", "search_text"],
+                      "web_api_allowed_roots": ["workspace"],
                       "tunnel_id": "", "onboarding_complete": False, "autostart": False}
         if self.path.exists():
             payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -89,12 +112,31 @@ class DesktopConfig:
         tunnel = value["tunnel_id"]
         if not isinstance(tunnel, str) or (tunnel and not re.fullmatch(r"tunnel_[a-z0-9]{32}", tunnel)):
             raise ValueError("Invalid Tunnel ID")
-        for field in ("autostart", "onboarding_complete", "browser_enabled"):
+        for field in ("autostart", "onboarding_complete", "browser_enabled", "web_api_enabled"):
             if not isinstance(value[field], bool):
                 raise ValueError(f"{field} must be boolean")
+        origins = value["web_api_allowed_origins"]
+        if (not isinstance(origins, list)
+                or any(not isinstance(origin, str) or not _valid_web_api_origin(origin) for origin in origins)
+                or len(origins) != len(set(origins))):
+            raise ValueError("Web API origins must be unique explicit localhost/127.0.0.1 origins with a valid port")
+        tools = value["web_api_allowed_tools"]
+        if (not isinstance(tools, list)
+                or any(not isinstance(tool, str) or tool not in WEB_API_TOOL_CHOICES for tool in tools)
+                or len(tools) != len(set(tools))):
+            raise ValueError("Web API tools must be a unique subset of the supported tool choices")
+        roots = value["web_api_allowed_roots"]
+        if (not isinstance(roots, list)
+                or any(not isinstance(root, str) or not _WEB_API_ROOT_PATTERN.fullmatch(root)
+                       or root.casefold() == "pla" for root in roots)
+                or len(roots) != len(set(roots))):
+            raise ValueError("Web API roots must be a unique list of valid workspace root names")
+        if value["web_api_enabled"] and (not origins or not roots or not tools):
+            raise ValueError("At least one local webpage origin, tool and workspace root are required when Web API is enabled")
 
     def save(self, changes):
-        allowed = {"runtime_port", "health_port", "browser_port", "browser_enabled", "tunnel_id", "onboarding_complete", "autostart"}
+        allowed = {"runtime_port", "health_port", "browser_port", "browser_enabled", "tunnel_id", "onboarding_complete", "autostart",
+                   "web_api_enabled", "web_api_allowed_origins", "web_api_allowed_tools", "web_api_allowed_roots"}
         if not isinstance(changes, dict) or set(changes) - allowed:
             raise ValueError("Unsupported configuration fields")
         updated = {**self.value, **changes}

@@ -14,6 +14,17 @@ $ErrorActionPreference = "Stop"
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $buildRoot = Join-Path $projectRoot ".desktop-build"
 $resources = Join-Path $projectRoot "desktop\src-tauri\resources"
+$tauriConfig = Get-Content -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json
+$requiredIcons = @("icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico")
+$configuredIcons = @($tauriConfig.bundle.icon)
+foreach ($icon in $requiredIcons) {
+    if ($configuredIcons -notcontains $icon) {
+        throw "Tauri bundle.icon is missing required asset '$icon'; refusing to build an installer with a default application icon."
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "desktop\src-tauri\$icon") -PathType Leaf)) {
+        throw "Configured application icon asset is missing: $icon"
+    }
+}
 $originalDirectory = Get-Location
 $originalPath = $env:PATH
 $originalUpdaterKey = $env:PLA_UPDATER_PUBLIC_KEY
@@ -313,6 +324,13 @@ try {
         $tauriArgs += @("--config", $generatedUpdaterConfig)
     }
     $tauriArgs += @("--", "--locked")
+    # Tauri's generated Windows resource archive can retain an older ICO
+    # after icon-only changes. Rebuild this package's native resources from the
+    # current tauri.conf.json and icons before producing the installer.
+    Invoke-LoggedNative "Clean PLA Desktop native bundle resources" {
+        & cargo.exe clean --package pla-desktop --manifest-path (Join-Path $projectRoot "desktop\\src-tauri\\Cargo.toml") 2>&1 |
+            Out-File -FilePath (Join-Path $buildRoot "icon-resource-clean.log") -Encoding utf8 -ErrorAction Stop
+    }
     # Bound concurrent rustc processes to reduce memory/commit pressure on
     # 16 GiB Windows machines. -CargoJobs 1 is available for tight systems.
     $env:CARGO_BUILD_JOBS = [string]$CargoJobs

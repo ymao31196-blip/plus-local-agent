@@ -12,7 +12,7 @@
     <!-- Sidebar Navigation -->
     <aside>
         <div class="brand">
-            <span class="logo">P</span>
+            <img class="logo" src="brand-icon.png" alt="PLA Logo" width="36" height="36">
             <strong>PLA Desktop</strong>
         </div>
         <p class="tagline">ChatGPT 负责思考<br>PLA 负责本地执行</p>
@@ -102,11 +102,13 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="conversation-strip" id="conversation-summary" role="group" aria-label="最近60秒ChatGPT对话活动">
+                    <div class="conversation-strip" id="conversation-summary" role="group" aria-label="最近120秒ChatGPT工具活动（活跃60秒，刚停止保留60秒）">
                         <span class="conversation-primary"><span>活跃对话</span><strong id="conversation-count">—</strong></span>
+                        <span class="conversation-identities" id="conversation-identities" aria-label="活跃对话编号" aria-live="off">暂无活跃对话</span>
+                        <span class="conversation-recent" id="conversation-recent" aria-label="刚刚停止的对话编号" hidden></span>
                         <span class="conversation-secondary">未识别调用 <strong id="conversation-unknown">—</strong></span>
                         <span class="conversation-period" id="conversation-period">近60秒</span>
-                        <span class="conversation-help" title="按MCP请求中的匿名会话标识统计，60秒无调用后自动减少；不代表所有打开的窗口。" aria-label="统计口径说明">ⓘ</span>
+                        <span class="conversation-help" title="根据PLA工具调用判断：60秒内有活动视为活跃，随后60秒标为刚刚停止，再自动隐藏；无法判断浏览器标签页是否关闭。" aria-label="统计口径说明">ⓘ</span>
                     </div>
                     <div id="activity-list" aria-live="off">读取近期活动中…</div>
                     <p class="text-muted text-small activity-note" id="activity-fetched">尚未读取活动</p>
@@ -593,6 +595,73 @@
                     <button id="check-desktop-update">立即检查</button>
                     <button id="install-signed-update" class="primary" hidden>安装已签名更新</button>
                     <button data-link="releases" class="secondary">官方 Releases</button>
+                </div>
+            </div>
+
+            <div class="card mb-lg" id="web-api-panel">
+                <div class="card-header">
+                    <h2 class="card-title">本地网页调用接口</h2>
+                    <span id="web-api-state" class="status-badge neutral">默认关闭</span>
+                </div>
+                <div class="card-body">
+                    <p class="mb-md">允许你制作的本地网页通过HTTP调用PLA现有工具。接口与Runtime共用进程和端口，只监听127.0.0.1。默认关闭，不会自动开放公网访问。</p>
+                    <div class="checkbox-group">
+                        <input id="web-api-enabled" type="checkbox">
+                        <label for="web-api-enabled">启用本地网页调用接口</label>
+                    </div>
+                    <div class="form-group mt-md">
+                        <label class="form-label" for="web-api-origins">允许的网页来源 Origin（每行一个）</label>
+                        <textarea id="web-api-origins" class="form-textarea" rows="3" spellcheck="false" placeholder="http://127.0.0.1:3000"></textarea>
+                        <span class="form-hint">仅接受明确端口的 localhost / 127.0.0.1 来源；不接受 file://、公网域名或通配符。</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="web-api-roots">允许访问的PLA工作区 Root（逗号分隔）</label>
+                        <input id="web-api-roots" class="form-input" placeholder="workspace, project_a">
+                        <span class="form-hint" id="web-api-roots-hint">只能选择「工作区」页面中已经配置的Root。</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">允许网页调用的现有工具</label>
+                        <div class="checkbox-group">
+                            <input id="web-api-tool-list-directory" type="checkbox">
+                            <label for="web-api-tool-list-directory">list_directory · 列出目录</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="web-api-tool-read-text" type="checkbox">
+                            <label for="web-api-tool-read-text">read_text · 读取文本</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="web-api-tool-search-text" type="checkbox">
+                            <label for="web-api-tool-search-text">search_text · 搜索文本</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="web-api-tool-run-process" type="checkbox">
+                            <label for="web-api-tool-run-process">run_process · 本地程序与数值计算</label>
+                        </div>
+                        <span class="form-hint">run_process拥有更高执行风险。网页提交的程序仍受PLA现有程序授权、工作区和执行策略约束；请只对自己信任的网页开放。</span>
+                    </div>
+                    <p class="text-muted text-small mt-md">修改设置前需要停止Runtime和Tunnel。每次启动Runtime都会生成新的临时Token，停止或重启后旧Token失效。</p>
+                    <p id="web-api-endpoint-state" class="text-muted text-small mt-md">尚未启动。</p>
+                    <p id="web-api-test-state" class="text-muted text-small mt-md">接口尚未运行。</p>
+                </div>
+                <div class="card-actions">
+                    <button id="save-web-api" class="primary">保存Web API设置</button>
+                    <button id="test-web-api" class="secondary" disabled>检测本地连接</button>
+                    <button id="show-web-api-token" class="secondary" disabled>显示本次访问Token</button>
+                </div>
+                <div id="web-api-credentials" class="card-body hidden">
+                    <div class="form-group">
+                        <label class="form-label" for="web-api-endpoint">本地API地址</label>
+                        <input id="web-api-endpoint" class="form-input" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="web-api-token">本次Runtime访问Token</label>
+                        <input id="web-api-token" class="form-input" type="text" readonly spellcheck="false" autocomplete="off">
+                        <span id="web-api-token-expiry" class="form-hint">停止或重启Runtime后失效。</span>
+                    </div>
+                    <div class="card-actions">
+                        <button id="copy-web-api-token">复制Token</button>
+                        <button id="hide-web-api-token" class="secondary">隐藏</button>
+                    </div>
                 </div>
             </div>
 

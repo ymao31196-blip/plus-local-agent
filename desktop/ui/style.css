@@ -110,14 +110,9 @@ aside {
 .logo {
   width: 36px;
   height: 36px;
-  background: var(--color-brand);
-  color: var(--color-bg-dark);
   border-radius: var(--radius-md);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
@@ -618,6 +613,13 @@ button.sm {
 .conversation-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; margin: 6px 0 8px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); background: var(--color-bg-secondary); font-size: var(--text-sm); }
 .conversation-primary { display: inline-flex; align-items: baseline; gap: 9px; color: var(--color-text-primary); }
 .conversation-primary strong { font-size: var(--text-xl); font-variant-numeric: tabular-nums; font-weight: 700; line-height: 1; }
+.conversation-identities { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
+.conversation-chip { display: inline-block; padding: 2px 7px; border: 1px solid var(--color-success-border); border-radius: var(--radius-sm); background: var(--color-success-bg); color: var(--color-brand); font-family: var(--font-mono); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.45; white-space: nowrap; }
+.conversation-recent { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; color: var(--color-text-secondary); font-size: var(--text-xs); }
+.conversation-recent[hidden] { display: none; }
+.conversation-recent-title { font-weight: 600; margin-right: 2px; white-space: nowrap; }
+.conversation-chip.is-recent { border-color: var(--color-border); background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+.conversation-extra { color: var(--color-text-secondary); white-space: nowrap; }
 .conversation-secondary { display: inline-flex; align-items: baseline; gap: 5px; color: var(--color-text-secondary); font-size: var(--text-xs); }
 .conversation-secondary strong { font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
 .conversation-period { margin-left: auto; white-space: nowrap; color: var(--color-text-secondary); font-size: var(--text-xs); }

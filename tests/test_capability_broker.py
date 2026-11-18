@@ -30,6 +30,25 @@ def build_runtime():
     return registry, manager, CapabilityBroker(registry, manager)
 
 
+def test_capability_broker_events_carry_current_conversation_number(tmp_path):
+    from runtime.conversation_activity import CURRENT_CONVERSATION_NUMBER
+
+    store = EventStore(tmp_path / "events.sqlite3")
+    broker = CapabilityBroker(CapabilityRegistry(), None, event_store=store)
+    token = CURRENT_CONVERSATION_NUMBER.set(1000)
+    try:
+        event = broker._emit_runtime_event(
+            "capability.before_invoke", {}, "fixture.echo",
+            correlation_id="call-1000", causation_id=None,
+            transaction_id=None, payload={"arguments_sha256": "a" * 64},
+        )
+        assert event["payload"]["conversation_number"] == 1000
+        assert event["payload"]["arguments_sha256"] == "a" * 64
+    finally:
+        CURRENT_CONVERSATION_NUMBER.reset(token)
+        store.close()
+
+
 def test_stdio_provider_discovery_and_invoke_round_trip():
     async def scenario():
         registry = CapabilityRegistry()

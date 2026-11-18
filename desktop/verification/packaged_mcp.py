@@ -6,6 +6,11 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import time
+import struct
+import urllib.error
+import urllib.request
+import zlib
 
 from fastmcp import Client
 
@@ -99,6 +104,97 @@ async def exercise(port, browser=False, data=None):
     return results
 
 
+def _web_request(base, path, *, method="GET", token=None, origin=None,
+                 body=None, extra_headers=None):
+    headers = dict(extra_headers or {})
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    if origin:
+        headers["Origin"] = origin
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=15) as response:
+            return response.status, {str(key).casefold(): value for key, value in response.headers.items()}, response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, {str(key).casefold(): value for key, value in exc.headers.items()}, exc.read()
+
+
+def _png_fixture():
+    def chunk(kind, payload):
+        return (struct.pack(">I", len(payload)) + kind + payload
+                + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00\xff"))
+            + chunk(b"IEND", b""))
+
+
+def exercise_web_api(port, token, origin, data):
+    base = f"http://127.0.0.1:{port}/web/v1"
+    results = []
+
+    status, headers, raw = _web_request(base, "/tools", token=token, origin=origin)
+    assert status == 200, (status, raw[:500])
+    catalog = json.loads(raw)
+    names = {row.get("name") for row in catalog.get("tools", [])}
+    assert names == {"list_directory", "read_text", "run_process"}, names
+    assert catalog.get("allowed_roots") == ["workspace"], catalog
+    assert headers.get("access-control-allow-origin") == origin
+    results.append({"test": "packaged Web API authenticated discovery and exact allow-list", "status": "PASS",
+                    "tool_count": len(names), "root_count": len(catalog["allowed_roots"])})
+
+    status, _, _ = _web_request(base, "/tools", origin=origin)
+    assert status == 401, status
+    status, _, _ = _web_request(base, "/tools", token=token, origin="http://127.0.0.1:8897")
+    assert status == 403, status
+    status, headers, _ = _web_request(
+        base, "/tasks", method="OPTIONS", origin=origin,
+        extra_headers={"Access-Control-Request-Method": "POST",
+                       "Access-Control-Request-Headers": "Authorization, Content-Type"},
+    )
+    assert status == 200 and headers.get("access-control-allow-origin") == origin, (status, headers)
+    results.append({"test": "packaged Web API rejects missing credentials and unapproved origins", "status": "PASS"})
+
+    payload = {"tool": "run_process", "arguments": {
+        "program": "python", "args": ["-c", "print('PLA_WEB_API_PACKAGED_OK')"],
+        "root": "workspace",
+    }}
+    status, _, raw = _web_request(base, "/tasks", method="POST", token=token,
+                                 origin=origin, body=payload)
+    assert status == 202, (status, raw[:1000])
+    task_id = json.loads(raw)["task_id"]
+    deadline = time.monotonic() + 30
+    task = None
+    while time.monotonic() < deadline:
+        status, _, raw = _web_request(base, "/tasks/" + task_id, token=token, origin=origin)
+        assert status == 200, (status, raw[:1000])
+        task = json.loads(raw)
+        if task.get("status") in {"completed", "failed", "cancelled"}:
+            break
+        time.sleep(0.2)
+    assert task and task.get("status") == "completed", task
+    assert "PLA_WEB_API_PACKAGED_OK" in json.dumps(task.get("result")), task
+    results.append({"test": "packaged Web API submits and tracks a real local process task", "status": "PASS"})
+
+    workspace = data / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    image = _png_fixture()
+    (workspace / "packaged-web-api.png").write_bytes(image)
+    status, headers, received = _web_request(
+        base, "/artifact?root=workspace&path=packaged-web-api.png",
+        token=token, origin=origin,
+    )
+    assert status == 200 and headers.get("content-type") == "image/png" and received == image
+    results.append({"test": "packaged Web API returns a bounded PNG artifact", "status": "PASS",
+                    "artifact_bytes": len(received)})
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--resources', type=Path, required=True)
@@ -133,10 +229,21 @@ def main():
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             browser_port = listener.getsockname()[1]
-        rpc('configure', {'runtime_port': port, 'browser_port': browser_port, 'browser_enabled': args.browser})
+        origin = 'http://127.0.0.1:8896'
+        rpc('configure', {
+            'runtime_port': port, 'browser_port': browser_port, 'browser_enabled': args.browser,
+            'web_api_enabled': True, 'web_api_allowed_origins': [origin],
+            'web_api_allowed_tools': ['list_directory', 'read_text', 'run_process'],
+            'web_api_allowed_roots': ['workspace'],
+        })
         assert rpc('start')['runtime'] == 'ready'
         assert rpc('verify')['local_mcp'] == 'PASS'
+        credentials = rpc('web_api_token')
+        assert credentials['endpoint'] == f'http://127.0.0.1:{port}/web/v1'
+        probe = rpc('web_api_test')
+        assert probe['ok'] and probe['tool_count'] == 3 and probe['root_count'] == 1, probe
         report['tests'] = asyncio.run(exercise(port, args.browser, data))
+        report['tests'] += exercise_web_api(port, credentials['token'], origin, data)
         # Exercise the actual frozen importer, not the host's pypdf module.
         from pypdf import PdfWriter
         writer = PdfWriter()
@@ -153,9 +260,13 @@ def main():
                 assert result.data['content'].startswith('[Page 2]'), result
         asyncio.run(read_pdf())
         report['tests'].append({'test': 'frozen PDF text extraction with bundled pypdf', 'status': 'PASS'})
+        first_token = credentials['token']
         rpc('stop')
         assert rpc('start')['runtime'] == 'ready'
-        report['tests'].append({'test': 'frozen stop/restart and persistent configuration', 'status': 'PASS'})
+        renewed = rpc('web_api_token')
+        assert renewed['token'] != first_token, 'Web API token did not rotate on Runtime restart'
+        assert rpc('web_api_test')['ok']
+        report['tests'].append({'test': 'frozen stop/restart, persistent configuration and Web API token rotation', 'status': 'PASS'})
         rpc('stop')
     except Exception as exc:
         report['tests'].append({'test': 'packaged MCP acceptance', 'status': 'FAIL', 'error': str(exc)})

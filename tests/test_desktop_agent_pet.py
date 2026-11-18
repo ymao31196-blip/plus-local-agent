@@ -49,6 +49,60 @@ def test_pet_registered_dialogue_count_uses_runtime_boundary(tmp_path):
         store.close()
 
 
+def test_pet_registered_dialogue_number_labels(tmp_path):
+    db = tmp_path / "events.sqlite3"
+    store = EventStore(db)
+    started_at = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+    try:
+        store.emit("conversation.tool_started", source="conversation_transport",
+                   subject="read_text", payload={"fingerprint": "a" * 64, "conversation_number": 1})
+        store.emit("conversation.tool_started", source="conversation_transport",
+                   subject="run_process", payload={"fingerprint": "b" * 64, "conversation_number": 1000})
+        store.emit("conversation.tool_started", source="conversation_transport",
+                   subject="run_process", payload={"identity": "missing"})
+        assert pet_viewer.registered_dialogues_label(db, started_at) == (
+            "活跃 2 · C1000 C01 · 未识别1"
+        )
+    finally:
+        store.close()
+
+
+def test_pet_recently_stopped_label_expires_and_resumes(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "events.sqlite3"
+    store = EventStore(db)
+    base = datetime(2026, 11, 15, 12, 0, tzinfo=timezone.utc)
+    events = []
+    try:
+        for fingerprint, number in (("a" * 64, 1), ("b" * 64, 1000)):
+            result = store.emit(
+                "conversation.tool_started", source="conversation_transport",
+                subject="read_text", correlation_id=f"call-{number}",
+                payload={"fingerprint": fingerprint, "conversation_number": number},
+            )
+            events.append(result["event_id"])
+    finally:
+        store.close()
+    with sqlite3.connect(db) as connection:
+        for event_id, seconds in zip(events, (10, 65)):
+            connection.execute(
+                "UPDATE runtime_events SET timestamp = ? WHERE event_id = ?",
+                ((base - timedelta(seconds=seconds)).isoformat(), event_id),
+            )
+    started_at = (base - timedelta(hours=1)).isoformat()
+    assert pet_viewer.registered_dialogues_label(db, started_at, now=base) == (
+        "刚停 1 C1000 · 活跃 1 · C01"
+    )
+    # Resuming replaces the stopped status with the same active number.
+    assert pet_viewer.registered_dialogues_label(
+        db, started_at, now=base + timedelta(seconds=56)
+    ) == "刚停 1 C01 · 活跃 0"
+    assert pet_viewer.registered_dialogues_label(
+        db, started_at, now=base + timedelta(seconds=111)
+    ) == "活跃 0"
+
+
 def test_pet_registered_dialogue_unavailable_is_explicit(tmp_path):
     db = tmp_path / "events.sqlite3"
     db.write_bytes(b"corrupt-sqlite")
@@ -73,21 +127,25 @@ def test_pet_activity_labels_match_desktop_event_types(tmp_path):
                               correlation_id=call_id, **kwargs)
 
         emit("native_tool.started", "native_mcp", "run_process", "python-1",
-             payload={"program": "python.exe"})
-        emit("native_tool.succeeded", "native_mcp", "run_process", "python-1")
+             payload={"program": "python.exe", "conversation_number": 100})
+        emit("native_tool.succeeded", "native_mcp", "run_process", "python-1",
+             payload={"conversation_number": 100})
         emit("local_action.started", "local_action", "run_process", "git-2",
-             payload={"program": "git"})
-        emit("local_action.succeeded", "local_action", "run_process", "git-2")
+             payload={"program": "git", "conversation_number": 1000})
+        emit("local_action.succeeded", "local_action", "run_process", "git-2",
+             payload={"conversation_number": 1000})
         emit("capability.before_invoke", "capability_broker", "drawio.render", "draw-3",
-             capability_id="drawio.render", provider_id="drawio")
+             capability_id="drawio.render", provider_id="drawio",
+             payload={"conversation_number": 10000})
         emit("capability.succeeded", "capability_broker", "drawio.render", "draw-3",
-             capability_id="drawio.render", provider_id="drawio")
+             capability_id="drawio.render", provider_id="drawio",
+             payload={"conversation_number": 10000})
         snapshot = pet_viewer.build_snapshot(pet_viewer.fetch_rows(tmp_path / "events.sqlite3"),
                                              time.time())
         assert len(snapshot.calls) == 3
-        assert pet_viewer.describe_call(snapshot.calls[0]) == ("draw.io", "render · 组件调用")
-        assert pet_viewer.describe_call(snapshot.calls[1]) == ("程序 · git", "run_process · 本地执行")
-        assert pet_viewer.describe_call(snapshot.calls[2]) == ("程序 · python.exe", "run_process · 本地执行")
+        assert pet_viewer.describe_call(snapshot.calls[0]) == ("C10000 · draw.io", "render · 组件调用")
+        assert pet_viewer.describe_call(snapshot.calls[1]) == ("C1000 · 程序 · git", "run_process · 本地执行")
+        assert pet_viewer.describe_call(snapshot.calls[2]) == ("C100 · 程序 · python.exe", "run_process · 本地执行")
         assert all(item.status == "succeeded" for item in snapshot.calls)
         assert snapshot.mode == "active"
     finally:
@@ -108,10 +166,10 @@ def test_pet_denied_capability_and_untrusted_payload_are_safe(tmp_path):
         assert len(snapshot.calls) == 2
         assert snapshot.calls[0].program is None
         assert pet_viewer.describe_call(snapshot.calls[0]) == (
-            "程序 · 未知程序", "run_process · 本地执行"
+            "? · 程序 · 未知程序", "run_process · 本地执行"
         )
         assert snapshot.calls[1].status == "failed"
-        assert pet_viewer.describe_call(snapshot.calls[1])[0] == "Browser"
+        assert pet_viewer.describe_call(snapshot.calls[1])[0] == "? · Browser"
         assert "SECRET_ARGUMENT" not in str(snapshot)
     finally:
         store.close()

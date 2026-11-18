@@ -4,13 +4,13 @@
 
 PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop applications and optional MCP providers on your own Windows PC, within explicitly configured permissions. ChatGPT handles reasoning and tool selection; PLA runs the local tools. The ChatGPT app can be on another device, including your phone, while the Windows PC runs PLA through Secure MCP Tunnel.
 
-**Release channel: PLA Desktop v1.2.0 (Windows 10/11 x64).** Automatic anonymous ChatGPT conversation activity counting, a compact Desktop/pet display and consolidated Office management. Tauri-signed updates introduced in v1.1.0 remain available; the installer is not Windows Authenticode signed. PLA is not an operating-system sandbox.
+**Latest published release: PLA Desktop v1.3.0 (Windows 10/11 x64).** Persistent conversation attribution and an opt-in loopback Web Invocation API. The installer has a Tauri updater signature but is not Windows Authenticode signed. PLA is not an operating-system sandbox.
 
 **License:** PLA-owned source uses [Apache-2.0](LICENSE); bundled and optional third-party dependencies retain their own licenses. See [third-party notices](docs/desktop-v1-third-party-notices.md).
 
-[**Download PLA Desktop v1.2.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.2.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
+[**Download PLA Desktop v1.3.0 (Windows x64)**](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.3.0) · [All releases](https://github.com/ymao31196-blip/plus-local-agent/releases) · [简体中文](README.zh-CN.md) · [Advanced source installation](#source-installation-advanced)
 
-**v1.2.0 release:** Automatic privacy-preserving ChatGPT conversation attribution, more readable activity indicators, internal-polling noise filtering, and one Office component entry with reliable upgrade cleanup. See [v1.2.0 release notes](docs/desktop-v1.2.0-release-notes.md) for validation and limitations.
+**v1.3.0 release:** Each recognized ChatGPT conversation receives a persistent local number; verified tool calls show that number in the activity list and Agent Pet. Active conversations remain visible for 60 seconds, then appear as recently stopped for another 60 seconds. The new Web Invocation API lets explicitly trusted localhost pages call selected PLA tools through a short-lived bearer token and existing workspace/program policies. It is disabled by default and adds no MCP tools. See [v1.3.0 release notes](docs/desktop-v1.3.0-release-notes.md) for validation and limitations.
 
 ## PLA Desktop: download, install and connect
 
@@ -18,16 +18,16 @@ PLA (plus-local-agent) lets ChatGPT work with files, programs, browsers, desktop
 
 ### 1. Download the correct file
 
-1. Go to the [PLA Desktop v1.2.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.2.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
-2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.2.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.2.0/PLA.Desktop_1.2.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.2.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
+1. Go to the [PLA Desktop v1.3.0 release](https://github.com/ymao31196-blip/plus-local-agent/releases/tag/desktop-v1.3.0) or browse [all releases](https://github.com/ymao31196-blip/plus-local-agent/releases) for older builds.
+2. Expand **Assets** and download the **Windows x64 setup EXE** ([`PLA.Desktop_1.3.0_x64-setup.exe`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.3.0/PLA.Desktop_1.3.0_x64-setup.exe)) together with [`SHA256SUMS.txt`](https://github.com/ymao31196-blip/plus-local-agent/releases/download/desktop-v1.3.0/SHA256SUMS.txt). **Do not download “Source code (zip/tar.gz)” as the installer.**
 
 3. Open PowerShell and run the command below. Compare its hash with the matching installer entry in `SHA256SUMS.txt` (change the path if your download directory differs).
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.2.0_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\PLA.Desktop_1.3.0_x64-setup.exe"
 ~~~
 
-Compare the output with the exact v1.2.0 installer entry in the release's `SHA256SUMS.txt`. The hash is specific to the official release artifact; do not substitute the hash of a local signed test build.
+Compare the output with the exact v1.3.0 installer entry in the release's `SHA256SUMS.txt`. The hash is specific to the official release artifact; do not substitute the hash of a local signed test build.
 
 ### 2. Install and open PLA
 

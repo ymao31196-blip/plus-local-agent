@@ -2,6 +2,16 @@
 
 All notable PLA release changes are recorded here.
 
+## Desktop 1.3.0 - 2026-11-18 (stable release)
+
+- Assign a persistent local conversation number to each recognized host-provided `openai/session` identity. The registry stores only the SHA-256 fingerprint and local number; the same conversation keeps its number across tool calls and Runtime restarts. Labels use a two-digit minimum and grow without a fixed maximum.
+- Prefix attributed local tool activity with its conversation number in Desktop and Agent Pet. Show sessions as active for 60 seconds, recently stopped for the next 60 seconds, then hide them. This reflects observed PLA activity and does not claim to detect closed ChatGPT tabs.
+- Add an opt-in Web Invocation API to the Desktop-managed Runtime. It shares the existing loopback HTTP listener and TaskStore, requires an ephemeral per-Runtime bearer token, and restricts browser Origins, tools and workspace Roots. The bounded image artifact endpoint supports local web workflows. The API is disabled by default and adds no MCP tools.
+- Refresh the Desktop application icon and add build preflight checks for the required icon assets. Clean Tauri's native bundle resources before packaging so an incremental build cannot silently retain an older icon.
+- Extend frozen-runtime acceptance to exercise Web API discovery, rejected credentials and Origins, real task submission/polling, image artifact retrieval and token rotation.
+- Source regression: **1,269 passed, 4 skipped, 5 subtests passed** across four isolated batches. Desktop Runtime release-freeze checks: **3 passed**.
+- The signed NSIS build and packaged frozen-runtime acceptance passed. The release manifest binds the installer to the clean source commit and its SHA-256; this release does not claim clean-machine installation or real ChatGPT/Tunnel E2E validation.
+
 ## Desktop 1.0.0 - 2026-10-25 (Windows x64 stable release)
 
 - Prepared the first stable-release candidate with an explicit core stability scope: Desktop setup and lifecycle, Secure MCP Tunnel, MCP Runtime/Runner, workspace/program permission controls, diagnostics and basic file/process execution. Optional Providers remain separately supported extensions.

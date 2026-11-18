@@ -263,6 +263,31 @@ def test_real_server_endpoint_uses_activity_wrapper(tmp_path, monkeypatch):
         store.close()
 
 
+def test_desktop_activity_rows_expose_persistent_conversation_numbers(tmp_path, monkeypatch):
+    from runtime import conversation_activity as conversation
+    store = EventStore(tmp_path / "events.sqlite3")
+    monkeypatch.setattr(activity, "EVENT_STORE", store)
+    token = conversation.CURRENT_CONVERSATION_NUMBER.set(1000)
+    try:
+        @activity.record_native_activity
+        def read_text():
+            return {"ok": True}
+
+        read_text()
+        item = activity.recent_activity(tmp_path / "events.sqlite3")["activities"][0]
+        assert item["conversation_number"] == 1000
+    finally:
+        conversation.CURRENT_CONVERSATION_NUMBER.reset(token)
+        store.close()
+
+
+def test_desktop_ui_places_conversation_label_before_tool_name():
+    source = (Path(__file__).resolve().parents[1] / "desktop" / "ui" / "app.js").read_text(encoding="utf-8")
+    assert "activityConversationLabel(activity.conversation_number)" in source
+    assert "+ ' · ' + description.title" in source
+    assert "'来源对话'" in source
+
+
 def test_activity_unavailable_on_corrupt_database(tmp_path):
     bad = tmp_path / "bad.sqlite3"
     bad.write_bytes(b"not-a-database")

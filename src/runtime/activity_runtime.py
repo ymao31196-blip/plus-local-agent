@@ -17,6 +17,7 @@ from typing import Any, Callable, TypeVar
 from uuid import uuid4
 
 from runtime.event_runtime import EVENT_STORE
+from runtime.conversation_activity import current_conversation_number
 from runtime.failure_diagnostics import (
     exception_diagnostic, failure_projection, result_diagnostic,
 )
@@ -60,12 +61,16 @@ def _safe_program_name(program: Any) -> str | None:
 def _emit(event_type: str, tool: str, source: str, call_id: str,
           payload: dict[str, Any] | None = None) -> None:
     try:
+        metadata = dict(payload or {})
+        conversation_number = current_conversation_number()
+        if conversation_number is not None:
+            metadata["conversation_number"] = conversation_number
         EVENT_STORE.emit(
             event_type,
             source=source,
             subject=tool,
             correlation_id=call_id,
-            payload=payload or {},
+            payload=metadata,
         )
     except Exception:
         # Observability must never change execution, permission checks, or results.
@@ -222,6 +227,9 @@ def recent_activity(db_path: str | Path, limit: int = 5, *, only_components: boo
                 program = metadata.get("program") if isinstance(metadata, dict) else None
                 if not isinstance(program, str) or not _PROGRAM_BASENAME.fullmatch(program):
                     program = None
+                conversation_number = metadata.get("conversation_number") if isinstance(metadata, dict) else None
+                if type(conversation_number) is not int or conversation_number < 1:
+                    conversation_number = None
                 diagnostic = {}
                 if end and result == "failed":
                     try:
@@ -235,6 +243,7 @@ def recent_activity(db_path: str | Path, limit: int = 5, *, only_components: boo
                     "provider": row["provider_id"] if source == "capability" else None,
                     "capability": row["capability_id"] if source == "capability" else None,
                     "program": program if source != "capability" else None,
+                    "conversation_number": conversation_number,
                     "started_at": row["timestamp"],
                     "finished_at": end["timestamp"] if end else None,
                     "outcome": result,

@@ -4,10 +4,17 @@ const $ = id => document.getElementById(id);
 const invoke = (command, args) => window.__TAURI__.core.invoke(command, args);
 
 let snapshot, busy = false, connectionEdited = false, workspaceEditName = null;
+let webApiEdited = false, webApiRuntimePid = null, webApiProbe = null;
 
 // Track connection form changes
 for (const id of ['runtime-port', 'health-port', 'tunnel-id', 'secret']) {
   $(id).addEventListener('input', () => { connectionEdited = true; });
+}
+for (const id of ['web-api-enabled', 'web-api-origins', 'web-api-roots',
+  'web-api-tool-list-directory', 'web-api-tool-read-text',
+  'web-api-tool-search-text', 'web-api-tool-run-process']) {
+  $(id).addEventListener('input', () => { webApiEdited = true; });
+  $(id).addEventListener('change', () => { webApiEdited = true; });
 }
 
 // Legacy detection (optional feature)
@@ -52,7 +59,7 @@ function notice(text, error = false) {
 function friendlyError(error) {
   const text = String(error);
   const friendlyMessages = {
-    'Stop services before changing configuration': '请先停止服务，再保存连接或浏览器配置。',
+    'Stop services before changing configuration': '请先停止服务，再保存连接、浏览器或网页接口配置。',
     'Start Runtime before connecting Tunnel': '请先启动 Runtime，再连接 Tunnel。',
     'Configure this machine\'s Tunnel ID and runtime API key': '请填写并保存 Tunnel ID 和 Runtime API key，再连接 Tunnel。',
     'Stop Runtime before changing workspace permissions': '请先停止 Runtime，再保存工作区授权。',
@@ -75,6 +82,7 @@ async function action(fn) {
   } finally {
     busy = false;
     document.querySelectorAll('button').forEach(b => b.disabled = false);
+    if (snapshot) $('show-web-api-token').disabled = !snapshot.web_api?.active;
   }
 }
 
@@ -216,6 +224,51 @@ function updateStatusDisplay() {
   $('optional-status-display').textContent = '请在组件管理页面查看组件的真实状态';
 }
 
+function hideWebApiToken() {
+  $('web-api-credentials').classList.add('hidden');
+  $('web-api-endpoint').value = '';
+  $('web-api-token').value = '';
+}
+
+function renderWebApi(snapshot) {
+  const config = snapshot.config;
+  const api = snapshot.web_api || {enabled: false, active: false};
+  const pid = snapshot.owned_processes?.runtime?.pid ?? null;
+  if (pid !== webApiRuntimePid || !api.active) {
+    hideWebApiToken();
+    webApiProbe = null;
+  }
+  webApiRuntimePid = pid;
+  if (!webApiEdited) {
+    $('web-api-enabled').checked = Boolean(config.web_api_enabled);
+    $('web-api-origins').value = (config.web_api_allowed_origins || []).join('\n');
+    $('web-api-roots').value = (config.web_api_allowed_roots || ['workspace']).join(', ');
+    $('web-api-tool-list-directory').checked = (config.web_api_allowed_tools || []).includes('list_directory');
+    $('web-api-tool-read-text').checked = (config.web_api_allowed_tools || []).includes('read_text');
+    $('web-api-tool-search-text').checked = (config.web_api_allowed_tools || []).includes('search_text');
+    $('web-api-tool-run-process').checked = (config.web_api_allowed_tools || []).includes('run_process');
+  }
+  const badge = $('web-api-state');
+  badge.textContent = api.active
+    ? webApiProbe?.ok ? '接口检测通过' : webApiProbe ? '接口异常' : 'Runtime已就绪'
+    : api.enabled ? '已启用 · 等待Runtime启动' : '默认关闭';
+  badge.className = 'status-badge ' + (api.active
+    ? webApiProbe && !webApiProbe.ok ? 'error' : webApiProbe?.ok ? 'success' : 'warning'
+    : api.enabled ? 'warning' : 'neutral');
+  $('web-api-endpoint-state').textContent = api.active
+    ? '本地接口已监听：' + api.endpoint
+    : api.enabled ? '配置已启用；启动Runtime后接口才会监听。' : '接口未启动，不接受网页请求。';
+  $('show-web-api-token').disabled = !api.active;
+  $('test-web-api').disabled = !api.active;
+  $('web-api-test-state').textContent = webApiProbe
+    ? webApiProbe.ok
+      ? '连接检测通过：' + webApiProbe.tool_count + '个工具、' + webApiProbe.root_count + '个工作区Root。'
+      : '连接检测失败：' + webApiProbe.status + (webApiProbe.http_status ? ' (HTTP ' + webApiProbe.http_status + ')' : '')
+    : api.active ? 'Runtime已就绪；点击检测确认Web API接口及授权。' : '接口尚未运行。';
+  const knownRoots = ['workspace', ...Object.keys(snapshot.workspaces?.roots || {})];
+  $('web-api-roots-hint').textContent = '可用Root：' + knownRoots.join('、') + '。只会授予你明确填写的Root。';
+}
+
 // Main refresh function
 async function refresh() {
   snapshot = await rpc('status');
@@ -241,6 +294,7 @@ async function refresh() {
     : loginRegistered ? 'Windows 登录项已注册；下次登录将在后台启动服务。' : '未启用登录自启动。';
   $('browser-enabled').checked = c.browser_enabled;
   $('browser-port').value = c.browser_port;
+  renderWebApi(snapshot);
 
   renderWorkspaces();
 
@@ -358,6 +412,58 @@ function editWorkspace(name, root) {
 
 // Button handlers
 $('refresh').onclick = () => action(refresh);
+
+$('save-web-api').onclick = () => action(async () => {
+  const origins = $('web-api-origins').value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+  const roots = $('web-api-roots').value.split(/[,\s]+/).map(value => value.trim()).filter(Boolean);
+  const tools = [];
+  if ($('web-api-tool-list-directory').checked) tools.push('list_directory');
+  if ($('web-api-tool-read-text').checked) tools.push('read_text');
+  if ($('web-api-tool-search-text').checked) tools.push('search_text');
+  if ($('web-api-tool-run-process').checked) tools.push('run_process');
+  await rpc('configure', {
+    web_api_enabled: $('web-api-enabled').checked,
+    web_api_allowed_origins: [...new Set(origins)],
+    web_api_allowed_roots: [...new Set(roots)],
+    web_api_allowed_tools: [...new Set(tools)]
+  });
+  webApiEdited = false;
+  webApiProbe = null;
+  hideWebApiToken();
+  await refresh();
+  notice('Web API设置已保存。请启动或重启Runtime使配置生效。');
+});
+
+$('test-web-api').onclick = () => action(async () => {
+  webApiProbe = await rpc('web_api_test');
+  await refresh();
+  notice(webApiProbe.ok
+    ? 'Web API连接检测通过，工具与Root授权和配置一致。'
+    : 'Web API连接检测未通过：' + webApiProbe.status, !webApiProbe.ok);
+});
+
+$('show-web-api-token').onclick = () => action(async () => {
+  const credentials = await rpc('web_api_token');
+  $('web-api-endpoint').value = credentials.endpoint;
+  $('web-api-token').value = credentials.token;
+  $('web-api-token-expiry').textContent = '此Token ' + credentials.expires + '；请勿放入网页源码、URL或Git仓库。';
+  $('web-api-credentials').classList.remove('hidden');
+  notice('已显示本次Runtime的临时Token。');
+});
+
+$('copy-web-api-token').onclick = () => action(async () => {
+  const token = $('web-api-token').value;
+  if (!token) throw new Error('请先显示本次访问Token');
+  try {
+    await navigator.clipboard.writeText(token);
+    notice('Token已复制到剪贴板。');
+  } catch (_error) {
+    $('web-api-token').focus();
+    $('web-api-token').select();
+    notice('自动复制不可用，Token已选中，请手动复制。');
+  }
+});
+$('hide-web-api-token').onclick = hideWebApiToken;
 
 $('save-browser').onclick = () => action(async () => {
   await rpc('configure', {
@@ -695,6 +801,11 @@ function activityProviderName(provider) {
   return names[provider] || provider;
 }
 
+function activityConversationLabel(value) {
+  return Number.isSafeInteger(value) && value > 0
+    ? 'C' + String(value).padStart(2, '0') : '?';
+}
+
 function activityDescription(activity) {
   if (activity.source === 'capability') {
     const provider = activity.provider;
@@ -752,7 +863,8 @@ function renderActivity(available) {
       const tool = document.createElement('strong');
       tool.className = 'activity-tool';
       const description = activityDescription(activity);
-      tool.textContent = description.title;
+      tool.textContent = activityConversationLabel(activity.conversation_number)
+        + ' · ' + description.title;
       const detail = document.createElement('span');
       detail.className = 'activity-subtitle';
       detail.textContent = description.detail;
@@ -769,6 +881,7 @@ function renderActivity(available) {
       summary.append(meta, result);
       const body = document.createElement('div');
       body.className = 'activity-details';
+      activityDetailLine(body, '来源对话', activityConversationLabel(activity.conversation_number));
       activityDetailLine(body, '工具入口', activity.tool);
       activityDetailLine(body, '组件ID', activity.provider);
       activityDetailLine(body, '能力ID', activity.capability);
@@ -797,6 +910,63 @@ function renderConversationSummary(conversations) {
     ? String(conversations.unattributed_calls ?? 0)
     : '—';
   $('conversation-period').textContent = ready ? '近60秒' : '统计不可用';
+
+  const identities = $('conversation-identities');
+  const recent = $('conversation-recent');
+  identities.replaceChildren();
+  recent.replaceChildren();
+  recent.hidden = true;
+  if (!ready) {
+    identities.textContent = '编号不可用';
+    return;
+  }
+  const rows = Array.isArray(conversations.conversations) ? conversations.conversations : [];
+  const numbers = [...new Set(rows
+    .map(item => item?.conversation_number)
+    .filter(number => Number.isSafeInteger(number) && number > 0))];
+  for (const number of numbers) {
+    const chip = document.createElement('span');
+    chip.className = 'conversation-chip';
+    chip.textContent = activityConversationLabel(number);
+    identities.append(chip);
+  }
+  const unlisted = Math.max(0, conversations.identified_count - numbers.length);
+  if (unlisted) {
+    const label = document.createElement('span');
+    label.className = 'conversation-extra';
+    label.textContent = '另' + unlisted + '个未列出';
+    identities.append(label);
+  } else if (!numbers.length) {
+    identities.textContent = '暂无活跃对话';
+  }
+
+  const stoppedCount = Number.isSafeInteger(conversations.recently_stopped_count)
+    ? Math.max(0, conversations.recently_stopped_count) : 0;
+  if (stoppedCount > 0) {
+    const stoppedRows = Array.isArray(conversations.recently_stopped)
+      ? conversations.recently_stopped : [];
+    const stoppedNumbers = [...new Set(stoppedRows
+      .map(item => item?.conversation_number)
+      .filter(number => Number.isSafeInteger(number) && number > 0))];
+    const heading = document.createElement('span');
+    heading.className = 'conversation-recent-title';
+    heading.textContent = '刚刚停止 ' + String(stoppedCount);
+    recent.append(heading);
+    for (const number of stoppedNumbers) {
+      const chip = document.createElement('span');
+      chip.className = 'conversation-chip is-recent';
+      chip.textContent = activityConversationLabel(number);
+      recent.append(chip);
+    }
+    const omitted = Math.max(0, stoppedCount - stoppedNumbers.length);
+    if (omitted) {
+      const extra = document.createElement('span');
+      extra.className = 'conversation-extra';
+      extra.textContent = '另' + omitted + '个未列出';
+      recent.append(extra);
+    }
+    recent.hidden = false;
+  }
 }
 
 async function refreshActivity() {

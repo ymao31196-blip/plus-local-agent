@@ -9,10 +9,12 @@ import json
 import os
 from pathlib import Path
 import socket
+import secrets
 import subprocess
 import sys
 from threading import Lock, Thread
 import time
+import urllib.error
 import urllib.request
 
 from desktop_runtime.config import DesktopConfig, atomic_write, redact
@@ -48,11 +50,15 @@ class Manager:
         self.runtime_started_at = None  # This manager's current owned Runtime session.
         self.last_error = ""
         self._secret = ""
+        self._web_api_token = ""
         self.readers = {}
         self.tunnel_readiness = TunnelReadiness()
 
+    def _redact_secrets(self, value):
+        return redact(redact(value, self._secret), self._web_api_token)
+
     def _record(self, text):
-        clean = redact(text, self._secret)[:4000]
+        clean = self._redact_secrets(text)[:4000]
         with self.log_lock:
             self.logs.append(clean)
             path = self.config.root / "logs" / "desktop.log"
@@ -125,6 +131,23 @@ class Manager:
                          "No new grants were added.")
         return {"revoked_read": revoked_read, "revoked_write": revoked_write}
 
+    def _reconcile_web_api_roots(self):
+        available = {"workspace", *workspace_registry_status(
+            self.config.workspace_path, self.resources
+        )["roots"]}
+        previous = list(self.config.value["web_api_allowed_roots"])
+        retained = [root for root in previous if root in available]
+        if retained != previous:
+            changes = {"web_api_allowed_roots": retained}
+            if not retained:
+                changes["web_api_enabled"] = False
+            self.config.save(changes)
+            self._record(
+                "Revoked Web API access to removed workspace roots: "
+                + ", ".join(sorted(set(previous) - set(retained)))
+            )
+        return {"retained_roots": retained, "revoked_roots": sorted(set(previous) - set(retained))}
+
     def _environment(self):
         # Never inherit developer provider/Tunnel overrides or unrelated credentials.
         env = {k: v for k, v in os.environ.items() if not k.startswith(("PLA_", "AGENT_", "CONTROL_PLANE_", "CLOUDFLARED_", "MCP_", "SKILL_LIBRARY_"))
@@ -156,6 +179,30 @@ class Manager:
             env["PATH"] = str(python_dir) + os.pathsep + env.get("PATH", "")
             env["PLA_EXECUTION_PYTHON"] = str(python_dir / "python.exe")
         return env
+
+    def _runtime_launch(self):
+        env = self._environment()
+        command = self._command("runtime") + [
+            "--http", "--host", "127.0.0.1", "--port", str(self.config.value["runtime_port"])
+        ]
+        self._web_api_token = ""
+        if self.config.value["web_api_enabled"]:
+            available = {"workspace", *workspace_registry_status(
+                self.config.workspace_path, self.resources
+            )["roots"]}
+            selected = set(self.config.value["web_api_allowed_roots"])
+            missing = sorted(selected - available)
+            if missing:
+                raise ValueError("Web API workspace roots no longer exist: " + ", ".join(missing))
+            self._web_api_token = secrets.token_urlsafe(32)
+            env.update({
+                "PLA_WEB_API_TOKEN": self._web_api_token,
+                "PLA_WEB_ALLOWED_TOOLS": ",".join(self.config.value["web_api_allowed_tools"]),
+                "PLA_WEB_ALLOWED_ORIGINS": ",".join(self.config.value["web_api_allowed_origins"]),
+                "PLA_WEB_ALLOWED_ROOTS": ",".join(self.config.value["web_api_allowed_roots"]),
+            })
+            command.append("--web-api")
+        return command, env
 
     def _command(self, role):
         if getattr(sys, "frozen", False):
@@ -239,7 +286,12 @@ class Manager:
         # Record a session boundary *before* spawning: older SQLite events cannot
         # certify a newly launched Runtime, and an exited Runtime never counts.
         started_at = datetime.now(timezone.utc).isoformat()
-        process = self._spawn("runtime", self._command("runtime") + ["--http", "--host", "127.0.0.1", "--port", str(port)], self._environment())
+        runtime_command, runtime_env = self._runtime_launch()
+        try:
+            process = self._spawn("runtime", runtime_command, runtime_env)
+        except BaseException:
+            self._web_api_token = ""
+            raise
         self.runtime_started_at = started_at
         deadline = time.monotonic() + 35
         while process.poll() is None and time.monotonic() < deadline:
@@ -295,11 +347,13 @@ class Manager:
         self.local_verified = False
         self.runtime_started_at = None
         self._secret = ""
+        self._web_api_token = ""
         return self.config.public()
 
     def status(self):
         alive = self._alive("runtime")
         if not alive:
+            self._web_api_token = ""
             self._stop_pet()
             self.local_verified = False
             if "runtime" in self.children:
@@ -309,7 +363,7 @@ class Manager:
             try:
                 ready = bool(asyncio.run(self._probe()))
             except Exception as exc:
-                self.last_error = redact(str(exc), self._secret)
+                self.last_error = self._redact_secrets(str(exc))
         tunnel = "stopped"
         if self._alive("tunnel"):
             tunnel = "starting_or_disconnected"
@@ -338,10 +392,19 @@ class Manager:
                 inventory = self._invoke_management_capability('runtime.provider_catalog', {})['data']['providers']
                 observed_providers = {row['provider_id']: row.get('lifecycle') for row in inventory}
             except Exception as exc:
-                self.last_error = redact(str(exc), self._secret)
+                self.last_error = self._redact_secrets(str(exc))
         skill_state = observed_providers.get('skill-library')
         office_states = {name: observed_providers.get(name) for name in ('office', 'pdf')}
+        web_api_active = bool(ready and self.config.value["web_api_enabled"] and self._web_api_token)
         return {"config": self.config.public(), "runtime": "ready" if ready else "starting" if alive else "exited" if "runtime" in self.children else "stopped",
+                "web_api": {
+                    "enabled": self.config.value["web_api_enabled"],
+                    "active": web_api_active,
+                    "endpoint": f"http://127.0.0.1:{self.config.value['runtime_port']}/web/v1" if web_api_active else None,
+                    "allowed_origins": list(self.config.value["web_api_allowed_origins"]),
+                    "allowed_tools": list(self.config.value["web_api_allowed_tools"]),
+                    "allowed_roots": list(self.config.value["web_api_allowed_roots"]),
+                },
                 "owned_processes": {role: {"pid": process.pid, "exit_code": process.poll()} for role, process in self.children.items()},
                 "tunnel": tunnel, "chatgpt_authorization": "not_observable_locally",
                 "tunnel_last_successful_poll": self.tunnel_readiness.last_success,
@@ -380,7 +443,7 @@ class Manager:
                 raise RuntimeError("Runtime rejected the management operation")
             data = result.data
             if isinstance(data, dict) and (data.get('status') in {'failed', 'blocked', 'precondition_failed'} or data.get('is_error') is True):
-                raise RuntimeError(redact(json.dumps(data, ensure_ascii=False), self._secret))
+                raise RuntimeError(self._redact_secrets(json.dumps(data, ensure_ascii=False)))
             return data
 
     def _invoke_management_capability(self, capability_id, arguments, confirmed=False):
@@ -405,6 +468,51 @@ class Manager:
             raise ValueError("Arguments must be an object")
         if command == "status":
             return self.status()
+        if command == "web_api_token":
+            if args:
+                raise ValueError("Web API token request takes no arguments")
+            if not self.config.value["web_api_enabled"]:
+                raise ValueError("Enable the Web API in Settings first")
+            if not self._alive("runtime") or not self._web_api_token:
+                raise ValueError("Start Runtime to create a fresh Web API token")
+            return {
+                "endpoint": f"http://127.0.0.1:{self.config.value['runtime_port']}/web/v1",
+                "token": self._web_api_token,
+                "expires": "when Runtime stops or restarts",
+            }
+        if command == "web_api_test":
+            if args:
+                raise ValueError("Web API connection test takes no arguments")
+            if not self.config.value["web_api_enabled"] or not self._alive("runtime") or not self._web_api_token:
+                raise ValueError("Enable and start Runtime Web API before testing")
+            endpoint = f"http://127.0.0.1:{self.config.value['runtime_port']}/web/v1"
+            request = urllib.request.Request(
+                endpoint + "/tools", method="GET",
+                headers={
+                    "Authorization": "Bearer " + self._web_api_token,
+                    "Origin": self.config.value["web_api_allowed_origins"][0],
+                },
+            )
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            try:
+                with opener.open(request, timeout=4) as response:
+                    payload = json.load(response)
+                if not isinstance(payload, dict):
+                    raise ValueError("Unexpected Web API response format")
+                found_tools = {item.get("name") for item in payload.get("tools", [])
+                               if isinstance(item, dict) and isinstance(item.get("name"), str)}
+                found_roots = set(payload.get("allowed_roots", []))
+                ok = (found_tools == set(self.config.value["web_api_allowed_tools"])
+                      and found_roots == set(self.config.value["web_api_allowed_roots"]))
+                return {
+                    "ok": ok, "status": "ready" if ok else "configuration_mismatch",
+                    "endpoint": endpoint, "tool_count": len(found_tools),
+                    "root_count": len(found_roots),
+                }
+            except urllib.error.HTTPError as exc:
+                return {"ok": False, "status": "http_error", "http_status": exc.code}
+            except (OSError, ValueError, TypeError) as exc:
+                return {"ok": False, "status": "unreachable", "error_type": type(exc).__name__}
         if command == "update_check":
             if args:
                 raise ValueError("Update check takes no arguments")
@@ -801,6 +909,13 @@ class Manager:
         if command == "configure":
             if set(args) - {"autostart", "onboarding_complete"} and any(self._alive(role) for role in self.children):
                 raise ValueError("Stop services before changing configuration")
+            if "web_api_allowed_roots" in args:
+                available = {"workspace", *workspace_registry_status(
+                    self.config.workspace_path, self.resources
+                )["roots"]}
+                missing = sorted(set(args["web_api_allowed_roots"]) - available)
+                if missing:
+                    raise ValueError("Web API roots must already exist in Workspaces: " + ", ".join(missing))
             return self.config.save(args)
         if command == "credential":
             if set(args) != {"secret"}:
@@ -831,6 +946,7 @@ class Manager:
                 result = workspace_registry_upsert(self.config.workspace_path, self.resources, **fields)
             else:
                 result = workspace_registry_remove(self.config.workspace_path, self.resources, **args)
+                self._reconcile_web_api_roots()
             # Workspace removal or narrowing also revokes its Skill permissions.
             self._reconcile_skill_permissions()
             return result
@@ -881,7 +997,7 @@ def main():
                     raise ValueError("Invalid management envelope")
                 result = {"ok": True, "result": manager.dispatch(request["command"], request["args"])}
             except Exception as exc:
-                error = redact(str(exc), manager._secret)
+                error = manager._redact_secrets(str(exc))
                 manager.last_error = error
                 result = {"ok": False, "error": error, "error_type": type(exc).__name__}
             print(json.dumps(result, ensure_ascii=False), flush=True)

@@ -16,7 +16,9 @@ import sqlite3
 import sys
 import time
 
-from runtime.conversation_activity import automatic_conversation_summary
+from runtime.conversation_activity import (
+    automatic_conversation_summary, format_conversation_label,
+)
 
 BASE = Path(__file__).resolve().parent
 EVENT_NAMES = (
@@ -92,8 +94,35 @@ def registered_dialogues_label(
         return "会话不可用"
     suffix = "+" if summary["truncated"] else ""
     label = f"活跃 {summary['identified_count']}{suffix}"
+    numbers: list[int] = []
+    for item in summary["conversations"]:
+        number = item.get("conversation_number")
+        if type(number) is int and number > 0 and number not in numbers:
+            numbers.append(number)
+    if numbers:
+        label += " · " + " ".join(format_conversation_label(number) for number in numbers)
+        remaining = max(0, summary["identified_count"] - len(numbers))
+        if remaining:
+            label += f" +{remaining}"
     if summary["unattributed_calls"]:
         label += f" · 未识别{summary['unattributed_calls']}"
+    stopped_count = summary.get("recently_stopped_count", 0)
+    if stopped_count:
+        stopped_numbers: list[int] = []
+        for item in summary.get("recently_stopped", []):
+            number = item.get("conversation_number")
+            if type(number) is int and number > 0 and number not in stopped_numbers:
+                stopped_numbers.append(number)
+        stopped_label = f"刚停 {stopped_count}"
+        if stopped_numbers:
+            stopped_label += " " + " ".join(
+                format_conversation_label(number) for number in stopped_numbers
+            )
+        unlisted = max(0, stopped_count - len(stopped_numbers))
+        if unlisted:
+            stopped_label += f" +{unlisted}"
+        # Put the time-limited status first so it remains readable when clipped.
+        label = stopped_label + " · " + label
     return label
 
 
@@ -116,19 +145,21 @@ class ToolCall:
     source: str = "native_mcp"
     provider: str | None = None
     program: str | None = None
+    conversation_number: int | None = None
 
 
 def describe_call(call: ToolCall) -> tuple[str, str]:
-    """User-facing identity without inferring a component from a process name."""
+    """Prefix every tool with its verified local conversation attribution."""
+    prefix = format_conversation_label(call.conversation_number)
     if call.source == "capability":
         provider = call.provider or "组件能力"
         label = PROVIDER_NAMES.get(provider, provider)
         operation = call.name.removeprefix(provider + ".")
-        return label, f"{operation} · 组件调用"
+        return f"{prefix} · {label}", f"{operation} · 组件调用"
     if call.name == "run_process":
-        return f"程序 · {call.program or '未知程序'}", "run_process · 本地执行"
+        return f"{prefix} · 程序 · {call.program or '未知程序'}", "run_process · 本地执行"
     kind = "MCP工具" if call.source == "native_mcp" else "内部Action"
-    return call.name, kind
+    return f"{prefix} · {call.name}", kind
 
 
 @dataclass(frozen=True)
@@ -154,6 +185,13 @@ def build_snapshot(rows: list[tuple], now: float, max_rows: int = MAX_ROWS) -> S
         source = extra[0] if len(extra) > 0 else "native_mcp"
         provider = extra[1] if len(extra) > 1 and source == "capability" else None
         raw_payload = extra[2] if len(extra) > 2 else None
+        try:
+            metadata = json.loads(raw_payload) if isinstance(raw_payload, str) and raw_payload else {}
+        except (TypeError, ValueError):
+            metadata = {}
+        conversation_number = metadata.get("conversation_number") if isinstance(metadata, dict) else None
+        if type(conversation_number) is not int or conversation_number < 1:
+            conversation_number = None
         at = parse_timestamp(timestamp)
         if at is None:
             continue
@@ -163,17 +201,14 @@ def build_snapshot(rows: list[tuple], now: float, max_rows: int = MAX_ROWS) -> S
             "name": str(name or "unknown")[:96],
             "first": at, "sequence": int(seq), "status": "running",
             "source": source, "provider": str(provider)[:64] if provider else None,
-            "program": None,
+            "program": None, "conversation_number": conversation_number,
         })
+        if entry["conversation_number"] is None and conversation_number is not None:
+            entry["conversation_number"] = conversation_number
         if event_type.endswith((".started", ".before_invoke")):
             entry["first"], entry["sequence"] = at, int(seq)
-            if entry["name"] == "run_process" and raw_payload:
-                try:
-                    payload = json.loads(raw_payload)
-                    if isinstance(payload, dict):
-                        entry["program"] = _program_label(payload.get("program"))
-                except (TypeError, ValueError):
-                    pass
+            if entry["name"] == "run_process" and isinstance(metadata, dict):
+                entry["program"] = _program_label(metadata.get("program"))
         elif event_type.endswith((".succeeded",)):
             entry["status"] = "succeeded"
         elif event_type.endswith((".failed", ".gate_denied", ".policy_denied")):
@@ -182,7 +217,7 @@ def build_snapshot(rows: list[tuple], now: float, max_rows: int = MAX_ROWS) -> S
     records = tuple(
         ToolCall(x["name"], datetime.fromtimestamp(x["first"]).strftime("%H:%M:%S"),
                  x["first"], x["sequence"], x["status"], x["source"],
-                 x["provider"], x["program"])
+                 x["provider"], x["program"], x["conversation_number"])
         for x in picked
     )
     if latest is None:
@@ -429,6 +464,7 @@ def run_gui() -> None:
     footer=canvas.create_text(218,225,anchor="w",text="",font=(font,8),fill=muted)
     registered_font = tkfont.Font(root=root, family=font, size=8)
     registered = canvas.create_text(462,225,anchor="e",text="",font=registered_font,fill=muted)
+    registered_full_text = {"value": ""}
     # Keep the pet narrow: hovering over a clipped label reveals its full name.
     tooltip = {"window": None}
     def hide_tooltip(_event=None):
@@ -461,6 +497,26 @@ def run_gui() -> None:
         for item in widgets[1:3]:
             canvas.tag_bind(item, "<Enter>", lambda _e, i=index: show_tooltip(i))
             canvas.tag_bind(item, "<Leave>", hide_tooltip)
+    def show_registered_tooltip(_event=None):
+        full_text = registered_full_text["value"]
+        if not full_text or registered_font.measure(full_text) <= 194:
+            return
+        hide_tooltip()
+        popup = tk.Toplevel(root)
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+        tk.Label(popup, text=full_text, bg="#202d43", fg="#f2f6ff",
+                 font=(font, 9), justify="left", padx=10, pady=8,
+                 wraplength=310).pack()
+        popup.update_idletasks()
+        x = min(root.winfo_screenwidth() - popup.winfo_width(),
+                root.winfo_pointerx() + 14)
+        y = min(root.winfo_screenheight() - popup.winfo_height(),
+                root.winfo_pointery() + 22)
+        popup.geometry(f"+{max(0,x)}+{max(0,y)}")
+        tooltip["window"] = popup
+    canvas.tag_bind(registered, "<Enter>", show_registered_tooltip)
+    canvas.tag_bind(registered, "<Leave>", hide_tooltip)
     colors={"active":"#65d8a4","pending":"#f0bf6d","quiet":"#9ab3ff",
             "idle":"#899bb1","failed":"#f38181","disconnected":"#f38181"}
     phrases = StatusPhraseController()
@@ -496,7 +552,8 @@ def run_gui() -> None:
                 canvas.itemconfigure(widgets[3],text=state,fill=state_color)
             else:
                 for item in widgets: canvas.itemconfigure(item,text="")
-        registered_text = registered_dialogues_label(db, runtime_started_at)
+        registered_full_text["value"] = registered_dialogues_label(db, runtime_started_at)
+        registered_text = fit_text_width(registered_full_text["value"], registered_font.measure, 194)
         canvas.itemconfigure(registered, text=registered_text)
         # Footer shares its existing line; do not enlarge the pet or overlap labels.
         free_width = max(36, 462 - registered_font.measure(registered_text) - 12 - 218)
